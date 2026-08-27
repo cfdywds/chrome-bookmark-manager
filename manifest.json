@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "书签管家 · Bookmark Manager",
+  "version": "1.3.1",
+  "description": "书签管家：多标签管理（AI 打标）、重复/同域名/空夹一键清理、敏感检测、回收站与备份。数据本地保存，AI 打标仅在用户配置服务后发起请求。",
+  "permissions": [
+    "bookmarks",
+    "storage",
+    "alarms",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "https://api.github.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "书签管家",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "background": {
+    "service_worker": "js/background.js"
+  },
+  "side_panel": {
+    "default_path": "popup.html"
+  },
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "options_page": "options.html"
+}
