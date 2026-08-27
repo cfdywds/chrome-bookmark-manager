@@ -111,6 +111,40 @@ describe('标签云同步 V2（URL 主键）', () => {
       else globalThis.chrome = previousChrome;
     }
   });
+
+  it('云端写入失败时持久化可见的同步错误', async () => {
+    const previousChrome = globalThis.chrome;
+    const localData = { bmTags: { source: ['AI'] } };
+    const localSet = vi.fn(async value => { Object.assign(localData, value); });
+    globalThis.chrome = {
+      bookmarks: {
+        getTree: vi.fn().mockResolvedValue([{ children: [
+          { id: 'source', url: 'https://github.com/openai' }
+        ] }])
+      },
+      storage: {
+        local: {
+          get: vi.fn(async key => ({ [key]: localData[key] })),
+          set: localSet
+        },
+        sync: {
+          get: vi.fn(async () => ({ [BM.SYNC_ENABLED_KEY]: true })),
+          set: vi.fn().mockRejectedValue(new Error('同步配额不足'))
+        }
+      }
+    };
+
+    try {
+      await expect(BM.pushTagsToCloud()).rejects.toThrow('同步配额不足');
+      expect(localData[BM.SYNC_STATUS_KEY]).toMatchObject({ lastError: '同步配额不足' });
+      expect(localSet).toHaveBeenCalledWith({
+        [BM.SYNC_STATUS_KEY]: expect.objectContaining({ lastError: '同步配额不足' })
+      });
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
 });
 
 describe('getRegisteredDomain（eTLD+1）', () => {

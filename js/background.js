@@ -18,6 +18,7 @@ const AUTO_TAG_BATCH_DELAY_MS = 200;
 const SYNC_ENABLED_KEY = 'bmSyncEnabled';
 const SYNC_TAG_PREFIX = 'bmSyncTag_p';
 const SYNC_TAG_CNT = 'bmSyncTag_cnt';
+const SYNC_STATUS_KEY = 'bmTagSyncStatus';
 const SYNC_CHUNK_CHARS = 2500;
 const SYNC_TAG_DELAY_MS = 1500;
 const DEFAULT_FIXED_TAGS = [
@@ -137,15 +138,31 @@ async function isBackgroundTagSyncEnabled() {
   return true;
 }
 
+async function setBackgroundTagSyncStatus(lastError) {
+  const at = Date.now();
+  const status = lastError
+    ? { lastError: String(lastError), at }
+    : { lastError: '', at, lastSuccessAt: at };
+  try {
+    await chrome.storage.local.set({ [SYNC_STATUS_KEY]: status });
+  } catch (e) { /* 保留原始同步错误 */ }
+}
+
 async function pushBackgroundTagsToCloud() {
-  if (!await isBackgroundTagSyncEnabled()) return false;
-  const [stored, tree] = await Promise.all([
-    chrome.storage.local.get(TAGS_KEY),
-    chrome.bookmarks.getTree()
-  ]);
-  const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
-  await chrome.storage.sync.set(serializeBackgroundSyncTags(projectTagsForBackgroundSync(tags, tree)));
-  return true;
+  try {
+    if (!await isBackgroundTagSyncEnabled()) return false;
+    const [stored, tree] = await Promise.all([
+      chrome.storage.local.get(TAGS_KEY),
+      chrome.bookmarks.getTree()
+    ]);
+    const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
+    await chrome.storage.sync.set(serializeBackgroundSyncTags(projectTagsForBackgroundSync(tags, tree)));
+    await setBackgroundTagSyncStatus('');
+    return true;
+  } catch (e) {
+    await setBackgroundTagSyncStatus((e && e.message) || e);
+    throw e;
+  }
 }
 
 function scheduleBackgroundTagSync() {

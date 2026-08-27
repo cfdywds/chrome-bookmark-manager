@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const optionsSource = readFileSync(join(__dirname, '..', 'js', 'options.js'), 'utf-8').replace(/\r\n/g, '\n');
 const optionsHtml = readFileSync(join(__dirname, '..', 'options.html'), 'utf-8');
+const readme = readFileSync(join(__dirname, '..', 'README.md'), 'utf-8');
 
 function getFunctionSource(name) {
   const start = optionsSource.indexOf(`function ${name}(`);
@@ -68,5 +69,11 @@ describe('LLM 多配置', () => {
     expect(optionsSource).toContain("const LLM_PROFILES_KEY = 'bmLlmProfiles'");
     expect(optionsSource).toContain("const ACTIVE_LLM_PROFILE_KEY = 'bmActiveLlmProfileId'");
     expect(optionsSource).toContain('bmSettings: normalizeLlmSettings');
+  });
+
+  it('设置页会显示持久化的标签同步失败，文档说明标签可选同步', () => {
+    expect(optionsSource).toContain('BM.SYNC_STATUS_KEY');
+    expect(optionsSource).toContain('renderTagSyncStatus');
+    expect(readme).toContain('标签数据可通过 Chrome 同步');
   });
 });

@@ -402,6 +402,39 @@ describe('浏览器收藏接管', () => {
     }
   });
 
+  it('后台标签上传失败时持久化同步错误', async () => {
+    const previousChrome = globalThis.chrome;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.useFakeTimers();
+    const harness = createBackgroundHarness([], {
+      localData: { bmFixedTags: ['GitHub', '其他'], bmTags: {} },
+      syncData: { bmSyncEnabled: true },
+      getTree: vi.fn().mockResolvedValue([{ children: [{
+        id: 'browser-created', url: 'https://github.com/example/project'
+      }] }])
+    });
+    harness.syncSet.mockRejectedValue(new Error('同步配额不足'));
+    globalThis.chrome = harness.chrome;
+
+    try {
+      new Function(backgroundCode)();
+      const created = harness.triggerBookmarkCreated('browser-created', {
+        parentId: 'bar', url: 'https://github.com/example/project', title: '项目仓库'
+      });
+      await vi.advanceTimersByTimeAsync(250);
+      await created;
+      await vi.advanceTimersByTimeAsync(1600);
+
+      expect(harness.storageSet).toHaveBeenCalledWith({
+        bmTagSyncStatus: expect.objectContaining({ lastError: '同步配额不足' })
+      });
+    } finally {
+      vi.useRealTimers();
+      warn.mockRestore();
+      restoreGlobal('chrome', previousChrome);
+    }
+  });
+
   it('浏览器收藏在后台写入匹配的默认标签，不触发待保存记录', async () => {
     const previousChrome = globalThis.chrome;
     const harness = createBackgroundHarness([], {

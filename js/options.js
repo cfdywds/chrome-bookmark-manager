@@ -37,6 +37,13 @@ function setFtMsg(text, cls) {
   el.className = 'settings-msg' + (cls ? ' ' + cls : '');
 }
 
+function renderTagSyncStatus(status) {
+  const msg = $('#tagSyncMsg');
+  if (!msg || !status || !status.lastError) return;
+  msg.textContent = '上次同步失败：' + status.lastError;
+  msg.className = 'settings-msg err';
+}
+
 // ---- 固定标签池：textarea ↔ 数组转换（每行一个，忽略 # 注释）----
 function parseFixedTags(text) {
   return [...new Set(String(text || '').split('\n').map(l => l.trim())
@@ -360,7 +367,7 @@ async function load() {
   try {
     const r = await chrome.storage.local.get([
       'bmSettings', LLM_PROFILES_KEY, ACTIVE_LLM_PROFILE_KEY,
-      'bmDomainGroups', 'bmFixedTags', 'bmStarHook', BM.SYNC_ENABLED_KEY
+      'bmDomainGroups', 'bmFixedTags', 'bmStarHook', BM.SYNC_ENABLED_KEY, BM.SYNC_STATUS_KEY
     ]);
     llmProfiles = normalizeLlmProfiles(r[LLM_PROFILES_KEY], r.bmSettings);
     activeLlmProfileId = llmProfiles.some(profile => profile.id === r[ACTIVE_LLM_PROFILE_KEY])
@@ -376,6 +383,7 @@ async function load() {
     // 标签云同步开关：默认关闭（隐私权衡，需主动开启）
     const syncEl = $('#setTagSync');
     if (syncEl) syncEl.checked = await BM.getTagSyncEnabled();
+    renderTagSyncStatus(r[BM.SYNC_STATUS_KEY]);
   } catch (e) {
     console.warn('[书签管家] 读取设置失败', e);
   }
@@ -448,6 +456,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
   if (changes.bmFixedTags) {
     fillFixedTags(changes.bmFixedTags.newValue);
+  }
+  if (changes[BM.SYNC_STATUS_KEY]) {
+    renderTagSyncStatus(changes[BM.SYNC_STATUS_KEY].newValue);
   }
 });
 

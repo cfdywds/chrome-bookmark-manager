@@ -603,6 +603,7 @@
   const SYNC_ENABLED_KEY = 'bmSyncEnabled';
   const SYNC_TAG_PREFIX = 'bmSyncTag_p';
   const SYNC_TAG_CNT = 'bmSyncTag_cnt';
+  const SYNC_STATUS_KEY = 'bmTagSyncStatus';
   const SYNC_CHUNK_CHARS = 2500;      // 每片字符数（中文 UTF-8 3 字节 → ~7.5KB < 8KB 限制）
   let syncTimer = null;
 
@@ -622,6 +623,16 @@
         return false;
       }
     }
+  }
+
+  async function setTagSyncStatus(lastError) {
+    const at = Date.now();
+    const status = lastError
+      ? { lastError: String(lastError), at }
+      : { lastError: '', at, lastSuccessAt: at };
+    try {
+      await chrome.storage.local.set({ [SYNC_STATUS_KEY]: status });
+    } catch (e) { /* 状态写入不能掩盖真实同步错误 */ }
   }
 
   function projectTagsForSync(tagsMap, bookmarks) {
@@ -700,10 +711,16 @@
   }
 
   async function pushTagsToCloud() {
-    if (!await getTagSyncEnabled()) return false;
-    const [tags, tree] = await Promise.all([loadTags(), chrome.bookmarks.getTree()]);
-    await chrome.storage.sync.set(serializeSyncTags(projectTagsForSync(tags, collectBookmarks(tree, []))));
-    return true;
+    try {
+      if (!await getTagSyncEnabled()) return false;
+      const [tags, tree] = await Promise.all([loadTags(), chrome.bookmarks.getTree()]);
+      await chrome.storage.sync.set(serializeSyncTags(projectTagsForSync(tags, collectBookmarks(tree, []))));
+      await setTagSyncStatus('');
+      return true;
+    } catch (e) {
+      await setTagSyncStatus((e && e.message) || e);
+      throw e;
+    }
   }
 
   // 防抖写入 sync（1.5s）
@@ -725,8 +742,12 @@
       if (!cloud) return false;
       const tree = await chrome.bookmarks.getTree();
       const result = await persistTagChanges(resolveSyncTags(cloud, collectBookmarks(tree, [])), 'merge');
+      await setTagSyncStatus('');
       return !!(result.ok && result.changed);
-    } catch (e) { return false; }
+    } catch (e) {
+      await setTagSyncStatus((e && e.message) || e);
+      return false;
+    }
   }
 
   // 注册跨端同步监听：storage.sync 变化 → 拉取合并 → 返回变化（供 UI 决定是否刷新）
@@ -1700,6 +1721,7 @@
     serializeSyncTags,
     SYNC_ENABLED_KEY,
     SYNC_TAG_CNT,
+    SYNC_STATUS_KEY,
     checkForUpdate,
     getVersion,
     parseAiCategories,
