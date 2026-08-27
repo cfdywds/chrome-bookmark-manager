@@ -14,6 +14,149 @@ function restoreChrome(previous) {
 }
 
 describe('备份恢复创建保护', () => {
+  it('默认合并完整 URL 并合并标签，显式选择后才保留副本', async () => {
+    const previousChrome = globalThis.chrome;
+    const store = {
+      bmFixedTags: ['AI', '工具', '其他'],
+      bmTags: { existing: ['工具'] }
+    };
+    const get = vi.fn(async keys => {
+      const result = {};
+      (Array.isArray(keys) ? keys : [keys]).forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(store, key)) result[key] = store[key];
+      });
+      return result;
+    });
+    const set = vi.fn(async values => Object.assign(store, values));
+    const create = vi.fn().mockResolvedValue({ id: 'copy' });
+    globalThis.chrome = {
+      bookmarks: {
+        getTree: vi.fn().mockResolvedValue([{
+          children: [{
+            id: 'bar', title: '书签栏', children: [
+              { id: 'existing', title: '已有书签', url: 'https://example.com/' }
+            ]
+          }]
+        }]),
+        create
+      },
+      storage: { local: { get, set } },
+      runtime: { sendMessage: vi.fn().mockResolvedValue(undefined) }
+    };
+
+    try {
+      new Function(libCode)();
+      const backup = JSON.stringify({
+        app: 'bookmark-manager',
+        bookmarks: [{ title: '', children: [{ title: '书签栏', children: [
+          { id: 'backup-bookmark', title: '备份书签', url: 'https://example.com/' }
+        ] }] }],
+        fixedTags: ['AI', '工具', '项目A', '其他'],
+        tags: { 'backup-bookmark': ['项目A'] },
+        hiddenIds: ['backup-bookmark']
+      });
+
+      await expect(globalThis.BM.importBookmarksJSON(backup, { dryRun: true }))
+        .resolves.toMatchObject({ bookmarks: 0, merged: 1, skipped: 0 });
+      await expect(globalThis.BM.importBookmarksJSON(backup))
+        .resolves.toMatchObject({ bookmarks: 0, merged: 1, skipped: 0 });
+      expect(create).not.toHaveBeenCalled();
+      expect(store.bmTags.existing).toEqual(['工具', '项目A']);
+      expect(store.bmFixedTags).toEqual(['AI', '工具', '项目A', '其他']);
+      expect(store.bmHiddenIds).toEqual(['existing']);
+
+      const copied = await globalThis.BM.importBookmarksJSON(backup, { keepDuplicates: true });
+      expect(copied).toMatchObject({ bookmarks: 1, merged: 0, skipped: 0 });
+      expect(create).toHaveBeenCalledWith({
+        parentId: 'bar', title: '备份书签', url: 'https://example.com/'
+      });
+      expect(store.bmTags.copy).toEqual(['项目A']);
+    } finally {
+      restoreChrome(previousChrome);
+    }
+  });
+
+  it('同一备份内的相同 URL 只创建一次并汇总标签', async () => {
+    const previousChrome = globalThis.chrome;
+    const store = {};
+    const get = vi.fn(async keys => {
+      const result = {};
+      (Array.isArray(keys) ? keys : [keys]).forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(store, key)) result[key] = store[key];
+      });
+      return result;
+    });
+    const set = vi.fn(async values => Object.assign(store, values));
+    const create = vi.fn().mockResolvedValue({ id: 'new-bookmark' });
+    globalThis.chrome = {
+      bookmarks: {
+        getTree: vi.fn().mockResolvedValue([{ children: [{ id: 'bar', title: '书签栏', children: [] }] }]),
+        create
+      },
+      storage: { local: { get, set } },
+      runtime: { sendMessage: vi.fn().mockResolvedValue(undefined) }
+    };
+
+    try {
+      new Function(libCode)();
+      const backup = JSON.stringify({
+        app: 'bookmark-manager',
+        bookmarks: [{ title: '', children: [{ title: '书签栏', children: [
+          { id: 'first', title: '第一个', url: 'https://example.com/' },
+          { id: 'second', title: '第二个', url: 'https://example.com/' }
+        ] }] }],
+        tags: { first: ['AI'], second: ['前端'] }
+      });
+
+      await expect(globalThis.BM.importBookmarksJSON(backup, { dryRun: true }))
+        .resolves.toMatchObject({ bookmarks: 1, merged: 1 });
+      await expect(globalThis.BM.importBookmarksJSON(backup))
+        .resolves.toMatchObject({ bookmarks: 1, merged: 1 });
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(store.bmTags['new-bookmark']).toEqual(['AI', '前端']);
+    } finally {
+      restoreChrome(previousChrome);
+    }
+  });
+
+  it('仅含可合并书签的来源目录不会创建为空文件夹', async () => {
+    const previousChrome = globalThis.chrome;
+    const create = vi.fn();
+    globalThis.chrome = {
+      bookmarks: {
+        getTree: vi.fn().mockResolvedValue([{
+          children: [{
+            id: 'bar', title: '书签栏', children: [
+              { id: 'existing', title: '已有书签', url: 'https://example.com/' }
+            ]
+          }]
+        }]),
+        create
+      },
+      storage: { local: { get: vi.fn().mockResolvedValue({}), set: vi.fn() } }
+    };
+
+    try {
+      new Function(libCode)();
+      const backup = JSON.stringify({
+        app: 'bookmark-manager',
+        bookmarks: [{ title: '', children: [{ title: '书签栏', children: [{
+          id: 'import-folder', title: '导入目录', children: [
+            { id: 'backup-bookmark', title: '备份书签', url: 'https://example.com/' }
+          ]
+        }] }] }]
+      });
+
+      await expect(globalThis.BM.importBookmarksJSON(backup, { dryRun: true }))
+        .resolves.toMatchObject({ folders: 0, bookmarks: 0, merged: 1 });
+      await expect(globalThis.BM.importBookmarksJSON(backup))
+        .resolves.toMatchObject({ folders: 0, bookmarks: 0, merged: 1 });
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      restoreChrome(previousChrome);
+    }
+  });
+
   it('恢复为创建登记并确认令牌，失败时取消，dry run 不发送消息', async () => {
     const previousChrome = globalThis.chrome;
     const sendMessage = vi.fn().mockResolvedValue(undefined);

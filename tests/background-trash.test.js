@@ -484,6 +484,47 @@ describe('浏览器收藏接管', () => {
     }
   });
 
+  it('后台标签事务的 merge 模式保留已有标签', async () => {
+    const previousChrome = globalThis.chrome;
+    const harness = createBackgroundHarness([], {
+      localData: { bmFixedTags: ['AI', '工具', '其他'], bmTags: { existing: ['工具'] } }
+    });
+    globalThis.chrome = harness.chrome;
+
+    try {
+      new Function(backgroundCode)();
+      await harness.send({
+        type: 'bmTagMutation', changes: { existing: ['AI'] }, mode: 'merge'
+      });
+
+      expect(harness.chrome.storage.local.set).toHaveBeenCalledWith({
+        bmTags: { existing: ['工具', 'AI'] }
+      });
+    } finally {
+      restoreGlobal('chrome', previousChrome);
+    }
+  });
+
+  it('后台标签事务的 merge 模式在标签已满时保留已有标签', async () => {
+    const previousChrome = globalThis.chrome;
+    const existingTags = ['工具', '前端', '后端', '安全', '设计', '学习'];
+    const harness = createBackgroundHarness([], {
+      localData: { bmFixedTags: ['AI', ...existingTags, '其他'], bmTags: { existing: existingTags } }
+    });
+    globalThis.chrome = harness.chrome;
+
+    try {
+      new Function(backgroundCode)();
+      await harness.send({
+        type: 'bmTagMutation', changes: { existing: ['AI'] }, mode: 'merge'
+      });
+
+      expect(harness.chrome.storage.local.set).not.toHaveBeenCalled();
+    } finally {
+      restoreGlobal('chrome', previousChrome);
+    }
+  });
+
   it('Chrome 原生导入结束后合并默认打标，只写入一次标签表', async () => {
     const previousChrome = globalThis.chrome;
     const harness = createBackgroundHarness([], {

@@ -304,43 +304,66 @@
     return categorizeWithHay(host, (host + ' ' + url + ' ' + title).toLowerCase());
   }
 
-  // ---- 敏感书签规则（仅本地文本判定，不上传任何数据） ----
-  const SENSITIVE_PATTERNS = [
-    { label: '登录 / 账户', sev: 'high', source: 'urlHost', regex: /(^|\.)login|signin|sign-in|account|auth|dashboard|my\.|passport/i },
-    { label: '银行 / 金融账户', sev: 'high', source: 'combined', regex: /(bank|银行|paypal|alipay|信用卡|credit|证券|基金|stock|trading|理财|保险)/i },
-    { label: '加密货币 / 钱包', sev: 'high', source: 'combined', regex: /(wallet|metamask|binance|coinbase|crypto|区块链|token)/i },
-    { label: '成人内容', sev: 'high', source: 'combined', regex: /(porn|xxx|adult|\bsex\b|erotic)/i },
-    { label: 'URL 含敏感参数', sev: 'high', source: 'url', regex: /[?&#](token|access_token|refresh_token|session|sess|sid|phpsessid|jsessionid|password|pwd|passwd|api_key|apikey|secret|authorization|code|ticket|jwt|bearer)=/i },
-    { label: '医疗 / 健康', sev: 'medium', source: 'combined', regex: /(health|medical|hospital|医院|诊所|药|心理健康)/i },
-    { label: '政府 / 政务', sev: 'medium', source: 'combined', regex: /(gov|政府|政务|tax|税务|社保|社保|公积金)/i },
-    { label: '邮箱 / 私人通信', sev: 'medium', source: 'host', regex: /(mail|webmail|outlook\.|gmail|foxmail)/i }
-  ];
-  const SENSITIVE_RULES = SENSITIVE_PATTERNS.map(rule => ({
-    label: rule.label,
-    sev: rule.sev,
-    test: (host, url, title) => rule.regex.test(
-      rule.source === 'urlHost' ? url + ' ' + host
-        : rule.source === 'url' ? url
-          : rule.source === 'host' ? host
-            : host + url + title
-    )
-  }));
+  // ---- AI 隐私保护：仅拦截有明确高风险信号的 HTTP(S) 书签 ----
+  // 这些结果只用于决定是否允许发送至用户配置的 LLM，不作为独立安全评分。
+  const LOGIN_HOST_LABELS = new Set(['login', 'signin', 'sign-in', 'auth', 'sso', 'oauth', 'passport', 'accounts']);
+  const LOGIN_PATH_SEGMENTS = new Set(['login', 'signin', 'sign-in', 'auth', 'sso', 'oauth', 'passport']);
+  const SENSITIVE_PARAM_KEYS = new Set([
+    'token', 'access_token', 'refresh_token', 'session', 'sess', 'sid', 'phpsessid', 'jsessionid',
+    'password', 'pwd', 'passwd', 'api_key', 'apikey', 'secret', 'authorization', 'code', 'ticket', 'jwt', 'bearer'
+  ]);
+  const FINANCIAL_HOST_LABELS = new Set(['bank', 'banking', 'paypal', 'alipay', 'metamask', 'binance', 'coinbase', 'okx', 'kraken', 'bybit']);
+  const FINANCIAL_TITLE_PATTERN = /(网上银行|银行账户|支付账户|证券账户|加密钱包|数字钱包|crypto wallet)/i;
 
-  function detectSensitiveWithText(host, url, title, combined) {
-    const urlHost = url + ' ' + host;
-    const hits = [];
-    for (const rule of SENSITIVE_PATTERNS) {
-      const value = rule.source === 'urlHost' ? urlHost
-        : rule.source === 'url' ? url
-          : rule.source === 'host' ? host
-            : combined;
-      if (rule.regex.test(value)) hits.push({ label: rule.label, sev: rule.sev });
-    }
-    return hits;
+  function decodePathSegment(segment) {
+    try { return decodeURIComponent(segment).toLowerCase(); }
+    catch (e) { return segment.toLowerCase(); }
   }
 
-  function detectSensitive(host, url, title) {
-    return detectSensitiveWithText(host, url, title, host + url + title);
+  function isLoginEndpoint(url) {
+    const hostLabels = url.hostname.toLowerCase().split('.');
+    if (hostLabels.some(label => LOGIN_HOST_LABELS.has(label))) return true;
+    return url.pathname.split('/').filter(Boolean).some(segment => {
+      const normalized = decodePathSegment(segment).replace(/\.(?:html?|php|aspx?)$/, '');
+      return LOGIN_PATH_SEGMENTS.has(normalized);
+    });
+  }
+
+  function hasSensitiveUrlParameter(url) {
+    const values = [url.search.slice(1)];
+    const fragment = url.hash.slice(1);
+    if (fragment) {
+      values.push(fragment);
+      const queryIndex = fragment.indexOf('?');
+      if (queryIndex >= 0) values.push(fragment.slice(queryIndex + 1));
+    }
+    return values.some(value => {
+      const params = new URLSearchParams(value);
+      for (const [key, paramValue] of params) {
+        if (SENSITIVE_PARAM_KEYS.has(key.toLowerCase()) && paramValue) return true;
+      }
+      return false;
+    });
+  }
+
+  function isFinancialOrWalletService(url, title) {
+    const hostLabels = url.hostname.toLowerCase().split('.');
+    return hostLabels.some(label => FINANCIAL_HOST_LABELS.has(label)) || FINANCIAL_TITLE_PATTERN.test(title || '');
+  }
+
+  const SENSITIVE_RULES = [
+    { label: '登录入口', sev: 'high', test: (url) => isLoginEndpoint(url) },
+    { label: '含访问凭据参数', sev: 'high', test: (url) => hasSensitiveUrlParameter(url) },
+    { label: '金融 / 钱包服务', sev: 'high', test: (url, title) => isFinancialOrWalletService(url, title) }
+  ];
+
+  function detectSensitive(host, rawUrl, title) {
+    let url;
+    try { url = new URL(rawUrl); }
+    catch (e) { return []; }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return [];
+    return SENSITIVE_RULES.filter(rule => rule.test(url, title || host || ''))
+      .map(rule => ({ label: rule.label, sev: rule.sev }));
   }
 
   // ---- 分类体系（供 AI prompt 使用）----
@@ -548,7 +571,7 @@
   }
 
   // 批量覆盖标签：先在内存中完成全部变更，再一次写入 local，避免大批操作反复序列化整张映射表。
-  async function setTagsBatch(changes) {
+  async function setTagsBatch(changes, mode) {
     await loadFixedTags();
     const next = {};
     Object.entries(changes || {}).forEach(([id, tags]) => {
@@ -561,12 +584,16 @@
       next[id] = clean.length ? clean : null;
     });
     if (!Object.keys(next).length) return true;
-    const result = await persistTagChanges(next);
+    const result = await persistTagChanges(next, mode);
     if (result.ok) {
       scheduleSyncTags();
       return true;
     }
     return false;
+  }
+
+  async function mergeTagsBatch(changes) {
+    return setTagsBatch(changes, 'merge');
   }
 
   // ================= 标签云同步（chrome.storage.sync，跨设备自动同步） =================
@@ -785,7 +812,7 @@
       key,
       route,
       category: categorizeWithHay(host, searchText, domain),
-      sensitive: detectSensitiveWithText(host, url, safeTitle, host + url + safeTitle),
+      sensitive: detectSensitive(host, url, safeTitle),
       searchText
     };
   }
@@ -1377,21 +1404,50 @@
     return { json: JSON.stringify(data, null, 2), count: countBookmarks(tree) };
   }
 
-  // 导入书签备份：dryRun=true 仅统计不写入；返回 { folders, bookmarks, skipped, reused }
+  // 导入书签备份：默认合并完整 URL 相同的书签；keepDuplicates=true 时保留副本。
+  // dryRun=true 仅统计不写入；返回 { folders, bookmarks, merged, skipped, reused }
   async function importBookmarksJSON(json, opts) {
     opts = opts || {};
     const dryRun = !!opts.dryRun;
+    const keepDuplicates = !!opts.keepDuplicates;
     let data;
     try { data = JSON.parse(json); }
     catch (e) { throw new Error('JSON 解析失败：' + (e.message || e)); }
     if (!data || data.app !== BACKUP_APP || !Array.isArray(data.bookmarks)) {
       throw new Error('不是有效的书签管家备份文件（缺少 app / bookmarks 字段）');
     }
-    const stats = { folders: 0, bookmarks: 0, skipped: 0, reused: 0 };
+    const stats = { folders: 0, bookmarks: 0, merged: 0, skipped: 0, reused: 0 };
     const tree = await chrome.bookmarks.getTree();
     const bar = tree[0].children && tree[0].children[0];
     if (!bar) throw new Error('未找到书签栏根目录');
     const barTitle = bar.title || '';
+    // 与手动新增一致，只按完整规范化 URL 合并；不同协议、查询参数或路由仍是不同书签。
+    const bookmarksByUrl = new Map();
+    function indexBookmarks(nodes) {
+      (nodes || []).forEach(node => {
+        if (node.url) {
+          try {
+            const url = normalizeHttpUrl(node.url).href;
+            if (!bookmarksByUrl.has(url)) bookmarksByUrl.set(url, node);
+          } catch (e) { /* 忽略现有的非 HTTP(S) 书签 */ }
+        }
+        if (node.children) indexBookmarks(node.children);
+      });
+    }
+    indexBookmarks(tree);
+    function hasBookmarkToCreate(nodes) {
+      for (const node of nodes || []) {
+        if (node.url) {
+          try {
+            const url = normalizeHttpUrl(node.url).href;
+            if (keepDuplicates || !bookmarksByUrl.has(url)) return true;
+          } catch (e) { /* 无效 URL 不会创建书签 */ }
+        } else if (node.children && hasBookmarkToCreate(node.children)) {
+          return true;
+        }
+      }
+      return false;
+    }
     // 顶级同名文件夹只需在书签栏已有节点中查询一次。逐个调用 bookmarks.search()
     // 会在大备份中反复扫描整棵树，导入后会明显卡顿。
     const topLevelFolders = new Map();
@@ -1408,12 +1464,24 @@
         if (node.url) {
           let url;
           try { url = normalizeHttpUrl(node.url).href; } catch (e) { stats.skipped++; continue; }
-          if (dryRun) { stats.bookmarks++; continue; }
+          const existing = !keepDuplicates && bookmarksByUrl.get(url);
+          if (existing) {
+            if (node.id) idMap[node.id] = existing.id;
+            stats.merged++;
+            continue;
+          }
+          if (dryRun) {
+            stats.bookmarks++;
+            // 让同一备份内后续相同 URL 也计入合并预览。
+            bookmarksByUrl.set(url, { id: 'preview-' + stats.bookmarks });
+            continue;
+          }
           const createInfo = { parentId, title: node.title || url, url };
           await sendBackupImportMessage('reserve', createInfo.parentId, createInfo.url);
           try {
             const created = await chrome.bookmarks.create(createInfo);
             if (node.id) idMap[node.id] = created.id;
+            bookmarksByUrl.set(url, created);
             await sendBackupImportMessage('confirm', createInfo.parentId, createInfo.url, created.id);
             stats.bookmarks++;
           } catch (e) {
@@ -1423,6 +1491,11 @@
           continue;
         }
         if (!node.children || !node.children.length) continue;
+        // 所有后代都会合并时不创建空目录，但仍遍历以恢复标签和隐藏状态映射。
+        if (!hasBookmarkToCreate(node.children)) {
+          await walk(node.children, parentId, depth + 1);
+          continue;
+        }
         if (dryRun) { stats.folders++; await walk(node.children, parentId, depth + 1); continue; }
         let pid = parentId;
         if (depth === 0) {
@@ -1460,18 +1533,25 @@
 
     // ---- 恢复自定义数据（v2+ 备份）----
     if (!dryRun) {
-      // 标签：旧id → 新id 映射（合并进现有，避免覆盖未备份的新标签）
+      // 先恢复来源标签池，再归一化和写入来源标签，避免自定义标签退化为「其他」。
+      if (Array.isArray(data.fixedTags) && data.fixedTags.length) {
+        try {
+          await chrome.storage.local.set({ [FIXED_TAGS_KEY]: data.fixedTags });
+          invalidateFixedTags();
+        } catch (e) { /* ignore */ }
+      }
+      // 标签：多个旧 id 可能合并到同一已有书签；由后台串行写入并集，避免覆盖自动打标。
       if (data.tags && typeof data.tags === 'object') {
         const newTags = {};
         Object.keys(data.tags).forEach(oldId => {
           const nid = idMap[oldId];
           if (nid && Array.isArray(data.tags[oldId]) && data.tags[oldId].length) {
-            newTags[nid] = data.tags[oldId];
+            newTags[nid] = [...new Set([...(newTags[nid] || []), ...data.tags[oldId]])];
           }
         });
         if (Object.keys(newTags).length) {
           try {
-            await setTagsBatch(newTags);
+            await mergeTagsBatch(newTags);
           } catch (e) { /* ignore */ }
         }
       }
@@ -1486,10 +1566,6 @@
             invalidateHiddenIds();
           } catch (e) { /* ignore */ }
         }
-      }
-      // 标签池（全局覆盖）
-      if (Array.isArray(data.fixedTags) && data.fixedTags.length) {
-        try { await chrome.storage.local.set({ [FIXED_TAGS_KEY]: data.fixedTags }); invalidateFixedTags(); } catch (e) { /* ignore */ }
       }
       // 域名分组（全局覆盖）
       if (data.domainGroups && typeof data.domainGroups === 'object') {
@@ -1568,6 +1644,7 @@
     getBookmarkMetadata,
     setTags,
     setTagsBatch,
+    mergeTagsBatch,
     addTag,
     removeTag,
     clearTags,

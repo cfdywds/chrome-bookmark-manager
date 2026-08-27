@@ -23,6 +23,11 @@ function getFunctionSource(name) {
 }
 
 describe('弹窗大列表渲染', () => {
+  it('操作指南不再引用已移除的敏感书签入口', () => {
+    expect(popupHtml).not.toContain('敏感书签和回收站均从这里进入');
+    expect(popupHtml).toContain('重复书签、空文件夹和回收站均从这里进入');
+  });
+
   it('首次只返回受控数量，并在展开后增加返回项', () => {
     let listRenderLimits = Object.create(null);
     const escapeHtml = value => String(value);
@@ -495,7 +500,6 @@ describe('页签切换调度', () => {
   it('从概览进入工具视图时会使旧页签渲染任务失效', () => {
     let overviewDetail = '';
     let cleanSub = 'repeat';
-    let securitySub = 'sensitive';
     let planMode = true;
     let PLAN = { type: 'delete' };
     let currentTab = 'tags';
@@ -505,11 +509,10 @@ describe('页签切换调度', () => {
     const render = vi.fn();
     const openOverviewDetail = eval(`(${getFunctionSource('openOverviewDetail')})`);
 
-    openOverviewDetail('security', 'trash');
+    openOverviewDetail('trash');
 
     expect(currentTab).toBe('overview');
-    expect(overviewDetail).toBe('security');
-    expect(securitySub).toBe('trash');
+    expect(overviewDetail).toBe('trash');
     expect(planMode).toBe(false);
     expect(PLAN).toBeNull();
     expect(tabRenderToken).toBe(5);

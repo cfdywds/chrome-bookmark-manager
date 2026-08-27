@@ -174,13 +174,27 @@ describe('parseAiCategories（LLM 返回容错解析）', () => {
   });
 });
 
-describe('detectSensitive（敏感检测）', () => {
-  it('银行域名 → high', () => {
-    const hits = BM.detectSensitive('bank.example.com', 'https://bank.example.com/', '网上银行');
-    expect(hits.some(h => h.sev === 'high')).toBe(true);
+describe('detectSensitive（AI 隐私保护）', () => {
+  it('识别明确的登录子域名、登录路径和金融服务', () => {
+    expect(BM.detectSensitive('login.example.com', 'https://login.example.com/', '登录')).toEqual([
+      { label: '登录入口', sev: 'high' }
+    ]);
+    expect(BM.detectSensitive('example.com', 'https://example.com/account/login.html', '登录')).toEqual([
+      { label: '登录入口', sev: 'high' }
+    ]);
+    expect(BM.detectSensitive('bank.example.com', 'https://bank.example.com/', '网上银行'))
+      .toContainEqual({ label: '金融 / 钱包服务', sev: 'high' });
   });
-  it('普通站点 → 空', () => {
-    expect(BM.detectSensitive('example.com', 'https://example.com/', '首页')).toEqual([]);
+
+  it('只将实际 URL 参数视为访问凭据，不误判普通路径和后台页面', () => {
+    expect(BM.detectSensitive('example.com', 'https://example.com/callback?access_token=secret', '回调'))
+      .toContainEqual({ label: '含访问凭据参数', sev: 'high' });
+    expect(BM.detectSensitive('example.com', 'https://example.com/#access_token=secret', '回调'))
+      .toContainEqual({ label: '含访问凭据参数', sev: 'high' });
+    expect(BM.detectSensitive('example.com', 'https://example.com/callback?%74oken=secret', '回调'))
+      .toContainEqual({ label: '含访问凭据参数', sev: 'high' });
+    expect(BM.detectSensitive('example.com', 'https://example.com/token/guide', 'Token 指南')).toEqual([]);
+    expect(BM.detectSensitive('example.com', 'https://example.com/dashboard', '项目后台')).toEqual([]);
   });
 });
 
@@ -218,13 +232,14 @@ describe('aiTagBatched（分批打标）', () => {
 });
 
 describe('LLM 输入边界', () => {
-  it('导出的 AI 方法不会上传高敏感或非 HTTP(S) 书签', async () => {
+  it('导出的 AI 方法不会上传受 AI 隐私保护或非 HTTP(S) 的书签', async () => {
     const previousFetch = globalThis.fetch;
     const fetch = vi.fn();
     globalThis.fetch = fetch;
     const cfg = { apiKey: 'key', baseUrl: 'https://api.example.com/v1', model: 'test' };
     const items = [
       { id: 'bank', title: '网上银行', url: 'https://bank.example.com/login?account=user' },
+      { id: 'credential', title: '回调', url: 'https://example.com/callback?access_token=secret' },
       { id: 'script', title: '脚本', url: 'javascript:alert(1)' }
     ];
 
@@ -232,6 +247,30 @@ describe('LLM 输入边界', () => {
       await expect(BM.aiTag(items, cfg)).resolves.toEqual({});
       await expect(BM.aiClassify(items, cfg)).resolves.toEqual({});
       expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('普通 token 路径不触发保护，仍可发送给 AI', async () => {
+    const previousFetch = globalThis.fetch;
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ choices: [{ message: { content: '{"results":[{"id":"guide","category":"未分类"}]}' } }] })
+    });
+    globalThis.fetch = fetch;
+
+    try {
+      const result = await BM.aiClassify([
+        { id: 'guide', title: 'Token 指南', url: 'https://example.com/token/guide' }
+      ], { apiKey: 'key', baseUrl: 'https://api.example.com/v1', model: 'test' });
+
+      expect(result).toEqual({ guide: '未分类' });
+      expect(fetch).toHaveBeenCalledOnce();
+      const request = JSON.parse(fetch.mock.calls[0][1].body);
+      expect(request.messages[1].content).toContain('https://example.com/token/guide');
     } finally {
       globalThis.fetch = previousFetch;
     }

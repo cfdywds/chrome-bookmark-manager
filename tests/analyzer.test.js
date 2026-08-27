@@ -184,7 +184,6 @@ describe('分析引擎', () => {
       expect(result.exactDuplicates[0].items.map(item => item.id)).toEqual(['a', 'a-copy']);
       expect(result.categories.工作).toHaveLength(4);
       expect(result.tagStats).toEqual({ 开发: 2, 工具: 1 });
-      expect(result.sensitive.map(item => item.id)).toEqual(['sensitive']);
       expect(result.tagView.hiddenItemCount).toBe(1);
       expect(result.tagView.visibleItems.map(item => item.id)).toEqual(['a', 'a-copy', 'b', 'sensitive']);
       expect(result.tagView.tagItemsByName.get('开发').map(item => item.id)).toEqual(['a', 'a-copy', 'hidden']);

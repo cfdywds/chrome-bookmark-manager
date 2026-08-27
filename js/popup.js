@@ -3,7 +3,7 @@
 
 let DATA = null;
 let currentTab = 'overview';
-let overviewDetail = '';   // clean | security；由概览待办项进入的工具视图
+let overviewDetail = '';   // clean | trash；由概览待办项进入的工具视图
 let SEARCH = '';            // 全局搜索词
 let searchTimer = null;
 let TAG_FILTER = '';        // 标签筛选：当前选中的标签（'' = 全部）
@@ -416,7 +416,6 @@ function openBookmarkUrl(rawUrl, active) {
 function itemRow(it, opts) {
   opts = opts || {};
   const q = opts.highlight || '';
-  const sens = (it.sensitive || []).map(s => `<span class="tag ${s.sev}">${escapeHtml(s.label)}</span>`).join('');
   const cat = `<span class="tag cat">${escapeHtml(it.category)}</span>`;
   // 多标签 chips（点切换筛选）：过滤掉 #其他 兜底（数据层保留但 UI 不显示，归并到"收敛"流程）
   const tags = (it.tags || [])
@@ -434,7 +433,7 @@ function itemRow(it, opts) {
     <div class="meta">
       <div class="title">${deadDot}${it.hidden ? '<span class="tag warn">已隐藏</span> ' : ''}${titleHtml}</div>
       <div class="url">${urlHtml}</div>
-      <div class="loc"><span>${ICON_SM('folder')} ${escapeHtml(it.path.join(' / '))}</span> ${cat} ${sens} ${tags}</div>
+      <div class="loc"><span>${ICON_SM('folder')} ${escapeHtml(it.path.join(' / '))}</span> ${cat} ${tags}</div>
     </div>
     ${eyeBtn}
     <button class="row-edit" data-action="edit-item" data-id="${it.id}" title="编辑书签">${ICON_SM('edit')}</button>
@@ -501,8 +500,7 @@ function renderOverview() {
   const acts = [
     { ico: ICON_SM('repeat'), name: '重复书签', desc: 'URL 完全相同', n: d.exactDuplicates.length, jump: 'clean', sub: 'repeat', cls: 'danger', done: '✓ 无重复' },
     { ico: ICON_SM('trash'), name: '空文件夹', desc: '无书签的夹', n: d.emptyFolders.length, jump: 'clean', sub: 'empty', cls: 'warn', done: '✓ 无空夹' },
-    { ico: ICON_SM('archive'), name: '回收站', desc: '待恢复书签', n: trashN, jump: 'security', sub: 'trash', cls: 'info', done: '✓ 回收站为空' },
-    { ico: ICON_SM('lock'), name: '敏感书签', desc: '仅本地提示', n: d.sensitive.length, jump: 'security', sub: 'sensitive', cls: 'danger', done: '✓ 无敏感' }
+    { ico: ICON_SM('archive'), name: '回收站', desc: '待恢复书签', n: trashN, jump: 'trash', cls: 'info', done: '✓ 回收站为空' }
   ].sort((a, b) => (b.n > 0) - (a.n > 0));
 
   const actRow = a => {
@@ -526,7 +524,7 @@ function renderOverview() {
       <div class="card big"><b>${d.total}</b><span>书签总数</span></div>
       <div class="card" data-jump="tags"><b>${tagCount}</b><span>标签</span></div>
       <div class="card" data-jump="clean"><b>${d.exactDuplicates.length + d.emptyFolders.length}</b><span>待清理</span></div>
-      <div class="card" data-jump="security"><b>${trashN}</b><span>回收站</span></div>
+      <div class="card" data-jump="trash"><b>${trashN}</b><span>回收站</span></div>
     </div>
     <div class="search-hero">
       <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"/></svg>
@@ -544,7 +542,7 @@ function renderOverview() {
     </div>
     <div class="backup-card">
       <div>
-        <div class="b-title">${ICON_SM('download')} 书签备份 / 恢复 ${helpDot('导出全部书签为 JSON 文件；恢复时顶级同名文件夹会自动复用。')}</div>
+        <div class="b-title">${ICON_SM('download')} 书签备份 / 恢复 ${helpDot('导出全部书签为 JSON 文件；恢复时默认合并完整 URL 相同的书签与标签，也可选择保留副本。单书签最多 6 个标签，已有标签优先保留。')}</div>
       </div>
       <div class="b-actions">
         <button class="btn small ghost" data-action="backup-export">${ICON_SM('download')} 导出备份</button>
@@ -825,54 +823,12 @@ function renderCleanBody() {
   else renderExact(body);
 }
 
-// ---------- 安全 tab：敏感 / 回收站（子区块切换） ----------
-let securitySub = 'sensitive';   // sensitive | trash
-
-function securityNav(label, key, icon, n) {
-  const active = securitySub === key ? ' active' : '';
-  return `<button class="subtab${active}" data-action="security-sub" data-sub="${key}">${icon} ${label} <span class="cnt">${n}</span></button>`;
-}
-
-function renderSecurity() {
-  const d = DATA;
-  const trashN = (d.trash || []).length;
-  let html = overviewDetailHeader('安全与回收站') + pageHint(ICON('shield'), '<b>本页能做什么：</b>敏感书签仅本地提示（不自动处理）；回收站保存删除的书签，30 天内可恢复。') + `
-    <div class="subtab-bar">
-      ${securityNav('敏感书签', 'sensitive', ICON_SM('lock'), d.sensitive.length)}
-      ${securityNav('回收站', 'trash', ICON_SM('archive'), trashN)}
-    </div>
-    <div id="securityBody"></div>`;
+// ---------- 回收站工具视图 ----------
+function renderTrashView() {
+  const html = overviewDetailHeader('回收站') + pageHint(ICON('archive'), '<b>本页能做什么：</b>回收站保存删除的书签，30 天内可恢复。') + `
+    <div id="trashBody"></div>`;
   content().innerHTML = html;
-  renderSecurityBody();
-}
-
-function renderSecurityBody() {
-  const body = $('#securityBody');
-  if (!body) return;
-  if (securitySub === 'trash') renderTrash(body);
-  else renderSensitive(body);
-}
-
-function renderSensitive(container) {
-  const c = container || content();
-  if (!DATA.sensitive.length) { c.innerHTML = emptyState(ICON('shield'), '未发现敏感书签', '检测完全在本地完成，不会上传任何数据'); return; }
-  const map = {};
-  DATA.sensitive.forEach(it => {
-    const key = it.sensitive[0].label;
-    (map[key] = map[key] || []).push(it);
-  });
-  let html = `
-    <div class="section-toolbar">
-      <span class="sec-title">共 <b>${DATA.sensitive.length}</b> 个敏感书签 · 仅提示，不自动处理</span>
-    </div>`;
-  const labels = Object.keys(map);
-  const groups = takeForRender(labels, 'sensitive-groups', FIRST_GROUP_COUNT, FIRST_GROUP_COUNT);
-  groups.items.forEach((label, idx) => {
-    html += groupWrap('sens-' + idx, ICON('lock'), label, 'danger', map[label].length + ' 个', '',
-      renderItemRows(map[label], 'sensitive-items-' + idx, FIRST_GROUP_ITEM_COUNT, FIRST_GROUP_ITEM_COUNT));
-  });
-  html += groups.more;
-  c.innerHTML = html;
+  renderTrash($('#trashBody'));
 }
 
 function overviewDetailHeader(title) {
@@ -1273,7 +1229,6 @@ function buildReportHtml(d) {
     return `<h2>${title}（${rows.length}）</h2><ul>${rows.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>`;
   };
   const exact = d.exactDuplicates.map(g => g.items.map(it => `${it.title} — ${it.url} [${it.path.join('/')}]`).join('；'));
-  const sens = d.sensitive.map(it => `${it.sensitive.map(s => s.label).join('/')} — ${it.title} — ${it.url}`);
   const empty = d.emptyFolders.map(f => `${f.title} [${f.path.join('/')}]`);
   return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
   <title>书签管家 · 分析报告</title><style>body{font-family:sans-serif;padding:24px;color:#1f2430;}
@@ -1282,7 +1237,6 @@ function buildReportHtml(d) {
   <h1>书签管家 · 分析报告</h1>
   <p>生成时间：${new Date().toLocaleString()} ｜ 书签总数：${d.total}</p>
   ${section('精确重复', exact)}
-  ${section('敏感书签', sens)}
   ${section('空文件夹', empty)}
   </body></html>`;
 }
@@ -1333,17 +1287,22 @@ function ensureBackupInput() {
       const text = await f.text();
       // 第一步：dryRun 统计 → 预览确认
       const stats = await BM.importBookmarksJSON(text, { dryRun: true });
-      const ok = await confirmDialog({
+      const choice = await confirmDialog({
         title: '恢复书签备份？',
         message: `备份将新增 <b>${stats.folders}</b> 个文件夹、<b>${stats.bookmarks}</b> 个书签`
+          + (stats.merged ? `，合并 <b>${stats.merged}</b> 个相同网址书签及其标签` : '')
           + (stats.skipped ? `（跳过 ${stats.skipped} 个）` : '')
-          + '。顶级同名文件夹会自动复用，<b>不会覆盖</b>现有书签。',
-        confirmText: '开始恢复',
+          + (stats.merged ? '。单书签最多保留 6 个标签，已有标签优先。' : '。')
+          + '顶级同名文件夹会自动复用。',
+        confirmText: stats.merged ? '合并并恢复' : '开始恢复',
+        thirdText: stats.merged ? '保留副本' : '',
         danger: false
       });
-      if (!ok) return;
-      const real = await BM.importBookmarksJSON(text, { dryRun: false });
-      toast(`恢复完成：新增 ${real.bookmarks} 个书签、${real.folders} 个文件夹 ✓`, 'ok');
+      if (!choice) return;
+      const keepDuplicates = choice === 'third';
+      const real = await BM.importBookmarksJSON(text, { dryRun: false, keepDuplicates });
+      toast(`恢复完成：新增 ${real.bookmarks} 个书签、${real.folders} 个文件夹`
+        + (real.merged ? `，合并 ${real.merged} 个相同网址书签` : '') + ' ✓', 'ok');
       refresh();
     } catch (e) {
       toast('恢复失败：' + (e.message || e), 'danger');
@@ -1377,7 +1336,7 @@ function render(tab) {
   if (SEARCH) { renderSearch(); return; }
   if (planMode) { renderPlan(); return; }
   if (tab === 'overview' && overviewDetail === 'clean') renderClean();
-  else if (tab === 'overview' && overviewDetail === 'security') renderSecurity();
+  else if (tab === 'overview' && overviewDetail === 'trash') renderTrashView();
   else if (tab === 'overview') renderOverview();
   else if (tab === 'tags') renderTags();
   applyCollapsed(); // 恢复折叠状态（sessionStorage 记忆）
@@ -1388,7 +1347,6 @@ function openOverviewDetail(detail, sub) {
   tabRenderToken++;
   overviewDetail = detail;
   if (detail === 'clean') cleanSub = sub || 'repeat';
-  if (detail === 'security') securitySub = sub || 'sensitive';
   planMode = false; PLAN = null;
   currentTab = 'overview';
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === 'overview'));
@@ -1548,7 +1506,7 @@ async function init() {
     if (jmp) {
       const t = jmp.dataset.jump;
       const sub = jmp.dataset.sub || '';
-      if (t === 'clean' || t === 'security') openOverviewDetail(t, sub);
+      if (t === 'clean' || t === 'trash') openOverviewDetail(t, sub);
       else switchTab(t);
       return;
     }
@@ -1583,10 +1541,6 @@ async function init() {
         // 清理 tab 子区块切换
         cleanSub = btn.dataset.sub || 'repeat';
         renderClean();
-      } else if (action === 'security-sub') {
-        // 安全 tab 子区块切换
-        securitySub = btn.dataset.sub || 'sensitive';
-        renderSecurity();
       } else if (action === 'overview-back') {
         overviewDetail = '';
         render('overview');
@@ -2085,7 +2039,7 @@ async function aiTagSuggest() {
     const safeUrl = BM.normalizeHttpUrl(url).href;
     const meta = BM.getBookmarkMetadata(safeUrl, title || safeUrl);
     if (meta.sensitive.some(item => item.sev === 'high')) {
-      setAddMsg('高敏感书签不会发送给 AI，请手动填写标签', 'warn');
+      setAddMsg('该书签触发 AI 隐私保护，不会发送给 AI，请手动填写标签', 'warn');
       return;
     }
     btn.textContent = '打标中…';
@@ -2114,7 +2068,6 @@ async function saveAdd() {
   const title = $('#addTitle').value.trim() || u.hostname;
   // 标签：逗号分隔解析（可多个）
   const tags = ($('#addTags').value || '').split(/[,，]/).map(s => s.trim()).filter(Boolean);
-  const wasEditing = !!EDITING;
   const btn = $('#addSave');
   let selfCreationReserved = false;
   let selfCreationConfirmed = false;
@@ -2156,10 +2109,12 @@ async function saveAdd() {
         message: `「${escapeHtml(u.href)}」与现有 <b>${duplicates.length}</b> 个书签网址相同：<br>` +
           duplicates.slice(0, 5).map(it => `· ${escapeHtml(it.title)}<span style="color:var(--muted)"> — ${escapeHtml(it.url)}</span>`).join('<br>') +
           (duplicates.length > 5 ? `<br>… 等 ${duplicates.length} 个` : '') +
-          `<br><br>仍要添加吗？（也可在概览的「重复书签」入口统一处理）`,
-        confirmText: '仍要添加',
+          `<br><br>可编辑已有书签的标签，或保留一个副本。`,
+        confirmText: '保留副本',
+        thirdText: '编辑已有',
         danger: false
       });
+      if (ok === 'third') { openAddDrawer(duplicates[0]); return; }
       if (!ok) { setAddMsg('已取消：该书签与现有书签网址相同', 'warn'); return; }
       btn.disabled = true; btn.textContent = '保存中…';
     }
@@ -2202,7 +2157,7 @@ async function saveAdd() {
     }
     setAddMsg('保存失败：' + (e.message || e), 'err');
   } finally {
-    btn.disabled = false; btn.textContent = wasEditing ? '保存修改' : '保存书签';
+    btn.disabled = false; btn.textContent = EDITING ? '保存修改' : '保存书签';
   }
 }
 
@@ -2236,14 +2191,14 @@ async function aiTagAll(force) {
     try { chrome.runtime.openOptionsPage(); } catch (e) { /* noop */ }
     return;
   }
-  const sensitiveTargets = targets.filter(it => {
+  const protectedTargets = targets.filter(it => {
     const meta = BM.getBookmarkMetadata ? BM.getBookmarkMetadata(it.url, it.title) : it;
     return (meta.sensitive || []).some(item => item.sev === 'high');
   });
   const unsupportedTargets = targets.filter(it => !BM.isHttpUrl(it.url));
-  const batch = targets.filter(it => !sensitiveTargets.includes(it) && !unsupportedTargets.includes(it));
+  const batch = targets.filter(it => !protectedTargets.includes(it) && !unsupportedTargets.includes(it));
   if (!batch.length) {
-    toast('没有可发送给 AI 的非敏感 HTTP(S) 书签', 'warn');
+    toast('没有可发送给 AI 的可处理 HTTP(S) 书签', 'warn');
     return;
   }
 
@@ -2252,7 +2207,7 @@ async function aiTagAll(force) {
     message: (force
       ? `⚠️ 将<b>覆盖</b> ${batch.length} 个书签的现有标签，重新生成 1-3 个标签。`
       : `将为 <b>${batch.length}</b> 个未打标书签生成 1-3 个标签。`) +
-      (sensitiveTargets.length ? `<br>已跳过 <b>${sensitiveTargets.length}</b> 个高敏感书签（登录/银行/钱包等）。` : '') +
+      (protectedTargets.length ? `<br>AI 隐私保护已跳过 <b>${protectedTargets.length}</b> 个高风险书签。` : '') +
       (unsupportedTargets.length ? `<br>已跳过 <b>${unsupportedTargets.length}</b> 个非 HTTP(S) 书签。` : '') +
       `<br>· 隐私保护：仅发送标题与 URL 的域名、路径；query 和 fragment 不发送<br>· 可随时点「终止打标」停止：已成功的结果保留，剩余不再请求<br>· 结果实时写入本地，可在「标签」页查看`,
     confirmText: force ? '全量重打' : '开始打标'

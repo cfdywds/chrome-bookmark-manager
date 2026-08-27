@@ -13,9 +13,9 @@ Only the latest release is supported with security fixes.
 - Bookmark titles, URLs, folders, tags, imported backups, and release notes are untrusted input.
 - New, edited, imported, and opened bookmarks are limited to HTTP(S) URLs.
 - LLM requests require a user-granted, origin-specific optional host permission. Remote HTTP endpoints are rejected; HTTP is limited to local Ollama endpoints.
-- LLM requests exclude high-sensitivity bookmarks and strip URL queries and fragments.
+- LLM requests are locally blocked only for parsed login endpoints, non-empty credential parameters in URL queries/fragments, and financial/wallet service signals. Remaining requests strip URL queries and fragments.
 - Backups do not contain API keys or LLM configuration.
 
 ## Known Limitations
 
-Sensitivity detection is heuristic and cannot guarantee that a bookmark title or path contains no private data. Review AI batches before confirming them, and do not use an untrusted LLM endpoint.
+AI privacy protection is heuristic and cannot guarantee that a bookmark title or path contains no private data. It is an outbound-LLM safeguard, not encryption, hiding, or browser-sync isolation. Review AI batches before confirming them, and do not use an untrusted LLM endpoint.

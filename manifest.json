@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "书签管家 · Bookmark Manager",
   "version": "1.0.0",
-  "description": "书签管家：多标签管理（AI 打标）、重复/同域名/空夹一键清理、敏感检测、回收站与备份。数据本地保存，AI 打标仅在用户配置服务后发起请求。",
+  "description": "书签管家：多标签管理（AI 打标）、重复/同域名/空夹一键清理、AI 隐私保护、回收站与备份。数据本地保存，AI 打标仅在用户配置服务后发起请求。",
   "permissions": [
     "bookmarks",
     "storage",

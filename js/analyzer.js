@@ -102,7 +102,6 @@
     const categories = {};
     const tagStats = {};
     const allTagStats = {};
-    const sensitive = [];
     const itemById = new Map();
     const itemsByUrl = new Map();
     const tagItemsByName = new Map();
@@ -170,7 +169,6 @@
             else visibleTagItemsByName.set(tag, [it]);
             if (tag !== BM.FALLBACK_TAG) tagStats[tag] = (tagStats[tag] || 0) + 1;
           }
-          if (it.sensitive.length) sensitive.push(it);
         } else hiddenItemCount++;
       }
       if (end < items.length) await yieldToBrowser();
@@ -190,7 +188,6 @@
       exactDuplicates,
       categories,
       tagStats,
-      sensitive,
       emptyFolders,
       itemById,
       itemsByUrl,
