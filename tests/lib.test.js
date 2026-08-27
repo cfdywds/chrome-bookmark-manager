@@ -48,6 +48,34 @@ describe('urlKey（精确重复判定键）', () => {
   });
 });
 
+describe('标签云同步 V2（URL 主键）', () => {
+  it('用规范化 URL 而非来源设备书签 ID 投影和解析标签', () => {
+    const projected = BM.projectTagsForSync(
+      { source: ['AI'], duplicate: ['GitHub'] },
+      [
+        { id: 'source', url: 'https://www.github.com/openai/' },
+        { id: 'duplicate', url: 'https://github.com/openai' }
+      ]
+    );
+
+    expect(projected).toEqual({ 'github.com/openai': ['AI', 'GitHub'] });
+    expect(BM.resolveSyncTags(projected, [
+      { id: 'target', url: 'https://github.com/openai' }
+    ])).toEqual({ target: ['AI', 'GitHub'] });
+  });
+
+  it('将 V2 格式写入分片，并忽略旧的 ID 索引格式', () => {
+    const chunks = BM.serializeSyncTags({ 'github.com/openai': ['AI'] });
+    expect(JSON.parse(chunks.bmSyncTag_p0)).toEqual({
+      version: 2,
+      tags: { 'github.com/openai': ['AI'] }
+    });
+    expect(BM.deserializeSyncTags(JSON.stringify({
+      pool: ['AI'], map: { source: '0' }
+    }))).toBeNull();
+  });
+});
+
 describe('getRegisteredDomain（eTLD+1）', () => {
   it('普通域名取最后两级', () => {
     expect(BM.getRegisteredDomain('www.example.com')).toBe('example.com');

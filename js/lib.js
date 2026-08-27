@@ -597,46 +597,64 @@
   }
 
   // ================= 标签云同步（chrome.storage.sync，跨设备自动同步） =================
-  // 数据量：标签映射 JSON 可达几百 KB，超过 sync 限额（8KB/项、100KB 总量），
-  // 因此压缩为「标签池索引 + 书签id→索引串」并分片存储（每片 ≤ 2500 字符）。
-  // 隐私：仅同步「书签 id + 标签名」，不含 URL/标题/内容；需用户主动开启（bmSyncEnabled）。
+  // 数据量可能超过单项 sync 限额（8KB），因此按 2500 字符分片存储。
+  // V2 使用规范化 URL 而非设备本地 bookmark id 作为跨设备主键。
+  // 隐私：仅同步规范化 URL 键和标签名，不含标题或页面内容；需用户主动开启（bmSyncEnabled）。
   const SYNC_ENABLED_KEY = 'bmSyncEnabled';
   const SYNC_TAG_PREFIX = 'bmSyncTag_p';
   const SYNC_TAG_CNT = 'bmSyncTag_cnt';
   const SYNC_CHUNK_CHARS = 2500;      // 每片字符数（中文 UTF-8 3 字节 → ~7.5KB < 8KB 限制）
   let syncTimer = null;
 
-  // 压缩：{ id: [tags] } → { pool: [...], map: { id: "0,1" } }
-  function compressTags(tagsMap) {
-    const pool = [];
-    const map = {};
-    Object.keys(tagsMap || {}).forEach(id => {
-      const arr = (tagsMap[id] || []).filter(t => t && t !== FALLBACK_TAG);
-      if (!arr.length) return;
-      const idx = arr.map(t => {
-        let i = pool.indexOf(t);
-        if (i < 0) { pool.push(t); i = pool.length - 1; }
-        return i;
-      });
-      map[id] = idx.join(',');
-    });
-    return { pool, map };
-  }
-
-  // 解压：{ pool, map } → { id: [tags] }
-  function decompressTags(obj) {
+  function projectTagsForSync(tagsMap, bookmarks) {
     const out = {};
-    if (!obj || !obj.pool || !obj.map) return out;
-    Object.keys(obj.map || {}).forEach(id => {
-      const arr = String(obj.map[id]).split(',').map(i => obj.pool[Number(i)]).filter(Boolean);
-      if (arr.length) out[id] = arr;
+    (bookmarks || []).forEach(bookmark => {
+      if (!bookmark || !bookmark.id || !bookmark.url) return;
+      const key = urlKey(bookmark.url);
+      const tags = (tagsMap && tagsMap[bookmark.id]) || [];
+      const clean = tags.filter(tag => tag && tag !== FALLBACK_TAG);
+      if (!key || !clean.length) return;
+      out[key] = [...new Set([...(out[key] || []), ...clean])].slice(0, MAX_TAGS_PER_BOOKMARK);
     });
     return out;
   }
 
-  // 分片序列化：{ map } → { 'bmSyncTag_p0': '...', ..., 'bmSyncTag_cnt': n }
+  function resolveSyncTags(tagsMap, bookmarks) {
+    const out = {};
+    (bookmarks || []).forEach(bookmark => {
+      if (!bookmark || !bookmark.id || !bookmark.url) return;
+      const tags = tagsMap && tagsMap[urlKey(bookmark.url)];
+      if (Array.isArray(tags) && tags.length) out[bookmark.id] = [...new Set(tags)].slice(0, MAX_TAGS_PER_BOOKMARK);
+    });
+    return out;
+  }
+
+  function collectBookmarks(nodes, out) {
+    (nodes || []).forEach(node => {
+      if (node && node.url) out.push(node);
+      if (node && node.children) collectBookmarks(node.children, out);
+    });
+    return out;
+  }
+
+  function deserializeSyncTags(json) {
+    try {
+      const data = JSON.parse(json);
+      if (!data || data.version !== 2 || !data.tags || typeof data.tags !== 'object') return null;
+      const out = {};
+      Object.keys(data.tags).forEach(key => {
+        const tags = data.tags[key];
+        if (Array.isArray(tags) && tags.length) out[key] = [...new Set(tags.filter(Boolean))].slice(0, MAX_TAGS_PER_BOOKMARK);
+      });
+      return out;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // 分片序列化：{ urlKey: [tags] } → { 'bmSyncTag_p0': '...', ..., 'bmSyncTag_cnt': n }
   function serializeSyncTags(tagsMap) {
-    const json = JSON.stringify(compressTags(tagsMap));
+    const json = JSON.stringify({ version: 2, tags: tagsMap || {} });
     const chunks = [];
     for (let i = 0; i < json.length; i += SYNC_CHUNK_CHARS) {
       chunks.push(json.slice(i, i + SYNC_CHUNK_CHARS));
@@ -659,7 +677,7 @@
       let json = '';
       for (let i = 0; i < n; i++) json += (rr[SYNC_TAG_PREFIX + i] || '');
       if (!json) return null;
-      return decompressTags(JSON.parse(json));
+      return deserializeSyncTags(json);
     } catch (e) { return null; }
   }
 
@@ -684,7 +702,8 @@
       if (!cfg[SYNC_ENABLED_KEY]) return false;
       const cloud = await parseSyncTags();
       if (!cloud) return false;
-      const result = await persistTagChanges(cloud, 'merge');
+      const tree = await chrome.bookmarks.getTree();
+      const result = await persistTagChanges(resolveSyncTags(cloud, collectBookmarks(tree, [])), 'merge');
       return !!(result.ok && result.changed);
     } catch (e) { return false; }
   }
@@ -1652,6 +1671,9 @@
     suggestTags,
     pullTagsFromCloud,
     watchTagSync,
+    projectTagsForSync,
+    resolveSyncTags,
+    deserializeSyncTags,
     serializeSyncTags,
     SYNC_ENABLED_KEY,
     SYNC_TAG_CNT,
