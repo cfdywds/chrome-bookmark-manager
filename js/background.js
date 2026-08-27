@@ -15,6 +15,11 @@ const FIXED_TAGS_KEY = 'bmFixedTags';
 const TAG_MUTATION_MESSAGE = 'bmTagMutation';
 const FALLBACK_TAG = '其他';
 const AUTO_TAG_BATCH_DELAY_MS = 200;
+const SYNC_ENABLED_KEY = 'bmSyncEnabled';
+const SYNC_TAG_PREFIX = 'bmSyncTag_p';
+const SYNC_TAG_CNT = 'bmSyncTag_cnt';
+const SYNC_CHUNK_CHARS = 2500;
+const SYNC_TAG_DELAY_MS = 1500;
 const DEFAULT_FIXED_TAGS = [
   'AI', '前端', '后端', '移动端', 'JAVA', 'Python', '数据库', '运维', '安全', '设计',
   '学习', '教程', '工具', '效率', '工作', '资讯', '阅读', '视频', '娱乐', '生活', '社交', '博客',
@@ -52,6 +57,7 @@ const BACKGROUND_TAG_HINTS = [
 ];
 let tagMutationQueue = Promise.resolve();
 let autoTagFlushTimer = null;
+let tagSyncTimer = null;
 let nativeBookmarkImportInProgress = false;
 let nativeBookmarkImportEnded = false;
 let nativeImportCreatedInFlight = 0;
@@ -75,6 +81,85 @@ function queueTagMutation(task) {
   const result = tagMutationQueue.then(task, task);
   tagMutationQueue = result.catch(() => {});
   return result;
+}
+
+function syncUrlKey(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    const host = String(url.hostname || '').toLowerCase().replace(/^www\./, '');
+    const path = url.pathname.replace(/\/+$/, '');
+    const hashRoute = /^#!?\//.test(url.hash) ? url.hash.toLowerCase() : '';
+    return (host + path + url.search + hashRoute).toLowerCase();
+  } catch (e) {
+    return String(rawUrl || '').trim().toLowerCase();
+  }
+}
+
+function collectSyncBookmarks(nodes, out) {
+  (nodes || []).forEach(node => {
+    if (node && node.url) out.push(node);
+    if (node && node.children) collectSyncBookmarks(node.children, out);
+  });
+  return out;
+}
+
+function projectTagsForBackgroundSync(tags, tree) {
+  const out = {};
+  collectSyncBookmarks(tree, []).forEach(bookmark => {
+    const key = syncUrlKey(bookmark.url);
+    const values = tags && tags[bookmark.id];
+    if (!key || !Array.isArray(values)) return;
+    const clean = values.filter(tag => tag && tag !== FALLBACK_TAG);
+    if (!clean.length) return;
+    out[key] = [...new Set([...(out[key] || []), ...clean])].slice(0, 6);
+  });
+  return out;
+}
+
+function serializeBackgroundSyncTags(tags) {
+  const json = JSON.stringify({ version: 2, tags: tags || {} });
+  const out = {};
+  let count = 0;
+  for (let index = 0; index < json.length; index += SYNC_CHUNK_CHARS) {
+    out[SYNC_TAG_PREFIX + count] = json.slice(index, index + SYNC_CHUNK_CHARS);
+    count++;
+  }
+  out[SYNC_TAG_CNT] = count;
+  return out;
+}
+
+async function isBackgroundTagSyncEnabled() {
+  const synced = await chrome.storage.sync.get(SYNC_ENABLED_KEY);
+  if (synced[SYNC_ENABLED_KEY]) return true;
+  const local = await chrome.storage.local.get(SYNC_ENABLED_KEY);
+  if (!local[SYNC_ENABLED_KEY]) return false;
+  await chrome.storage.sync.set({ [SYNC_ENABLED_KEY]: true });
+  return true;
+}
+
+async function pushBackgroundTagsToCloud() {
+  if (!await isBackgroundTagSyncEnabled()) return false;
+  const [stored, tree] = await Promise.all([
+    chrome.storage.local.get(TAGS_KEY),
+    chrome.bookmarks.getTree()
+  ]);
+  const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
+  await chrome.storage.sync.set(serializeBackgroundSyncTags(projectTagsForBackgroundSync(tags, tree)));
+  return true;
+}
+
+function scheduleBackgroundTagSync() {
+  if (tagSyncTimer) clearTimeout(tagSyncTimer);
+  tagSyncTimer = setTimeout(() => {
+    tagSyncTimer = null;
+    pushBackgroundTagsToCloud().catch(error => console.warn('[书签管家] 标签云同步失败', error));
+  }, SYNC_TAG_DELAY_MS);
+}
+
+if (chrome.storage && chrome.storage.onChanged) {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes[TAGS_KEY]) scheduleBackgroundTagSync();
+  });
 }
 
 function poolTag(pool, name) {

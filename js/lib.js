@@ -606,6 +606,24 @@
   const SYNC_CHUNK_CHARS = 2500;      // 每片字符数（中文 UTF-8 3 字节 → ~7.5KB < 8KB 限制）
   let syncTimer = null;
 
+  async function getTagSyncEnabled() {
+    try {
+      const synced = await chrome.storage.sync.get(SYNC_ENABLED_KEY);
+      if (synced[SYNC_ENABLED_KEY]) return true;
+      const local = await chrome.storage.local.get(SYNC_ENABLED_KEY);
+      if (!local[SYNC_ENABLED_KEY]) return false;
+      await chrome.storage.sync.set({ [SYNC_ENABLED_KEY]: true });
+      return true;
+    } catch (e) {
+      try {
+        const local = await chrome.storage.local.get(SYNC_ENABLED_KEY);
+        return !!local[SYNC_ENABLED_KEY];
+      } catch (e2) {
+        return false;
+      }
+    }
+  }
+
   function projectTagsForSync(tagsMap, bookmarks) {
     const out = {};
     (bookmarks || []).forEach(bookmark => {
@@ -681,16 +699,20 @@
     } catch (e) { return null; }
   }
 
+  async function pushTagsToCloud() {
+    if (!await getTagSyncEnabled()) return false;
+    const [tags, tree] = await Promise.all([loadTags(), chrome.bookmarks.getTree()]);
+    await chrome.storage.sync.set(serializeSyncTags(projectTagsForSync(tags, collectBookmarks(tree, []))));
+    return true;
+  }
+
   // 防抖写入 sync（1.5s）
   function scheduleSyncTags() {
     if (syncTimer) clearTimeout(syncTimer);
     syncTimer = setTimeout(async () => {
       syncTimer = null;
       try {
-        const cfg = await chrome.storage.local.get(SYNC_ENABLED_KEY);
-        if (!cfg[SYNC_ENABLED_KEY]) return;
-        const tags = await loadTags();
-        await chrome.storage.sync.set(serializeSyncTags(tags));
+        await pushTagsToCloud();
       } catch (e) { /* 超限/限频忽略 */ }
     }, 1500);
   }
@@ -698,8 +720,7 @@
   // 从 sync 拉取并合并进 local（union：不丢任何一端标签）；返回是否变化
   async function pullTagsFromCloud() {
     try {
-      const cfg = await chrome.storage.local.get(SYNC_ENABLED_KEY);
-      if (!cfg[SYNC_ENABLED_KEY]) return false;
+      if (!await getTagSyncEnabled()) return false;
       const cloud = await parseSyncTags();
       if (!cloud) return false;
       const tree = await chrome.bookmarks.getTree();
@@ -712,7 +733,7 @@
   function watchTagSync(onChange) {
     chrome.storage.sync.onChanged.addListener((changes, area) => {
       if (area !== 'sync') return;
-      if (!Object.keys(changes).some(k => k === SYNC_TAG_CNT || k.startsWith(SYNC_TAG_PREFIX))) return;
+      if (!Object.keys(changes).some(k => k === SYNC_ENABLED_KEY || k === SYNC_TAG_CNT || k.startsWith(SYNC_TAG_PREFIX))) return;
       pullTagsFromCloud().then(changed => { if (changed && onChange) onChange(); }).catch(() => {});
     });
   }
@@ -1669,6 +1690,8 @@
     clearTags,
     getTagStats,
     suggestTags,
+    getTagSyncEnabled,
+    pushTagsToCloud,
     pullTagsFromCloud,
     watchTagSync,
     projectTagsForSync,

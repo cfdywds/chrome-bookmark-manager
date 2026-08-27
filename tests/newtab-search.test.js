@@ -14,6 +14,10 @@ function getFunctionSource(name) {
 }
 
 describe('新标签页搜索', () => {
+  it('初始化时主动拉取已有的云端标签', () => {
+    expect(newtabSource).toContain('await window.BM.pullTagsFromCloud()');
+  });
+
   it('仅在输入搜索词时纳入匹配的隐藏书签', () => {
     const DATA = {
       items: [

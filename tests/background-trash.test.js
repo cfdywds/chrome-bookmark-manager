@@ -17,18 +17,34 @@ function createBackgroundHarness(initialTrash, options) {
   const bookmarkCreatedListeners = [];
   const bookmarkImportBeganListeners = [];
   const bookmarkImportEndedListeners = [];
+  const storageChangeListeners = [];
   let trash = initialTrash.slice();
   const localData = { ...(options.localData || {}), bmTrash: trash };
+  const syncData = { ...(options.syncData || {}) };
   const setTrash = value => {
     trash = value;
     localData.bmTrash = value;
   };
   const storageSet = vi.fn().mockImplementation(value => {
+    const changes = {};
+    Object.keys(value).forEach(key => {
+      changes[key] = { oldValue: localData[key], newValue: value[key] };
+    });
     if (Object.prototype.hasOwnProperty.call(value, 'bmTrash')) setTrash(value.bmTrash);
     Object.assign(localData, value);
+    storageChangeListeners.forEach(listener => listener(changes, 'local'));
     return Promise.resolve();
   });
   const storageGet = options.localGet || vi.fn().mockImplementation(() => Promise.resolve({ ...localData }));
+  const syncSet = vi.fn().mockImplementation(value => {
+    Object.assign(syncData, value);
+    return Promise.resolve();
+  });
+  const syncGet = options.syncGet || vi.fn().mockImplementation(keys => {
+    if (typeof keys === 'string') return Promise.resolve({ [keys]: syncData[keys] });
+    if (Array.isArray(keys)) return Promise.resolve(Object.fromEntries(keys.map(key => [key, syncData[key]])));
+    return Promise.resolve({ ...syncData });
+  });
   const chrome = {
     sidePanel: {
       setPanelBehavior: vi.fn().mockResolvedValue(undefined),
@@ -52,9 +68,14 @@ function createBackgroundHarness(initialTrash, options) {
     },
     alarms: { create: vi.fn(), onAlarm: { addListener: vi.fn() } },
     storage: {
+      onChanged: { addListener: listener => storageChangeListeners.push(listener) },
       local: {
         get: storageGet,
         set: storageSet
+      },
+      sync: {
+        get: syncGet,
+        set: syncSet
       },
       session: {
         get: options.sessionGet || vi.fn().mockResolvedValue(options.sessionData || {}),
@@ -77,6 +98,7 @@ function createBackgroundHarness(initialTrash, options) {
     getTrash: () => trash,
     setTrash,
     storageSet,
+    syncSet,
     triggerBookmarkCreated: (id, bookmark) => Promise.all(bookmarkCreatedListeners.map(listener => listener(id, bookmark))),
     triggerBookmarkImportBegan: () => bookmarkImportBeganListeners.forEach(listener => listener()),
     triggerBookmarkImportEnded: () => bookmarkImportEndedListeners.forEach(listener => listener())
@@ -347,6 +369,39 @@ describe('后台回收站写入队列', () => {
 });
 
 describe('浏览器收藏接管', () => {
+  it('地址栏收藏写入标签后上传 URL 键的 V2 payload', async () => {
+    const previousChrome = globalThis.chrome;
+    vi.useFakeTimers();
+    const harness = createBackgroundHarness([], {
+      localData: { bmFixedTags: ['GitHub', '其他'], bmTags: {} },
+      syncData: { bmSyncEnabled: true },
+      getTree: vi.fn().mockResolvedValue([{ children: [{
+        id: 'browser-created', url: 'https://github.com/example/project'
+      }] }])
+    });
+    globalThis.chrome = harness.chrome;
+
+    try {
+      new Function(backgroundCode)();
+      const created = harness.triggerBookmarkCreated('browser-created', {
+        parentId: 'bar', url: 'https://github.com/example/project', title: '项目仓库'
+      });
+      await vi.advanceTimersByTimeAsync(250);
+      await created;
+      await vi.advanceTimersByTimeAsync(1600);
+
+      expect(harness.syncSet).toHaveBeenCalledWith(expect.objectContaining({ bmSyncTag_cnt: 1 }));
+      const payload = harness.syncSet.mock.calls.at(-1)[0];
+      expect(JSON.parse(payload.bmSyncTag_p0)).toEqual({
+        version: 2,
+        tags: { 'github.com/example/project': ['GitHub'] }
+      });
+    } finally {
+      vi.useRealTimers();
+      restoreGlobal('chrome', previousChrome);
+    }
+  });
+
   it('浏览器收藏在后台写入匹配的默认标签，不触发待保存记录', async () => {
     const previousChrome = globalThis.chrome;
     const harness = createBackgroundHarness([], {

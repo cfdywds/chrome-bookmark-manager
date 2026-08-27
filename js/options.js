@@ -375,7 +375,7 @@ async function load() {
     if (star) star.checked = r.bmStarHook !== false;
     // 标签云同步开关：默认关闭（隐私权衡，需主动开启）
     const syncEl = $('#setTagSync');
-    if (syncEl) syncEl.checked = !!r[BM.SYNC_ENABLED_KEY];
+    if (syncEl) syncEl.checked = await BM.getTagSyncEnabled();
   } catch (e) {
     console.warn('[书签管家] 读取设置失败', e);
   }
@@ -392,17 +392,21 @@ async function persistStarHook() {
 async function persistTagSync() {
   try {
     const on = $('#setTagSync').checked;
-    await chrome.storage.local.set({ [BM.SYNC_ENABLED_KEY]: on });
+    await Promise.all([
+      chrome.storage.local.set({ [BM.SYNC_ENABLED_KEY]: on }),
+      chrome.storage.sync.set({ [BM.SYNC_ENABLED_KEY]: on })
+    ]);
     const msg = $('#tagSyncMsg');
     if (on) {
       msg.textContent = '已开启 · 正在推送本地标签到云端…';
       msg.className = 'settings-msg ok';
       try {
+        await BM.pullTagsFromCloud();
+        await BM.pushTagsToCloud();
         await BM.loadTags();
-        const map = BM.getTags();
+        const map = BM.getTags() || {};
         if (map && Object.keys(map).length) {
-          await chrome.storage.sync.set(BM.serializeSyncTags(map));
-          msg.textContent = '已开启 · 本地标签已推送 ✓';
+          msg.textContent = '已开启 · 标签已合并并推送 ✓';
         } else {
           msg.textContent = '已开启 · 暂无标签数据可推送';
         }

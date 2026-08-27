@@ -315,6 +315,7 @@
   // 初始化：加载配置 + 分析书签
   (async function init() {
     try { await window.BM.loadDomainGroups(); } catch (e) { /* 默认规则 */ }
+    try { await window.BM.pullTagsFromCloud(); } catch (e) { /* 保留本地标签 */ }
     try { await window.BM.loadTags(); } catch (e) { /* 无标签 */ }
     try { await window.BM.loadFixedTags(); } catch (e) { /* 默认池 */ }
     try {

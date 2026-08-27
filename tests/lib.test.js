@@ -74,6 +74,43 @@ describe('标签云同步 V2（URL 主键）', () => {
       pool: ['AI'], map: { source: '0' }
     }))).toBeNull();
   });
+
+  it('目标设备从同步的开关和 payload 首次拉取到本机书签 ID', async () => {
+    const previousChrome = globalThis.chrome;
+    const chunks = BM.serializeSyncTags({ 'github.com/openai': ['AI'] });
+    const localData = { bmTags: {} };
+    const localSet = vi.fn(async value => { Object.assign(localData, value); });
+    const syncGet = vi.fn(async keys => {
+      if (keys === BM.SYNC_ENABLED_KEY) return { [BM.SYNC_ENABLED_KEY]: true };
+      if (keys === BM.SYNC_TAG_CNT) return { [BM.SYNC_TAG_CNT]: chunks.bmSyncTag_cnt };
+      const out = {};
+      (keys || []).forEach(key => { out[key] = chunks[key]; });
+      return out;
+    });
+    globalThis.chrome = {
+      bookmarks: {
+        getTree: vi.fn().mockResolvedValue([{ children: [
+          { id: 'target-device-id', url: 'https://www.github.com/openai/' }
+        ] }])
+      },
+      storage: {
+        local: {
+          get: vi.fn(async key => ({ [key]: localData[key] })),
+          set: localSet
+        },
+        sync: { get: syncGet }
+      }
+    };
+
+    try {
+      await expect(BM.pullTagsFromCloud()).resolves.toBe(true);
+      expect(localData.bmTags).toEqual({ 'target-device-id': ['AI'] });
+      expect(localSet).toHaveBeenCalledWith({ bmTags: { 'target-device-id': ['AI'] } });
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
 });
 
 describe('getRegisteredDomain（eTLD+1）', () => {
