@@ -23,6 +23,10 @@ describe('urlKey（精确重复判定键）', () => {
   it('忽略 www. 前缀', () => {
     expect(BM.urlKey('https://www.a.com/x')).toBe(BM.urlKey('https://a.com/x'));
   });
+  it('保留非默认端口', () => {
+    expect(BM.urlKey('https://a.com:8443/x')).not.toBe(BM.urlKey('https://a.com/x'));
+    expect(BM.urlKey('https://a.com:8443/x')).toBe(BM.urlKey('http://www.a.com:8443/x'));
+  });
   it('忽略末尾斜杠', () => {
     expect(BM.urlKey('https://a.com/x/')).toBe(BM.urlKey('https://a.com/x'));
   });
@@ -144,6 +148,27 @@ describe('标签云同步 V2（URL 主键）', () => {
       if (previousChrome === undefined) delete globalThis.chrome;
       else globalThis.chrome = previousChrome;
     }
+  });
+});
+
+describe('unionTagLists（同址标签取并集）', () => {
+  it('去重并保持已有标签优先顺序', () => {
+    expect(BM.unionTagLists([['前端', '后端'], ['前端', '数据库']]))
+      .toEqual(['前端', '后端', '数据库']);
+  });
+  it('去除「其他」兜底标签', () => {
+    expect(BM.unionTagLists([['其他', '前端'], ['其他']])).toEqual(['前端']);
+  });
+  it('单书签最多保留 6 个标签', () => {
+    const big = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+    expect(BM.unionTagLists([big])).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+  });
+  it('空输入返回空数组', () => {
+    expect(BM.unionTagLists([])).toEqual([]);
+    expect(BM.unionTagLists()).toEqual([]);
+  });
+  it('规范化空白与折叠', () => {
+    expect(BM.unionTagLists([['  前端  ', ' 前端'], [' 设计 ']])).toEqual(['前端', '设计']);
   });
 });
 

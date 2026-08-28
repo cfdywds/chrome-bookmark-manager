@@ -281,7 +281,6 @@ html, body {
 .act-badge.done { background: var(--ok-soft); color: var(--ok); }
 .act-info { flex: 1; min-width: 0; }
 .act-name { display: flex; align-items: center; gap: 5px; font-weight: 600; font-size: 12.5px; }
-.act-desc { font-size: 11px; color: var(--muted); }
 .act-go { display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; color: var(--muted); flex-shrink: 0; }
 .act-item[data-jump] .act-go { color: var(--primary); font-weight: 600; }
 

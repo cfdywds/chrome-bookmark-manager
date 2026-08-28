@@ -23,6 +23,12 @@ function getFunctionSource(name) {
 }
 
 describe('弹窗大列表渲染', () => {
+  it('待清理卡片仅保留动作名称，不重复展示说明', () => {
+    expect(popupSource).not.toContain('class="act-desc"');
+    expect(popupSource).not.toContain("desc: 'URL 完全相同'");
+    expect(popupSource).not.toContain("desc: '无书签的夹'");
+  });
+
   it('操作指南不再引用已移除的敏感书签入口', () => {
     expect(popupHtml).not.toContain('敏感书签和回收站均从这里进入');
     expect(popupHtml).toContain('重复书签、空文件夹和回收站均从这里进入');
@@ -210,7 +216,7 @@ describe('AI 批量打标', () => {
     expect(popupSource).toContain('let processed = 0;');
     expect(popupSource).toContain('onBatch: async (map, done) => {');
     expect(popupSource).toContain('processed = done;');
-    expect(popupSource).toContain('const remain = batch.length - processed;');
+    expect(popupSource).toContain('const remain = aiBatch.length - processed;');
   });
 });
 
@@ -261,6 +267,108 @@ describe('书签运行时索引', () => {
     expect(findExistingByUrl('http://example.com/team/saved')).toEqual([]);
     expect(findExistingByUrl('https://example.com/team/saved')).toEqual([match]);
     expect(findExistingByUrl('https://example.com/team/saved', 'saved')).toEqual([]);
+  });
+
+  it('无完整 URL 重复时，仍为归一化同址书签提供统一入口', () => {
+    const BM = { urlKey: url => url.replace(/^https?:\/\/(?:www\.)?/, '').replace(/\/$/, '') };
+    const DATA = {
+      exactDuplicates: [],
+      itemsByUrlKey: new Map([['example.com/docs', [{ id: 'one' }, { id: 'two' }]]])
+    };
+    const getSameUrlGroups = eval(`(${getFunctionSource('getSameUrlGroups')})`);
+    const emptyState = () => '<div>empty</div>';
+    const ICON = () => '';
+    const renderExact = eval(`(${getFunctionSource('renderExact')})`);
+    const container = { innerHTML: '' };
+
+    renderExact(container);
+
+    expect(container.innerHTML).toContain('data-action="unify-exact-tags"');
+  });
+
+  it('AI 同址分组从完整索引回填已标与隐藏书签', () => {
+    const pending = { id: 'pending', url: 'https://example.com/docs' };
+    const tagged = { id: 'tagged', url: 'http://www.example.com/docs', tags: ['工具'] };
+    const hidden = { id: 'hidden', url: 'https://example.com/docs/', hidden: true };
+    const tagsById = { tagged: ['工作'], hidden: ['设计'] };
+    const BM = {
+      urlKey: url => url.replace(/^https?:\/\/(?:www\.)?/, '').replace(/\/$/, ''),
+      getTags: () => tagsById,
+      unionTagLists: lists => [...new Set(lists.flat())]
+    };
+    const DATA = {
+      itemsByUrlKey: new Map([['example.com/docs', [pending, tagged, hidden]]])
+    };
+    const getSameUrlSiblings = eval(`(${getFunctionSource('getSameUrlSiblings')})`);
+    const collectAiTagGroups = eval(`(${getFunctionSource('collectAiTagGroups')})`);
+    const mergeAiTagsWithSameUrl = eval(`(${getFunctionSource('mergeAiTagsWithSameUrl')})`);
+
+    const { representatives, siblingsByKey } = collectAiTagGroups([pending]);
+    const siblings = siblingsByKey.get('example.com/docs');
+
+    expect([...representatives.values()].map(item => item.id)).toEqual(['pending']);
+    expect(siblings.map(item => item.id).sort())
+      .toEqual(['hidden', 'pending', 'tagged']);
+    expect(mergeAiTagsWithSameUrl(siblings, ['教程'], false)).toEqual(['工作', '设计', '教程']);
+    expect(mergeAiTagsWithSameUrl(siblings, ['教程'], true)).toEqual(['教程']);
+  });
+
+  it('新增和改址使用最新 URL，而非 DATA 中的旧快照', async () => {
+    const setTagsBatch = vi.fn().mockResolvedValue(true);
+    const BM = {
+      urlKey: url => url.replace(/^https?:\/\/(?:www\.)?/, '').replace(/\/$/, ''),
+      loadTags: vi.fn().mockResolvedValue(),
+      loadFixedTags: vi.fn().mockResolvedValue(),
+      getTags: vi.fn(),
+      unionTagLists: lists => [...new Set(lists.flat())],
+      setTagsBatch
+    };
+    const existing = { id: 'existing', url: 'http://www.example.com/docs' };
+    const oldSibling = { id: 'old-sibling', url: 'https://example.com/old' };
+    const staleEditing = { id: 'editing', url: 'https://example.com/old' };
+    const newSibling = { id: 'new-sibling', url: 'https://example.com/new' };
+    const DATA = {
+      itemsByUrlKey: new Map([
+        ['example.com/docs', [existing]],
+        ['example.com/old', [oldSibling, staleEditing]],
+        ['example.com/new', [newSibling]]
+      ]),
+      itemById: new Map([['editing', staleEditing]])
+    };
+    const tagsById = {
+      created: ['工具'],
+      existing: ['前端'],
+      editing: ['工具'],
+      'old-sibling': ['设计'],
+      'new-sibling': ['前端']
+    };
+    BM.getTags.mockReturnValue(tagsById);
+    const getSameUrlSiblings = eval(`(${getFunctionSource('getSameUrlSiblings')})`);
+    const unifySameUrlTags = eval(`(${getFunctionSource('unifySameUrlTags')})`);
+
+    await unifySameUrlTags({ id: 'created', url: 'https://example.com/docs' }, ['工具']);
+    expect(setTagsBatch).toHaveBeenLastCalledWith({
+      existing: ['工具', '前端'],
+      created: ['工具', '前端']
+    });
+
+    await unifySameUrlTags({ id: 'editing', url: 'https://example.com/new' }, ['工具']);
+    expect(setTagsBatch).toHaveBeenLastCalledWith({
+      'new-sibling': ['工具', '前端'],
+      editing: ['工具', '前端']
+    });
+
+    setTagsBatch.mockResolvedValueOnce(false);
+    await expect(unifySameUrlTags({ id: 'created', url: 'https://example.com/docs' }, ['工具']))
+      .resolves.toBe(false);
+  });
+
+  it('新增后标签同步失败时保留书签并引导从列表编辑', () => {
+    const saveAddSource = getFunctionSource('saveAdd');
+
+    expect(saveAddSource).toContain('let created = null;');
+    expect(saveAddSource).toContain("toast('书签已新增，但标签同步失败，请在列表中编辑重试', 'warn');");
+    expect(saveAddSource).toContain('if (created) {');
   });
 });
 

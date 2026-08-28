@@ -45,3 +45,11 @@ Bookmark titles and paths can still contain private information. AI privacy rule
 **Reason**: The useful security boundary is preventing unintended disclosure to a configured LLM. A broad, user-facing sensitivity list produced false positives and did not provide encryption or access control.
 
 **Impact**: The overview now exposes the recycle bin only. AI tagging and categorization retain a local high-risk exclusion rule; ordinary paths such as `/token/guide` and generic dashboards are no longer blocked.
+
+### 2026-08-27 - Same-URL Tag Consistency
+
+**Changes**: Bookmarks whose addresses normalize to the same URL key (ignoring scheme, `www.`, trailing slash, and plain anchors while preserving non-default ports) now share one consistent tag set. AI batch tagging deduplicates by URL key and back-fills the result to every bookmark at that address; manual editing and bulk tagging propagate the tag union to same-address siblings; a "统一同址标签" cleanup action reconciles pre-existing divergence.
+
+**Reason**: Tags are stored per bookmark ID, so duplicates of the same URL could accumulate different tags, especially when the LLM tagged each duplicate separately in different batches.
+
+**Impact**: Same-address bookmarks stay consistently tagged without removing the duplicates themselves (deduplication remains the user's choice via the clean tab).

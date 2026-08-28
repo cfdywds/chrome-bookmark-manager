@@ -109,7 +109,7 @@
     }
   }
 
-  // 精确重复判定键：忽略协议、www.、末尾斜杠和普通锚点。
+  // 精确重复判定键：忽略协议、www.、末尾斜杠和普通锚点，保留非默认端口。
   // `#/...` / `#!/...` 是 SPA 的实际路由，须保留以区分不同页面。
   function hashRouteOf(url) {
     return /^#!?\//.test(url.hash) ? url.hash.toLowerCase() : '';
@@ -117,9 +117,11 @@
 
   function urlKeyFromParsedUrl(url) {
     const host = normalizeHost(url.hostname);
+    // 非默认端口属于地址的一部分，不能与默认端口或其他服务合并。
+    const port = url.port ? ':' + url.port : '';
     const path = url.pathname.replace(/\/+$/, '');
     const hashRoute = hashRouteOf(url);
-    return (host + path + url.search + hashRoute).toLowerCase();
+    return (host + port + path + url.search + hashRoute).toLowerCase();
   }
 
   function urlKey(rawUrl) {
@@ -444,6 +446,20 @@
 
   const sameTagList = (left, right) => left.length === right.length && left.every((tag, index) => tag === right[index]);
 
+  // 合并多份标签列表为并集：已有标签优先（先到先保留），去除「其他」兜底，再限数。
+  // 用于把同一地址的多个书签的标签收敛为一致集合，避免同址不同标。
+  function unionTagLists(lists) {
+    const seen = [];
+    (lists || []).forEach(list => {
+      (list || []).forEach(tag => {
+        const t = normalizeTag(tag);
+        if (!t || t === FALLBACK_TAG) return;
+        if (!seen.includes(t) && seen.length < MAX_TAGS_PER_BOOKMARK) seen.push(t);
+      });
+    });
+    return seen;
+  }
+
   function applyTagChangesLocally(map, changes, mode) {
     let changed = false;
     Object.entries(changes || {}).forEach(([id, value]) => {
@@ -562,12 +578,14 @@
 
   // 覆盖设置（新增/编辑抽屉保存用）：归一化到固定池、去重、限数
   async function setTags(id, tags) {
-    if (!id) return;
+    if (!id) return false;
     await loadFixedTags();
     const clean = [...new Set((tags || []).map(t => normalizeToPool(t)).filter(Boolean))].slice(0, MAX_TAGS_PER_BOOKMARK);
-    await persistTagChanges({ [id]: clean.length ? clean : null });
+    const result = await persistTagChanges({ [id]: clean.length ? clean : null });
+    if (!result.ok) return false;
     // 标签云同步（开启时）→ 防抖写入 storage.sync
     scheduleSyncTags();
+    return true;
   }
 
   // 批量覆盖标签：先在内存中完成全部变更，再一次写入 local，避免大批操作反复序列化整张映射表。
@@ -1688,6 +1706,7 @@
     loadTags,
     invalidateTags,
     getTags,
+    unionTagLists,
     normalizeTag,
     FIXED_TAGS_KEY,
     DEFAULT_FIXED_TAGS,

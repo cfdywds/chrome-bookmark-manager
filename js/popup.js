@@ -498,9 +498,9 @@ function renderOverview() {
   const tagCount = entries.length;
   // 清理提醒（有待办项优先）
   const acts = [
-    { ico: ICON_SM('repeat'), name: '重复书签', desc: 'URL 完全相同', n: d.exactDuplicates.length, jump: 'clean', sub: 'repeat', cls: 'danger', done: '✓ 无重复' },
-    { ico: ICON_SM('trash'), name: '空文件夹', desc: '无书签的夹', n: d.emptyFolders.length, jump: 'clean', sub: 'empty', cls: 'warn', done: '✓ 无空夹' },
-    { ico: ICON_SM('archive'), name: '回收站', desc: '待恢复书签', n: trashN, jump: 'trash', cls: 'info', done: '✓ 回收站为空' }
+    { ico: ICON_SM('repeat'), name: '重复书签', n: d.exactDuplicates.length, jump: 'clean', sub: 'repeat', cls: 'danger', done: '✓ 无重复' },
+    { ico: ICON_SM('trash'), name: '空文件夹', n: d.emptyFolders.length, jump: 'clean', sub: 'empty', cls: 'warn', done: '✓ 无空夹' },
+    { ico: ICON_SM('archive'), name: '回收站', n: trashN, jump: 'trash', cls: 'info', done: '✓ 回收站为空' }
   ].sort((a, b) => (b.n > 0) - (a.n > 0));
 
   const actRow = a => {
@@ -509,7 +509,6 @@ function renderOverview() {
       <span class="act-badge ${done ? 'done' : ''}">${done ? ICON('check') : a.n}</span>
       <div class="act-info">
         <div class="act-name">${a.ico} ${a.name}</div>
-        <div class="act-desc">${a.desc}</div>
       </div>
       <span class="act-go">${done ? a.done : '去处理 ' + ICON_SM('arrow-r')}</span>
     </div>`;
@@ -573,12 +572,21 @@ function renderOverview() {
 
 function renderExact(container) {
   const c = container || content();
-  if (!DATA.exactDuplicates.length) { c.innerHTML = emptyState(ICON('repeat'), '重复书签已清理干净', '没有发现 URL 完全相同的书签'); return; }
+  const sameUrlGroups = getSameUrlGroups();
+  if (!DATA.exactDuplicates.length) {
+    c.innerHTML = emptyState(ICON('repeat'), '重复书签已清理干净', '没有发现 URL 完全相同的书签') + (sameUrlGroups.length ? `
+      <div class="section-toolbar" style="margin-top:14px;">
+        <span class="sec-title">发现 <b>${sameUrlGroups.length}</b> 组归一化同址书签，可统一历史标签</span>
+        <button class="btn small" data-action="unify-exact-tags">🏷 统一同址标签</button>
+      </div>` : '');
+    return;
+  }
   const total = DATA.exactDuplicates.reduce((s, g) => s + g.items.length - 1, 0);
   let html = `
     <div class="section-toolbar">
       <span class="sec-title">共 <b>${DATA.exactDuplicates.length}</b> 组完全相同 · 可一键清理 <b>${total}</b> 个多余项</span>
       <button class="btn small primary" data-action="bulk-exact">${ICON_SM('sparkles')} 一键去重</button>
+      <button class="btn small" data-action="unify-exact-tags">🏷 统一同址标签</button>
     </div>`;
   const groups = takeForRender(DATA.exactDuplicates, 'exact-groups', FIRST_GROUP_COUNT, FIRST_GROUP_COUNT);
   groups.items.forEach((g, groupIndex) => {
@@ -1194,6 +1202,41 @@ async function bulkCleanEmpty() {
   refresh();
 }
 
+// 统一同址（urlKey 相同）书签的标签：对每一组，取全体标签的并集写回每个书签。
+// 用于修复历史遗留的同址不同标（例如 AI 分批打标 / 手动编辑造成的不一致）。
+async function unifyExactTags() {
+  try { await BM.loadTags(); await BM.loadFixedTags(); } catch (e) { /* noop */ }
+  const currentMap = BM.getTags() || {};
+  const groups = getSameUrlGroups();
+  if (!groups.length) { toast('没有同址多书签需要统一', 'ok'); return; }
+  // 找出确实存在不一致的组（任一组的标签集合彼此不同）。
+  const tagSig = tags => [...(tags || [])].sort().join('\u0000');
+  const diverged = groups.filter(items => {
+    const sigs = new Set(items.map(it => tagSig(currentMap[it.id] || [])));
+    return sigs.size > 1;
+  });
+  if (!diverged.length) { toast('同址书签的标签已一致 ✓', 'ok'); return; }
+  const total = diverged.reduce((s, items) => s + items.length, 0);
+  const ok = await confirmDialog({
+    title: `统一 ${diverged.length} 组同址书签的标签？`,
+    message: `将对 <b>${total}</b> 个书签（${diverged.length} 组相同网址）取标签并集，使同址书签标签一致。<br>单书签最多保留 ${BM.MAX_TAGS_PER_BOOKMARK || 6} 个标签，已有标签优先。`,
+    confirmText: '统一标签'
+  });
+  if (!ok) return;
+  const changes = {};
+  let saved = false;
+  try {
+    diverged.forEach(items => {
+      const union = BM.unionTagLists(items.map(it => currentMap[it.id] || []));
+      items.forEach(it => { changes[it.id] = union.length ? union : null; });
+    });
+    saved = await BM.setTagsBatch(changes);
+  } catch (e) { saved = false; }
+  if (!saved) { toast('统一标签保存失败，请重试', 'danger'); return; }
+  toast(`已统一 ${diverged.length} 组同址书签的标签 ✓`, 'ok');
+  refresh();
+}
+
 // ---------- 批量移动：选中项 → 分类文件夹 ----------
 // 在书签栏根目录下查找或创建同名文件夹，返回其 id
 async function ensureFolder(title) {
@@ -1535,6 +1578,8 @@ async function init() {
         });
       } else if (action === 'bulk-exact') {
         buildDeletePlan('exact');
+      } else if (action === 'unify-exact-tags') {
+        unifyExactTags();
       } else if (action === 'bulk-empty') {
         bulkCleanEmpty();
       } else if (action === 'clean-sub') {
@@ -2072,6 +2117,7 @@ async function saveAdd() {
   let selfCreationReserved = false;
   let selfCreationConfirmed = false;
   let selfCreationParentId = '';
+  let created = null;
   btn.disabled = true; btn.textContent = '保存中…';
   try {
     // ---- 编辑模式：改标题 / URL / 标签 ----
@@ -2092,7 +2138,8 @@ async function saveAdd() {
         return;
       }
       await chrome.bookmarks.update(EDITING.id, { title, url: u.href });
-      await BM.setTags(EDITING.id, tags);
+      if (!await BM.setTags(EDITING.id, tags)) throw new Error('标签保存失败，请重试');
+      if (!await unifySameUrlTags({ id: EDITING.id, url: u.href }, tags)) throw new Error('同址标签同步失败，请重试');
       toast('已保存修改 ✓' + (tags.length ? '（标签 ' + tags.length + ' 个）' : ''), 'ok');
       EDITING = null;
       closeDrawers();
@@ -2136,7 +2183,7 @@ async function saveAdd() {
       });
       selfCreationReserved = !!(reserved && reserved.ok);
     } catch (e) { /* 后台重启时允许继续保存，随后由默认规则兜底 */ }
-    const created = await chrome.bookmarks.create({ parentId: bar.id, title, url: u.href });
+    created = await chrome.bookmarks.create({ parentId: bar.id, title, url: u.href });
     if (selfCreationReserved) {
       try {
         const confirmed = await chrome.runtime.sendMessage({
@@ -2145,7 +2192,8 @@ async function saveAdd() {
         selfCreationConfirmed = !!(confirmed && confirmed.ok);
       } catch (e) { /* noop */ }
     }
-    if (finalTags.length) await BM.setTags(created.id, finalTags);
+    if (finalTags.length && !await BM.setTags(created.id, finalTags)) throw new Error('标签保存失败，请重试');
+    if (!await unifySameUrlTags({ id: created.id, url: u.href }, finalTags)) throw new Error('同址标签同步失败，请重试');
     toast('已新增书签 ✓' + (finalTags.length ? '（自动标签：' + finalTags.join('、') + '，可在编辑中修改）' : ''), 'ok');
     closeDrawers();
     refresh();
@@ -2154,6 +2202,12 @@ async function saveAdd() {
       try {
         await chrome.runtime.sendMessage({ type: SELF_CREATION_MESSAGE, action: 'cancel', parentId: selfCreationParentId, url: u.href });
       } catch (e2) { /* noop */ }
+    }
+    if (created) {
+      closeDrawers();
+      toast('书签已新增，但标签同步失败，请在列表中编辑重试', 'warn');
+      refresh();
+      return;
     }
     setAddMsg('保存失败：' + (e.message || e), 'err');
   } finally {
@@ -2202,11 +2256,18 @@ async function aiTagAll(force) {
     return;
   }
 
+  // 同址去重：同一地址（urlKey 相同）只请求一次 AI，结果回填给该地址的全部书签，
+  // 避免 LLM 对相同地址给出不同标签（同址不同标）。
+  const { representatives, siblingsByKey } = collectAiTagGroups(batch);
+  const aiBatch = [...representatives.values()];
+  const affectedCount = new Set([...siblingsByKey.values()].flatMap(items => items.map(it => it.id))).size;
+  const representativeById = new Map(aiBatch.map(it => [String(it.id), it]));
+
   const ok = await confirmDialog({
-    title: force ? `全量重新打标 ${batch.length} 个书签？` : `AI 批量打标 ${batch.length} 个书签？`,
+    title: force ? `全量重新打标 ${affectedCount} 个书签？` : `AI 批量打标 ${affectedCount} 个书签？`,
     message: (force
-      ? `⚠️ 将<b>覆盖</b> ${batch.length} 个书签的现有标签，重新生成 1-3 个标签。`
-      : `将为 <b>${batch.length}</b> 个未打标书签生成 1-3 个标签。`) +
+      ? `⚠️ 将<b>覆盖</b> ${affectedCount} 个书签的现有标签，重新生成 1-3 个标签。`
+      : `将为 <b>${affectedCount}</b> 个书签生成 1-3 个标签。`) +
       (protectedTargets.length ? `<br>AI 隐私保护已跳过 <b>${protectedTargets.length}</b> 个高风险书签。` : '') +
       (unsupportedTargets.length ? `<br>已跳过 <b>${unsupportedTargets.length}</b> 个非 HTTP(S) 书签。` : '') +
       `<br>· 隐私保护：仅发送标题与 URL 的域名、路径；query 和 fragment 不发送<br>· 可随时点「终止打标」停止：已成功的结果保留，剩余不再请求<br>· 结果实时写入本地，可在「标签」页查看`,
@@ -2224,7 +2285,8 @@ async function aiTagAll(force) {
   let processed = 0;
   try {
     // 每批 AI 成功后立即批量落盘；后续批次失败不影响已保存结果。
-    await BM.aiTagBatched(batch, SETTINGS, {
+    // aiBatch 已是同址去重后的代表书签集；结果按 urlKey 回填到同址全部书签。
+    await BM.aiTagBatched(aiBatch, SETTINGS, {
       batchSize: 40,
       retries: 2,
       shouldStop: () => aiTagCancel,
@@ -2232,11 +2294,15 @@ async function aiTagAll(force) {
         processed = done;
         const changes = {};
         const updated = [];
-        for (const it of batch) {
-          const tags = map[String(it.id)];
-          if (!tags || !tags.length) continue;
-          changes[it.id] = tags;
-          updated.push({ it, tags });
+        for (const [id, tags] of Object.entries(map)) {
+          const rep = representativeById.get(String(id));
+          if (!rep || !tags || !tags.length) continue;
+          const siblings = siblingsByKey.get(rep.key || BM.urlKey(rep.url)) || [rep];
+          const nextTags = mergeAiTagsWithSameUrl(siblings, tags, force);
+          for (const it of siblings) {
+            changes[it.id] = nextTags;
+            updated.push({ it, tags: nextTags });
+          }
         }
         if (!updated.length) return;
         const saved = await BM.setTagsBatch(changes);
@@ -2250,7 +2316,7 @@ async function aiTagAll(force) {
     });
     endProgress();
     if (aiTagCancel) {
-      const remain = batch.length - processed;
+      const remain = aiBatch.length - processed;
       toast(`已终止：保留 ${applied} 个结果，剩余 ${remain} 个未处理`, 'warn');
     } else {
       toast((force ? '全量重打完成：已为 ' : 'AI 已为 ') + applied + ' 个书签打标 ✓', 'ok');
@@ -2279,6 +2345,79 @@ function findExistingByUrl(url, excludeId) {
     ? (DATA.itemsByUrl.get(url) || [])
     : DATA.items.filter(it => it.url === url);
   return excludeId ? candidates.filter(it => it.id !== excludeId) : candidates;
+}
+
+function getSameUrlGroups() {
+  if (!DATA) return [];
+  if (DATA.itemsByUrlKey) return [...DATA.itemsByUrlKey.values()].filter(items => items.length > 1);
+  const byKey = new Map();
+  (DATA.items || []).forEach(item => {
+    const key = item.key || BM.urlKey(item.url);
+    if (!key) return;
+    const items = byKey.get(key);
+    if (items) items.push(item);
+    else byKey.set(key, [item]);
+  });
+  return [...byKey.values()].filter(items => items.length > 1);
+}
+
+function getSameUrlSiblings(bookmark) {
+  if (!bookmark || !bookmark.id) return [];
+  const key = bookmark.key || BM.urlKey(bookmark.url || '');
+  if (!key) return [bookmark];
+  const group = DATA && DATA.itemsByUrlKey
+    ? (DATA.itemsByUrlKey.get(key) || [])
+    : (DATA && DATA.items ? DATA.items.filter(item => (item.key || BM.urlKey(item.url)) === key) : []);
+  // 传入的书签可能刚创建或刚改址，不能使用 DATA 中同 id 的旧快照。
+  return [...group.filter(item => item.id !== bookmark.id), bookmark];
+}
+
+function collectAiTagGroups(batch) {
+  const representatives = new Map();
+  const siblingsByKey = new Map();
+  (batch || []).forEach(item => {
+    const key = item.key || BM.urlKey(item.url);
+    if (representatives.has(key)) return;
+    representatives.set(key, item);
+    siblingsByKey.set(key, getSameUrlSiblings(item));
+  });
+  return { representatives, siblingsByKey };
+}
+
+function mergeAiTagsWithSameUrl(siblings, aiTags, force) {
+  if (force) return aiTags;
+  const tagsById = BM.getTags() || {};
+  return BM.unionTagLists([
+    ...(siblings || []).map(item => tagsById[item.id] || item.tags || []),
+    aiTags
+  ]);
+}
+
+// 同址（urlKey 相同）标签统一：某书签标签变更后，把并集写回同址全部书签，避免同址不同标。
+// tags 为空数组表示清除标签，此时同址兄弟一并清除。
+async function unifySameUrlTags(bookmarkOrId, tags) {
+  if (!bookmarkOrId || !DATA) return false;
+  const self = typeof bookmarkOrId === 'object'
+    ? bookmarkOrId
+    : (DATA.itemById ? DATA.itemById.get(bookmarkOrId) : DATA.items.find(it => it.id === bookmarkOrId));
+  if (!self) return false;
+  const siblings = getSameUrlSiblings(self);
+  if (siblings.length <= 1) return true;
+  try { await BM.loadTags(); await BM.loadFixedTags(); } catch (e) { /* noop */ }
+  const currentMap = BM.getTags() || {};
+  const lists = siblings.map(it => currentMap[it.id] || []);
+  // 本次变更的标签优先合并进并集，保证本次操作语义生效。
+  let union;
+  if (Array.isArray(tags) && tags.length) {
+    union = BM.unionTagLists([tags, ...lists]);
+  } else if (Array.isArray(tags) && !tags.length) {
+    union = [];
+  } else {
+    union = BM.unionTagLists(lists);
+  }
+  const changes = {};
+  siblings.forEach(it => { changes[it.id] = union.length ? union : null; });
+  try { return await BM.setTagsBatch(changes); } catch (e) { return false; }
 }
 
 // ---------- 检查更新（GitHub Releases，方案 B） ----------
@@ -2432,17 +2571,21 @@ async function bulkTagSelected() {
   try { await BM.loadTags(); await BM.loadFixedTags(); } catch (e) { /* noop */ }
   startProgress('批量打标中');
   let done = 0;
+  let failed = 0;
   for (const id of sel) {
     try {
       const cur = (BM.getTags() || {})[id] || [];
       const merged = [...new Set([...cur, ...newTags])].slice(0, BM.MAX_TAGS_PER_BOOKMARK || 6);
-      await BM.setTags(id, merged);
-    } catch (e) { /* ignore */ }
+      if (!await BM.setTags(id, merged)) throw new Error('标签保存失败');
+      if (!await unifySameUrlTags(id, merged)) throw new Error('同址标签同步失败');
+    } catch (e) { failed++; }
     done++;
     updateProgress(Math.round(done / sel.length * 100), '打标 ' + done + '/' + sel.length);
   }
   endProgress();
-  toast('已为 ' + sel.length + ' 个书签追加标签 ✓', 'ok');
+  toast(failed
+    ? '已为 ' + (sel.length - failed) + ' 个书签追加标签，' + failed + ' 个保存失败'
+    : '已为 ' + sel.length + ' 个书签追加标签 ✓', failed ? 'warn' : 'ok');
   refresh();
 }
 

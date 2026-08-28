@@ -104,6 +104,7 @@
     const allTagStats = {};
     const itemById = new Map();
     const itemsByUrl = new Map();
+    const itemsByUrlKey = new Map();
     const tagItemsByName = new Map();
     const visibleTagItemsByName = new Map();
     const visibleItems = [];
@@ -140,6 +141,12 @@
         const sameUrlItems = itemsByUrl.get(it.url);
         if (sameUrlItems) sameUrlItems.push(it);
         else itemsByUrl.set(it.url, [it]);
+        // 归一化 URL 键分组：跨协议/www/末尾斜杠/普通锚点视为同一地址，用于统一同址标签。
+        if (it.key) {
+          const keyItems = itemsByUrlKey.get(it.key);
+          if (keyItems) keyItems.push(it);
+          else itemsByUrlKey.set(it.key, [it]);
+        }
         (categories[it.category] = categories[it.category] || []).push(it);
         const tags = it.tags;
         const hasUsableTag = tags.some(tag => tag !== BM.FALLBACK_TAG);
@@ -191,6 +198,7 @@
       emptyFolders,
       itemById,
       itemsByUrl,
+      itemsByUrlKey,
       // 标签页直接使用此索引，切换时无需再次遍历完整书签库。
       tagView: {
         tagItemsByName,
