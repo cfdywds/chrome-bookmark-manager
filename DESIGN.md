@@ -10,6 +10,7 @@ The extension processes user-controlled bookmark metadata, imported JSON backups
 - A shared HTTP(S) URL normalizer rejects executable and non-web protocols at creation, import, and navigation boundaries.
 - The manifest uses optional host permissions for user-configured LLM origins instead of permanent access to all sites.
 - LLM payloads omit URL queries and fragments. Local AI privacy rules exclude bookmarks only when their parsed URL shows a login endpoint, credential parameter, or financial/wallet service signal.
+- Background LLM tagging is separately opt-in, skips native bulk imports and high-confidence public or user-configured rule matches, and falls back to local rules on any remote failure.
 - Backup exports omit LLM settings and API keys.
 
 ## Trust Boundaries
@@ -21,6 +22,22 @@ Chrome bookmark APIs and local extension storage are local inputs. LLM endpoints
 Bookmark titles and paths can still contain private information. AI privacy rules are best-effort and do not encrypt, hide, or isolate bookmarks from browser sync, so users remain responsible for reviewing data before AI processing.
 
 ## Change History
+
+### 2026-08-28 - Local Custom Rule Application
+
+**Changes**: Added an explicit tag-page action that applies user-defined hostname and title/path rules to existing bookmarks without an LLM. It offers untagged-only, append, and replace modes, and applies a shared tag result to same-URL bookmark siblings.
+
+**Reason**: Saving a rule must not silently overwrite existing manual labels, while using a full AI retag solely to apply a deterministic rule is unnecessary and may disclose bookmark metadata.
+
+**Impact**: Existing bookmarks remain unchanged until the user confirms a local rule application mode. The action respects the fixed tag pool, performs no network request, and preserves same-URL tag consistency. AI batch failures keep successful writes and retain the remaining representative bookmarks in the open sidebar so a local “Continue tagging” action can retry them without resending completed work.
+
+### 2026-08-28 - Deterministic-First AI Tagging
+
+**Changes**: Added generic semantic rules for code hosting, forum platforms, design collaboration, work tools, operations services, and AI sites. Default rules emit reusable topic tags rather than personal hostnames or site-specific labels. Users may add case-insensitive hostname keyword rules and title/hostname/pathname keyword rules with one or more fixed-pool tags. The first tag in a hostname rule also serves as that domain's overview category, replacing the separate domain-group setting. Manual AI results preserve high-confidence local tags. Browser-created bookmarks continue to receive local tags silently and may use the configured LLM only when a separate opt-in is enabled and no high-confidence public or user rule matched.
+
+**Reason**: Hostnames often provide stronger evidence than titles or generic path words. Deterministic rules make known services predictable, reduce LLM cost, and keep background network disclosure under explicit user control.
+
+**Impact**: Default tags now include the generic `代码` and `论坛` categories and remove site-specific defaults; storage V3 upgrades an exact legacy default pool and migrates `bmDomainGroups` into `bmTagRules.domain` without deleting the legacy value. `bmTagRules` stores separate `domain` and `keyword` mappings; rule outputs outside `bmFixedTags` are ignored. Keyword matching excludes query and fragment data. Backups use V3 and include unified tag rules; V2 backups remain import-compatible. Background LLM requests exclude native imports and protected URLs, strip query/fragment data, write local tags before the request, and merge a response only while that baseline is unchanged. Switching an active LLM profile revalidates optional host permission while background AI is enabled.
 
 ### 2026-08-27 - Public Release Baseline
 

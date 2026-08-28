@@ -228,6 +228,178 @@ describe('categorize（本地分类规则）', () => {
   });
 });
 
+describe('inferDomainTags（高置信域名打标）', () => {
+  it.each([
+    ['https://figma.com/design/project', ['设计', '工作']],
+    ['https://community.discourse.org/t/topic/123', ['论坛']],
+    ['https://github.com/openai/codex', ['代码']],
+    ['https://login.tailscale.com/admin', ['运维', '工具']]
+  ])('%s → %j', (url, expected) => {
+    expect(BM.inferDomainTags({ url })).toEqual(expected);
+  });
+
+  it('尊重用户自定义标签池，不写入池外规则标签', () => {
+    expect(BM.inferDomainTags(
+      { url: 'https://github.com/example/project' },
+      ['GitHub', '其他']
+    )).toEqual([]);
+  });
+});
+
+describe('matchCustomTagRules（用户自定义规则）', () => {
+  const rules = {
+    domain: { corp: ['工作', '代码'], invalid: ['池外标签'] },
+    keyword: { 教程: ['学习', '教程'], release: ['资讯'] }
+  };
+  const pool = ['工作', '代码', '学习', '教程', '资讯', '其他'];
+
+  it('域名关键字大小写不敏感，并可映射多个池内标签', () => {
+    expect(BM.matchCustomTagRules(
+      { url: 'https://Docs.CORP.example/guide', title: '内部文档' }, rules, pool
+    )).toEqual({ domain: ['工作', '代码'], keyword: [] });
+  });
+
+  it('标题和 URL 路径关键字命中，但 query 与 fragment 不参与', () => {
+    expect(BM.matchCustomTagRules(
+      { url: 'https://example.com/教程/start?release=1#release', title: '入门' }, rules, pool
+    )).toEqual({ domain: [], keyword: ['学习', '教程'] });
+    expect(BM.matchCustomTagRules(
+      { url: 'https://example.com/article?release=1#教程', title: '普通文章' }, rules, pool
+    )).toEqual({ domain: [], keyword: [] });
+  });
+
+  it('忽略固定标签池之外的规则标签', () => {
+    expect(BM.matchCustomTagRules(
+      { url: 'https://invalid.example/path', title: '内容' }, rules, pool
+    )).toEqual({ domain: [], keyword: [] });
+  });
+});
+
+describe('标签配置迁移', () => {
+  it('升级旧默认池，并建立空的统一规则配置', async () => {
+    const previousChrome = globalThis.chrome;
+    const localData = { bmStorageVersion: 1, bmFixedTags: [...BM.LEGACY_DEFAULT_FIXED_TAGS] };
+    const set = vi.fn(async values => { Object.assign(localData, values); });
+    globalThis.chrome = { storage: { local: {
+      get: vi.fn().mockResolvedValue(localData),
+      set
+    } } };
+
+    try {
+      await BM.migrateStorage();
+      expect(set).toHaveBeenCalledWith({
+        bmStorageVersion: 3,
+        bmFixedTags: BM.DEFAULT_FIXED_TAGS,
+        bmTagRules: { domain: {}, keyword: {} },
+        bmDomainGroupsMigrated: true
+      });
+      expect(localData.bmFixedTags).toEqual(expect.arrayContaining(['代码', '论坛']));
+      expect(localData.bmFixedTags).not.toEqual(expect.arrayContaining(['GitHub', 'linux.do', 'Tailscale']));
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('保留真正的自定义标签池', () => {
+    const custom = ['工作', '个人'];
+    expect(BM.upgradeDefaultFixedTags(custom)).toBe(custom);
+  });
+
+  it('将旧域名分组迁入统一域名规则的首个标签', async () => {
+    const previousChrome = globalThis.chrome;
+    const localData = {
+      bmStorageVersion: 2,
+      bmFixedTags: ['工作', '代码'],
+      bmDomainGroups: { 'corp.example': '工作' }
+    };
+    const set = vi.fn(async values => { Object.assign(localData, values); });
+    globalThis.chrome = { storage: { local: {
+      get: vi.fn().mockResolvedValue(localData),
+      set
+    } } };
+
+    try {
+      await BM.migrateStorage();
+      expect(localData.bmTagRules).toEqual({ domain: { 'corp.example': ['工作'] }, keyword: {} });
+      expect(localData.bmDomainGroupsMigrated).toBe(true);
+      expect(set).toHaveBeenCalledWith(expect.objectContaining({ bmStorageVersion: 3 }));
+    } finally {
+      BM.invalidateTagRules();
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('使用域名规则首个标签作为概览分类名', async () => {
+    const previousChrome = globalThis.chrome;
+    const localData = {
+      bmTagRules: { domain: { CORP: ['工作', '代码'] }, keyword: {} },
+      bmDomainGroupsMigrated: true
+    };
+    globalThis.chrome = { storage: { local: { get: vi.fn().mockResolvedValue(localData) } } };
+
+    try {
+      BM.invalidateTagRules();
+      await BM.loadTagRules();
+      await BM.loadDomainGroups();
+      expect(BM.matchDomainGroup('docs.corp.example')).toBe('工作');
+      expect(BM.categorize('docs.corp.example', 'https://docs.corp.example/', '文档')).toBe('工作');
+    } finally {
+      BM.invalidateTagRules();
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('重叠域名规则按声明顺序保持概览分类与标签首项一致', async () => {
+    const previousChrome = globalThis.chrome;
+    const localData = {
+      bmFixedTags: ['工作', '代码'],
+      bmTagRules: { domain: { corp: ['工作'], 'docs.corp.example': ['代码'] }, keyword: {} },
+      bmDomainGroupsMigrated: true
+    };
+    globalThis.chrome = { storage: { local: { get: vi.fn().mockResolvedValue(localData) } } };
+
+    try {
+      BM.invalidateFixedTags();
+      BM.invalidateTagRules();
+      await BM.loadDomainGroups();
+      expect(BM.matchDomainGroup('docs.corp.example')).toBe('工作');
+      expect(BM.inferHighConfidenceTags({ url: 'https://docs.corp.example/' })).toEqual(['工作', '代码']);
+    } finally {
+      BM.invalidateFixedTags();
+      BM.invalidateTagRules();
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('不让池外域名规则标签成为概览分类', async () => {
+    const previousChrome = globalThis.chrome;
+    const localData = {
+      bmFixedTags: ['工作'],
+      bmTagRules: { domain: { corp: ['失效标签'] }, keyword: {} },
+      bmDomainGroupsMigrated: true
+    };
+    globalThis.chrome = { storage: { local: { get: vi.fn().mockResolvedValue(localData) } } };
+
+    try {
+      BM.invalidateFixedTags();
+      BM.invalidateTagRules();
+      await BM.loadDomainGroups();
+      expect(BM.matchDomainGroup('docs.corp.example')).toBe('');
+      expect(BM.getAllCategoryNames()).not.toContain('失效标签');
+      expect(BM.inferHighConfidenceTags({ url: 'https://docs.corp.example/' })).toEqual([]);
+    } finally {
+      BM.invalidateFixedTags();
+      BM.invalidateTagRules();
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+});
+
 describe('normalizeHttpUrl（书签与外部链接边界）', () => {
   it('补全省略的 HTTPS 协议并保留标准 URL', () => {
     expect(BM.normalizeHttpUrl('example.com/docs?q=1').href).toBe('https://example.com/docs?q=1');
@@ -353,6 +525,65 @@ describe('aiTagBatched（分批打标）', () => {
       globalThis.fetch = previousFetch;
     }
   });
+
+  it('AI 返回不会覆盖域名高置信标签', async () => {
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ choices: [{ message: { content: '{"results":[{"id":"repo","tags":["AI"]}]}' } }] })
+    });
+
+    try {
+      const result = await BM.aiTag([
+        { id: 'repo', title: 'Codex', url: 'https://github.com/openai/codex' }
+      ], { apiKey: 'key', baseUrl: 'https://api.example.com/v1', model: 'test' });
+
+      expect(result).toEqual({ repo: ['代码', 'AI'] });
+      const request = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+      expect(request.messages[1].content).toContain('本地高置信标签=代码');
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('LLM 失败时仍返回全部高置信域名规则标签', async () => {
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('网络中断'));
+
+    try {
+      await expect(BM.aiTag([
+        { id: 'repo', title: '仓库', url: 'https://github.com/example/repo' },
+        { id: 'forum', title: '话题', url: 'https://community.discourse.org/t/topic/1' }
+      ], { apiKey: 'key', baseUrl: 'https://api.example.com/v1', model: 'test' })).resolves.toEqual({
+        repo: ['代码'],
+        forum: ['论坛']
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('混合批次失败时先持久化规则命中项，再保留错误可见性', async () => {
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('网络中断'));
+    const persisted = [];
+
+    try {
+      await expect(BM.aiTagBatched([
+        { id: 'repo', title: '仓库', url: 'https://github.com/example/repo' },
+        { id: 'unknown', title: '未知', url: 'https://example.org/item' }
+      ], { apiKey: 'key', baseUrl: 'https://api.example.com/v1', model: 'test' }, {
+        retries: 0,
+        onBatch: async map => { persisted.push(map); }
+      })).rejects.toThrow('网络请求失败');
+
+      expect(persisted).toEqual([{ repo: ['代码'] }]);
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
 });
 
 describe('LLM 输入边界', () => {
@@ -460,6 +691,7 @@ describe('exportBookmarksJSON（敏感配置排除）', () => {
       const backup = await BM.exportBookmarksJSON();
       const data = JSON.parse(backup.json);
       expect(data.settings).toBeUndefined();
+      expect(data.tagRules).toEqual({ domain: {}, keyword: {} });
       expect(backup.json).not.toContain('apiKey');
     } finally {
       if (previousChrome === undefined) delete globalThis.chrome;

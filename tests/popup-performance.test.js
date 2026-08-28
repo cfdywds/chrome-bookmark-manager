@@ -22,6 +22,15 @@ function getFunctionSource(name) {
   return popupSource.slice(start, end.index + end.length).replace(`function ${name}`, 'function');
 }
 
+function getStorageChangeListenerSource() {
+  const source = popupSource.replace(/\r\n/g, '\n');
+  const marker = 'chrome.storage.onChanged.addListener(';
+  const start = source.indexOf(marker);
+  const end = source.indexOf('\n    });\n  } catch', start);
+  if (start < 0 || end < 0) throw new Error('未找到 storage change listener');
+  return source.slice(start + marker.length, end + 6);
+}
+
 describe('弹窗大列表渲染', () => {
   it('待清理卡片仅保留动作名称，不重复展示说明', () => {
     expect(popupSource).not.toContain('class="act-desc"');
@@ -90,6 +99,30 @@ describe('操作反馈', () => {
     expect(getFunctionSource('showPersistentError')).not.toContain('setTimeout');
   });
 
+  it('失败提示可提供继续打标操作，成功恢复时可清除提示', () => {
+    const retry = vi.fn();
+    const fields = {
+      '#app': { classList: { add: vi.fn(), remove: vi.fn() } },
+      '#operationNoticeTitle': { textContent: '' },
+      '#operationNoticeDetail': { textContent: '' },
+      '#operationNotice': { classList: { remove: vi.fn(), add: vi.fn() } },
+      '#operationNoticeAction': { textContent: '', onclick: null, classList: { remove: vi.fn(), add: vi.fn() } }
+    };
+    const $ = selector => fields[selector];
+    const showPersistentError = eval(`(${getFunctionSource('showPersistentError')})`);
+    const clearPersistentError = eval(`(${getFunctionSource('clearPersistentError')})`);
+
+    showPersistentError('AI 打标失败', '网络请求失败', { label: '继续打标（3）', onClick: retry });
+    expect(fields['#operationNoticeAction'].textContent).toBe('继续打标（3）');
+    expect(fields['#operationNoticeAction'].onclick).toBe(retry);
+    expect(fields['#operationNoticeAction'].classList.remove).toHaveBeenCalledWith('hidden');
+
+    clearPersistentError();
+    expect(fields['#operationNoticeAction'].onclick).toBeNull();
+    expect(fields['#operationNoticeAction'].classList.add).toHaveBeenCalledWith('hidden');
+    expect(fields['#operationNotice'].classList.add).toHaveBeenCalledWith('hidden');
+  });
+
   it('AI 任务状态支持独立终止，不覆盖顶部内容', () => {
     let activeProgressCancel = null;
     const fields = {
@@ -136,6 +169,28 @@ describe('侧边栏首屏', () => {
   it('并行读取设置与首轮扫描，不串行阻塞概览渲染', () => {
     expect(popupSource).toContain('settingsReady = loadSettings();');
     expect(popupSource).toContain('await Promise.all([settingsReady, refresh(true)]);');
+  });
+
+  it('标签池外部变更后重载缓存并刷新已打开的标签管理器', async () => {
+    const invalidateFixedTags = vi.fn();
+    const loadFixedTags = vi.fn().mockResolvedValue(undefined);
+    const BM = { invalidateFixedTags, loadFixedTags };
+    const manager = { classList: { contains: vi.fn().mockReturnValue(false) } };
+    const $ = vi.fn().mockReturnValue(manager);
+    const openTagManager = vi.fn();
+    const refresh = vi.fn();
+    let SETTINGS = {};
+    const PROVIDERS = {};
+    const listener = eval(`(${getStorageChangeListenerSource()})`);
+
+    listener({ bmFixedTags: { newValue: ['代码'] } }, 'local');
+
+    expect(invalidateFixedTags).toHaveBeenCalledOnce();
+    expect(loadFixedTags).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(openTagManager).toHaveBeenCalledOnce());
+    expect($).toHaveBeenCalledWith('#tagMgrWrap');
+    expect(refresh).not.toHaveBeenCalled();
+    expect(SETTINGS).toEqual({});
   });
 
   it('在设置读取完成前不会调用新增书签的 AI 打标', async () => {
@@ -188,7 +243,7 @@ describe('AI 批量打标', () => {
     expect(isAiTagPending({ tags: ['其他'] })).toBe(true);
     expect(isAiTagPending({ tags: ['工具'] })).toBe(false);
     expect(getFunctionSource('renderTags')).toContain('const untaggedCount = getAiTagTargets(false).length;');
-    expect(getFunctionSource('aiTagAll')).toContain('const targets = getAiTagTargets(force);');
+    expect(getFunctionSource('aiTagAll')).toContain('const targets = isResume ? resumeItems : getAiTagTargets(force);');
   });
 
   it('普通打标排除隐藏书签，全量重打才包含它们', () => {
@@ -212,11 +267,34 @@ describe('AI 批量打标', () => {
     expect(popupSource).toContain('taggedCount === total ? 100 : Math.floor(taggedCount / total * 100)');
   });
 
-  it('终止时按已处理批次计算剩余项，而非仅按已保存标签数', () => {
-    expect(popupSource).toContain('let processed = 0;');
-    expect(popupSource).toContain('onBatch: async (map, done) => {');
-    expect(popupSource).toContain('processed = done;');
-    expect(popupSource).toContain('const remain = aiBatch.length - processed;');
+  it('续打启动锁覆盖权限检查和确认阶段，避免重复点击发起并发请求', () => {
+    let aiTagRunning = false;
+    let aiTagStarting = false;
+    const claimAiTagStart = eval(`(${getFunctionSource('claimAiTagStart')})`);
+
+    expect(claimAiTagStart()).toBe(true);
+    expect(aiTagStarting).toBe(true);
+    expect(claimAiTagStart()).toBe(false);
+    aiTagStarting = false;
+    aiTagRunning = true;
+    expect(claimAiTagStart()).toBe(false);
+    expect(getFunctionSource('aiTagAll')).toContain('if (!claimAiTagStart()) return;');
+  });
+
+  it('失败续打只保留尚未成功写入的代表书签', () => {
+    const getPendingAiRepresentatives = eval(`(${getFunctionSource('getPendingAiRepresentatives')})`);
+    const items = [{ id: 'done' }, { id: 'retry-1' }, { id: 'retry-2' }];
+    expect(getPendingAiRepresentatives(items, new Set(['done'])).map(item => item.id))
+      .toEqual(['retry-1', 'retry-2']);
+    const source = getFunctionSource('aiTagAll');
+    expect(source).toContain('const isResume = Array.isArray(resumeItems);');
+    expect(source).toContain("label: '继续打标（' + remainingItems.length + '）'");
+    expect(source).toContain('const remainingItems = getPendingAiRepresentatives(aiBatch, completedRepresentatives);');
+  });
+
+  it('模型只返回“其他”时不将该书签视作打标完成', () => {
+    const source = getFunctionSource('aiTagAll');
+    expect(source).toContain('isAiTagPending({ tags })');
   });
 });
 
@@ -243,6 +321,101 @@ describe('刷新调度', () => {
     expect(runRefresh).toHaveBeenCalledTimes(3);
     expect(refreshInFlight).toBeNull();
     expect(refreshQueued).toBe(false);
+  });
+});
+
+describe('自定义规则批量应用', () => {
+  it('按同址书签汇总规则结果，并支持追加、覆盖和仅未标三种策略', () => {
+    const BM = {
+      FALLBACK_TAG: '其他',
+      getTags: () => ({ sameA: ['手动'], sameB: [], lone: ['其他'] }),
+      urlKey: url => url,
+      unionTagLists: lists => {
+        const tags = [];
+        lists.forEach(list => {
+          list.forEach(tag => {
+            if (tag && tag !== '其他' && !tags.includes(tag)) tags.push(tag);
+          });
+        });
+        return tags;
+      },
+      matchCustomTagRules: item => ({
+        domain: item.host === 'corp.example' ? ['工作'] : [],
+        keyword: item.title === 'release' || item.title === '发布' ? ['资讯'] : []
+      })
+    };
+    const DATA = {
+      items: [
+        { id: 'sameA', key: 'same-url', host: 'corp.example', url: 'https://corp.example/', title: '内部系统', tags: ['手动'] },
+        { id: 'sameB', key: 'same-url', host: 'corp.example', url: 'https://corp.example/', title: 'release', tags: [] },
+        { id: 'lone', key: 'lone-url', host: 'example.com', url: 'https://example.com/release', title: '发布', tags: ['其他'] }
+      ]
+    };
+    const collectCustomRuleApplications = eval(`(${getFunctionSource('collectCustomRuleApplications')})`);
+
+    expect(collectCustomRuleApplications('append')).toEqual({
+      matched: 3,
+      changed: 3,
+      changes: {
+        sameA: ['手动', '工作', '资讯'],
+        sameB: ['手动', '工作', '资讯'],
+        lone: ['资讯']
+      }
+    });
+    expect(collectCustomRuleApplications('replace')).toEqual({
+      matched: 3,
+      changed: 3,
+      changes: {
+        sameA: ['工作', '资讯'],
+        sameB: ['工作', '资讯'],
+        lone: ['资讯']
+      }
+    });
+    expect(collectCustomRuleApplications('untagged')).toEqual({
+      matched: 3,
+      changed: 1,
+      changes: { lone: ['资讯'] }
+    });
+  });
+
+  it('提供不调用 AI 的规则应用入口和三种确认选项', () => {
+    expect(popupSource).toContain('data-action="apply-custom-rules"');
+    expect(popupSource).toContain("} else if (action === 'apply-custom-rules') {");
+    expect(popupHtml).toContain('id="confirmFourth"');
+    expect(popupHtml).toContain('id="operationNoticeAction"');
+    expect(popupCss).toContain('grid-template-columns: minmax(0, 1fr) auto;');
+    expect(popupCss).toContain('justify-content: flex-end; gap: 8px; flex-wrap: wrap;');
+    const source = getFunctionSource('applyCustomRules');
+    expect(source).toContain("fourthText: '仅未标'");
+    expect(source).toContain("thirdText: '覆盖'");
+    expect(source).toContain("confirmText: '追加'");
+    expect(source).not.toContain('BM.aiTag');
+  });
+
+  it('规则应用的预览异常会显示失败提示，而非静默中断', async () => {
+    const BM = {
+      loadTags: vi.fn().mockResolvedValue(undefined),
+      loadFixedTags: vi.fn().mockResolvedValue(undefined),
+      loadTagRules: vi.fn().mockResolvedValue(undefined),
+      logError: vi.fn()
+    };
+    const getCustomRuleCount = () => 1;
+    const collectCustomRuleApplications = vi.fn(() => { throw new Error('规则预览失败'); });
+    const toast = vi.fn();
+    const confirmDialog = vi.fn();
+    const refresh = vi.fn();
+    const document = { contains: vi.fn().mockReturnValue(true) };
+    const trigger = { disabled: false, textContent: '⚡ 应用规则' };
+    const applyCustomRules = eval(`(${getFunctionSource('applyCustomRules')})`);
+
+    await applyCustomRules(trigger);
+
+    expect(toast).toHaveBeenCalledWith('应用规则失败：规则预览失败', 'danger');
+    expect(BM.logError).toHaveBeenCalledWith('apply-custom-rules', expect.any(Error));
+    expect(confirmDialog).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+    expect(trigger).toEqual({ disabled: false, textContent: '⚡ 应用规则' });
+    expect(document.contains).toHaveBeenCalledWith(trigger);
   });
 });
 

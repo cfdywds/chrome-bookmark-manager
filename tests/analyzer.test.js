@@ -98,6 +98,7 @@ describe('分析引擎', () => {
       loadDomainGroups: vi.fn(),
       loadTags: vi.fn(),
       loadFixedTags: vi.fn(),
+      loadTagRules: vi.fn(),
       loadHiddenIds: vi.fn(),
       getRegisteredDomain: host => host,
       urlKey: url => url,
@@ -157,6 +158,7 @@ describe('分析引擎', () => {
       loadDomainGroups: deferredLoad,
       loadTags: deferredLoad,
       loadFixedTags: deferredLoad,
+      loadTagRules: deferredLoad,
       loadHiddenIds: deferredLoad,
       getRegisteredDomain: host => host.replace(/^secret\./, ''),
       urlKey: url => url,
@@ -176,7 +178,7 @@ describe('分析引擎', () => {
     try {
       new Function(analyzerCode)();
       const analysis = globalThis.BMAnalyzer.analyze();
-      await vi.waitFor(() => expect(deferredLoad).toHaveBeenCalledTimes(4));
+      await vi.waitFor(() => expect(deferredLoad).toHaveBeenCalledTimes(5));
       resolvers.splice(0).forEach(resolve => resolve());
       const result = await analysis;
 
@@ -224,6 +226,7 @@ describe('分析引擎', () => {
       loadDomainGroups: vi.fn(),
       loadTags: vi.fn(),
       loadFixedTags: vi.fn(),
+      loadTagRules: vi.fn(),
       loadHiddenIds: vi.fn(),
       getDomainGroups: () => domainGroups,
       getBookmarkMetadata,
@@ -269,6 +272,7 @@ describe('分析引擎', () => {
       loadDomainGroups: vi.fn(),
       loadTags: vi.fn(),
       loadFixedTags: vi.fn(),
+      loadTagRules: vi.fn(),
       loadHiddenIds: vi.fn(),
       getDomainGroups: () => ({}),
       getBookmarkMetadata: vi.fn((url, title) => ({

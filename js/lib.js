@@ -293,7 +293,7 @@
   );
 
   function categorizeWithHay(host, hay, domain) {
-    // 域名优先分组：命中白名单直接返回组名（如 linux.do / GitHub），其余走默认规则
+    // 域名规则的首个标签优先作为分类名，其余走默认分类规则。
     const dg = matchDomainGroup(host, domain);
     if (dg) return dg;
     for (let i = 0; i < CATEGORY_RULES.length; i++) {
@@ -373,37 +373,41 @@
     return CATEGORY_RULES.map(r => r.cat);
   }
 
-  // ---- 域名优先分组（可配置白名单）：特定域名单独成组，其余走默认分类规则 ----
-  // 存储于 chrome.storage.local 的 bmDomainGroups：{ "linux.do": "Linux.do", "github.com": "GitHub" }
-  // 命中时 categorize() 直接返回组名；未命中继续走 CATEGORY_RULES（默认 26 类）。
+  // ---- 域名分类名由统一的域名标签规则派生 ----
+  // 每条域名规则的第一个标签同时作为概览分类名；其余标签只参与打标。
   let domainGroupsCache = null;   // null = 尚未从 storage 加载
 
   async function loadDomainGroups() {
     if (domainGroupsCache) return domainGroupsCache;
     try {
-      const r = await chrome.storage.local.get('bmDomainGroups');
-      domainGroupsCache = (r.bmDomainGroups && typeof r.bmDomainGroups === 'object') ? r.bmDomainGroups : {};
+      const [rules, fixedTags] = await Promise.all([loadTagRules(), loadFixedTags()]);
+      domainGroupsCache = Object.fromEntries(Object.entries(rules.domain).flatMap(([domain, tags]) => {
+        // 与实际打标相同：只有固定池内的有效标签才能成为概览分类。
+        const category = (Array.isArray(tags) ? tags : []).map(tag => fixedTags.find(poolTag =>
+          String(poolTag).toLowerCase() === String(tag).toLowerCase() && poolTag !== FALLBACK_TAG
+        )).find(Boolean);
+        return category ? [[domain, category]] : [];
+      }));
     } catch (e) { domainGroupsCache = {}; }
     return domainGroupsCache;
   }
 
-  // options/popup 修改配置后调用，强制下次重新读取
+  // 统一域名规则变更后调用，强制下次重新读取
   function invalidateDomainGroups() { domainGroupsCache = null; }
 
   // 同步读取（可能尚未加载，返回 null）
   function getDomainGroups() { return domainGroupsCache; }
 
-  // 域名匹配：先精确 host，再注册域名级（eTLD+1）匹配；命中返回组名，否则空串
-  function matchDomainGroup(host, knownDomain) {
+  // 域名规则按声明顺序匹配；首个命中的首个有效标签即概览分类。
+  function matchDomainGroup(host) {
     const g = domainGroupsCache;
     if (!g) return '';
     const h = (host || '').toLowerCase().replace(/^www\./, '');
-    if (g[h]) return g[h];
-    const dom = knownDomain || getRegisteredDomain(h);
-    return (dom && g[dom]) || '';
+    const matched = Object.entries(g).find(([signal]) => h.includes(String(signal).toLowerCase()));
+    return matched ? matched[1] : '';
   }
 
-  // 同步版全部候选分类：默认 26 类 + 已加载的域名组（供下拉框使用）
+  // 同步版全部候选分类：默认 26 类 + 域名规则首个标签（供下拉框使用）
   function getAllCategoryNames() {
     const names = getCategoryNames();
     const g = domainGroupsCache;
@@ -416,7 +420,7 @@
     return names;
   }
 
-  // async 版：确保配置加载后再取（AI 分类的候选集必须包含域名组）
+  // async 版：确保配置加载后再取（AI 分类的候选集包含域名规则首个标签）
   async function getCategoryNamesWithDomains() {
     await loadDomainGroups();
     return getAllCategoryNames();
@@ -515,27 +519,53 @@
   // AI 打标 / 建议标签 / 写入归一化都只允许池内标签；池外一律归 FALLBACK_TAG。
   // 存储：chrome.storage.local 的 bmFixedTags（数组，可配置覆盖；未配置用默认）。
   const FIXED_TAGS_KEY = 'bmFixedTags';
+  const TAG_RULES_KEY = 'bmTagRules';
+  const LEGACY_DOMAIN_GROUPS_MIGRATED_KEY = 'bmDomainGroupsMigrated';
   const FALLBACK_TAG = '其他';
 
-  // 默认池（30 个，混合主题 + 场景 + 域名/社区；用户可在设置页增删改，最多 50）
+  const LEGACY_DEFAULT_FIXED_TAGS = [
+    'AI', '前端', '后端', '移动端', 'JAVA', 'Python', '数据库', '运维', '安全', '设计',
+    '学习', '教程', '工具', '效率', '工作', '资讯', '阅读', '视频', '娱乐', '生活', '社交', '博客',
+    'linux.do', 'GitHub', '掘金', '知乎', 'V2EX', '中转站', 'Telegram', '微信公众号'
+  ];
+
+  // 默认池（通用主题 + 场景语义；用户可在设置页增删改，最多 50）
   const DEFAULT_FIXED_TAGS = [
     // 主题 / 领域
-    'AI', '前端', '后端', '移动端', 'JAVA', 'Python', '数据库', '运维', '安全', '设计',
+    'AI', '代码', '前端', '后端', '移动端', 'JAVA', 'Python', '数据库', '运维', '安全', '设计',
     '学习', '教程', '工具', '效率', '工作',
     // 场景 / 生活
-    '资讯', '阅读', '视频', '娱乐', '生活', '社交', '博客',
-    // 域名 / 社区
-    'linux.do', 'GitHub', '掘金', '知乎', 'V2EX', '中转站', 'Telegram', '微信公众号'
+    '资讯', '阅读', '视频', '娱乐', '生活', '社交', '论坛', '博客'
   ];
   const MAX_FIXED_TAGS = 50;
 
+  // 高置信域名规则优先于标题/路径泛词和 LLM。规则只产出固定池已有标签，
+  // 因此用户自定义标签池仍是最终边界；数组顺序也是单书签标签的优先级。
+  const DOMAIN_TAG_RULES = [
+    { signals: ['figma', 'mastergo', 'js.design', 'modao'], tags: ['设计', '工作'] },
+    { signals: ['github', 'gitlab', 'gitee', 'bitbucket', 'codeberg', 'sourceforge'], tags: ['代码'] },
+    { signals: ['reddit', 'discourse', 'stackoverflow', 'stackexchange', 'segmentfault'], tags: ['论坛'] },
+    { signals: ['tailscale', 'zerotier', 'wireguard'], tags: ['运维', '工具'] },
+    { signals: ['docker', 'kubernetes', 'rancher', 'jenkins', 'grafana'], tags: ['运维'] },
+    { signals: ['notion', 'feishu', 'dingtalk', 'yuque', 'shimo'], tags: ['工作', '效率'] },
+    { signals: ['openai', 'anthropic', 'deepseek', 'huggingface'], tags: ['AI'] }
+  ];
+
   let fixedTagsCache = null;   // null = 未加载
+  let tagRulesCache = null;    // { domain: { keyword: tags[] }, keyword: { keyword: tags[] } }
+
+  function upgradeDefaultFixedTags(tags) {
+    if (!Array.isArray(tags) || tags.length !== LEGACY_DEFAULT_FIXED_TAGS.length) return tags;
+    const isLegacyDefault = tags.every((tag, index) => tag === LEGACY_DEFAULT_FIXED_TAGS[index]);
+    return isLegacyDefault ? [...DEFAULT_FIXED_TAGS] : tags;
+  }
 
   async function loadFixedTags() {
     if (fixedTagsCache) return fixedTagsCache;
     try {
       const r = await chrome.storage.local.get(FIXED_TAGS_KEY);
-      const cfg = Array.isArray(r[FIXED_TAGS_KEY]) ? r[FIXED_TAGS_KEY].map(normalizeTag).filter(Boolean) : [];
+      const stored = Array.isArray(r[FIXED_TAGS_KEY]) ? r[FIXED_TAGS_KEY].map(normalizeTag).filter(Boolean) : [];
+      const cfg = upgradeDefaultFixedTags(stored);
       // 用户配置（含「其他」兜底）；未配置用默认池
       fixedTagsCache = cfg.length ? [...new Set(cfg)] : [...DEFAULT_FIXED_TAGS];
       if (!fixedTagsCache.includes(FALLBACK_TAG)) fixedTagsCache.push(FALLBACK_TAG);
@@ -547,10 +577,72 @@
   }
 
   // options/popup 修改池后调用
-  function invalidateFixedTags() { fixedTagsCache = null; }
+  function invalidateFixedTags() {
+    fixedTagsCache = null;
+    invalidateDomainGroups();
+  }
 
   // 同步读池（可能未加载，返回 null）
   function getFixedTags() { return fixedTagsCache; }
+
+  function normalizeTagRuleMap(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const entries = [];
+    Object.entries(raw).forEach(([rawKey, rawTags]) => {
+      const key = String(rawKey || '').trim();
+      if (!key) return;
+      const values = Array.isArray(rawTags) ? rawTags : String(rawTags || '').split(/[,，、;；]/);
+      const tags = [...new Set(values.map(normalizeTag).filter(Boolean))];
+      if (tags.length) entries.push([key, tags]);
+    });
+    return Object.fromEntries(entries);
+  }
+
+  function mergeLegacyDomainGroups(rules, legacyGroups) {
+    const merged = {
+      domain: { ...rules.domain },
+      keyword: { ...rules.keyword }
+    };
+    if (!legacyGroups || typeof legacyGroups !== 'object' || Array.isArray(legacyGroups)) return merged;
+    Object.entries(legacyGroups).forEach(([rawDomain, rawCategory]) => {
+      const domain = String(rawDomain || '').trim().toLowerCase().replace(/^www\./, '');
+      const category = normalizeTag(rawCategory);
+      if (!domain || !category) return;
+      const existing = Object.keys(merged.domain).some(key => key.toLowerCase() === domain);
+      if (!existing) merged.domain[domain] = [category];
+    });
+    return merged;
+  }
+
+  function normalizeTagRules(raw, legacyGroups) {
+    raw = raw && typeof raw === 'object' ? raw : {};
+    const rules = {
+      domain: normalizeTagRuleMap(raw.domain),
+      keyword: normalizeTagRuleMap(raw.keyword)
+    };
+    return mergeLegacyDomainGroups(rules, legacyGroups);
+  }
+
+  async function loadTagRules() {
+    if (tagRulesCache) return tagRulesCache;
+    try {
+      const r = await chrome.storage.local.get([
+        TAG_RULES_KEY, 'bmDomainGroups', LEGACY_DOMAIN_GROUPS_MIGRATED_KEY
+      ]);
+      const legacyGroups = r[LEGACY_DOMAIN_GROUPS_MIGRATED_KEY] ? null : r.bmDomainGroups;
+      tagRulesCache = normalizeTagRules(r[TAG_RULES_KEY], legacyGroups);
+    } catch (e) {
+      tagRulesCache = normalizeTagRules();
+    }
+    return tagRulesCache;
+  }
+
+  function invalidateTagRules() {
+    tagRulesCache = null;
+    invalidateDomainGroups();
+  }
+
+  function getTagRules() { return tagRulesCache; }
 
   // 归一化任意标签到池：①精确 ②大小写不敏感 ③用户标签包含池标签（子串，防短词误伤）→ 池标签；否则 FALLBACK_TAG
   function normalizeToPool(tag) {
@@ -574,6 +666,80 @@
       if (bySub) return bySub;
     }
     return FALLBACK_TAG;
+  }
+
+  function inferDomainTags(item, poolOverride) {
+    let host = String(item && item.host || '').toLowerCase().replace(/^www\./, '');
+    if (!host && item && item.url) {
+      try { host = new URL(item.url).hostname.toLowerCase().replace(/^www\./, ''); }
+      catch (e) { return []; }
+    }
+    if (!host) return [];
+    const pool = Array.isArray(poolOverride) && poolOverride.length
+      ? poolOverride
+      : (fixedTagsCache || [...DEFAULT_FIXED_TAGS, FALLBACK_TAG]);
+    const tags = [];
+    const add = name => {
+      const found = pool.find(tag => String(tag).toLowerCase() === name.toLowerCase());
+      if (found && found !== FALLBACK_TAG && !tags.includes(found) && tags.length < 3) tags.push(found);
+    };
+    DOMAIN_TAG_RULES.forEach(rule => {
+      if (rule.signals.some(signal => host.includes(signal))) rule.tags.forEach(add);
+    });
+    return tags;
+  }
+
+  function matchCustomTagRules(item, rulesOverride, poolOverride) {
+    const rules = normalizeTagRules(rulesOverride || tagRulesCache);
+    const pool = Array.isArray(poolOverride) && poolOverride.length
+      ? poolOverride
+      : (fixedTagsCache || [...DEFAULT_FIXED_TAGS, FALLBACK_TAG]);
+    let host = String(item && item.host || '').toLowerCase().replace(/^www\./, '');
+    let pathname = '';
+    if (item && item.url) {
+      try {
+        const parsed = new URL(item.url);
+        host = parsed.hostname.toLowerCase().replace(/^www\./, '') || host;
+        try { pathname = decodeURIComponent(parsed.pathname); }
+        catch (e) { pathname = parsed.pathname; }
+      } catch (e) { /* 无效 URL 仍允许标题和显式 host 参与关键字规则 */ }
+    }
+    const keywordText = [item && item.title || '', host, pathname].join(' ').toLowerCase();
+    const findTags = (map, text) => {
+      const tags = [];
+      Object.entries(map).forEach(([signal, values]) => {
+        if (!text.includes(signal.toLowerCase())) return;
+        values.forEach(value => {
+          const found = pool.find(tag => String(tag).toLowerCase() === String(value).toLowerCase());
+          if (found && found !== FALLBACK_TAG && !tags.includes(found) && tags.length < MAX_TAGS_PER_BOOKMARK) {
+            tags.push(found);
+          }
+        });
+      });
+      return tags;
+    };
+    return {
+      domain: findTags(rules.domain, host),
+      keyword: findTags(rules.keyword, keywordText)
+    };
+  }
+
+  function inferHighConfidenceTags(item, poolOverride) {
+    const pool = Array.isArray(poolOverride) && poolOverride.length
+      ? poolOverride
+      : (fixedTagsCache || [...DEFAULT_FIXED_TAGS, FALLBACK_TAG]);
+    const custom = matchCustomTagRules(item, tagRulesCache, pool);
+    const tags = [];
+    const add = value => {
+      const found = pool.find(tag => String(tag).toLowerCase() === String(value || '').toLowerCase());
+      if (found && found !== FALLBACK_TAG && !tags.includes(found) && tags.length < MAX_TAGS_PER_BOOKMARK) {
+        tags.push(found);
+      }
+    };
+    custom.domain.forEach(add);
+    inferDomainTags(item, pool).forEach(add);
+    custom.keyword.forEach(add);
+    return tags;
   }
 
   // 覆盖设置（新增/编辑抽屉保存用）：归一化到固定池、去重、限数
@@ -810,15 +976,13 @@
     return stats;
   }
 
-  // 本地规则建议标签：分类/域名组/注册域名 → 归一化到固定池（只建议池内标签）
+  // 本地建议优先级：用户域名规则 → 公共预设 → 用户关键字规则 → 通用分类。
   function suggestTags(item) {
-    const tags = [];
+    const tags = inferHighConfidenceTags(item);
     const cat = categorize(item.host || '', item.url || '', item.title || '');
     if (cat && cat !== '未分类') tags.push(cat);
-    const dg = matchDomainGroup(item.host || '');
-    if (dg && !tags.includes(dg)) tags.push(dg);
     const dom = getRegisteredDomain(item.host || '');
-    if (dom && !tags.includes(dom) && !tags.includes(dg)) tags.push(dom);
+    if (dom && !tags.includes(dom)) tags.push(dom);
     // 只保留池内且非「其他」的建议
     return [...new Set(tags.map(t => normalizeToPool(t)))].filter(t => t && t !== FALLBACK_TAG).slice(0, MAX_TAGS_PER_BOOKMARK);
   }
@@ -1228,20 +1392,25 @@
     }
     const eligibleItems = (items || []).filter(isAiEligibleItem);
     if (!eligibleItems.length) return {};
-    const base = normalizeLlmBaseUrl(cfg.baseUrl);
     // 固定标签池：AI 只能从池里选，禁止自创（收敛标签种类）
-    const pool = await loadFixedTags();
+    const [pool] = await Promise.all([loadFixedTags(), loadTagRules()]);
     const poolNoFallback = pool.filter(t => t !== FALLBACK_TAG);
+    const ruleTags = {};
+    eligibleItems.forEach(item => { ruleTags[String(item.id)] = inferHighConfidenceTags(item, pool); });
     const system = [
       '你是一个浏览器书签打标签助手。我会给你一批书签（id、标题、网址）。',
       '请为每个书签从下面的候选标签中选择 1-3 个最贴切的，不要自创任何新标签。',
+      '优先依据域名判断站点的实际用途，标题和路径只作补充；代码托管选代码，论坛平台选论坛，设计协作选设计/工作，组网或运维平台选运维/工具。',
+      '输入中若提供“本地高置信标签”，必须保留这些标签，再补充其余候选标签。',
       '候选标签：' + poolNoFallback.join('、') + '。',
       '只返回 JSON，不要任何额外说明，格式：',
       '{"results":[{"id":"<书签id>","tags":["标签1","标签2"]}]}'
     ].join('\n');
-    const list = eligibleItems.map((it, i) =>
-      `${i + 1}. [id=${it.id}] ${(it.title || '').slice(0, 80)} — ${sanitizeUrlForAI(it.url)}`
-    ).join('\n');
+    const list = eligibleItems.map((it, i) => {
+      const known = ruleTags[String(it.id)];
+      const hint = known.length ? `；本地高置信标签=${known.join('、')}` : '';
+      return `${i + 1}. [id=${it.id}] ${(it.title || '').slice(0, 80)} — ${sanitizeUrlForAI(it.url)}${hint}`;
+    }).join('\n');
     const user = '请给以下书签打标签：\n' + list;
     const body = {
       model: cfg.model,
@@ -1249,12 +1418,30 @@
       temperature: 0.2
     };
     try { body.response_format = { type: 'json_object' }; } catch (e) { /* noop */ }
-    const resp = await chatWithFallback(body, cfg);
-    const data = await parseJsonResp(resp, 'LLM', base);
-    let content = '';
-    try { content = data.choices[0].message.content || ''; }
-    catch (e) { throw new Error('LLM 响应格式异常（缺少 choices[0].message.content）'); }
-    return parseAiTags(content, eligibleItems);
+    const ruleOnly = Object.fromEntries(Object.entries(ruleTags).filter(([, tags]) => tags.length));
+    try {
+      const base = normalizeLlmBaseUrl(cfg.baseUrl);
+      const resp = await chatWithFallback(body, cfg);
+      const data = await parseJsonResp(resp, 'LLM', base);
+      let content = '';
+      try { content = data.choices[0].message.content || ''; }
+      catch (e) { throw new Error('LLM 响应格式异常（缺少 choices[0].message.content）'); }
+      const aiTags = parseAiTags(content, eligibleItems);
+      const merged = {};
+      eligibleItems.forEach(item => {
+        const id = String(item.id);
+        const tags = [...new Set([...(ruleTags[id] || []), ...(aiTags[id] || [])])];
+        const meaningful = tags.filter(tag => tag !== FALLBACK_TAG);
+        const clean = (meaningful.length ? meaningful : tags).slice(0, 3);
+        if (clean.length) merged[id] = clean;
+      });
+      return merged;
+    } catch (e) {
+      if (Object.keys(ruleOnly).length === eligibleItems.length) return ruleOnly;
+      const error = e instanceof Error ? e : new Error(String(e));
+      error.ruleTags = ruleOnly;
+      throw error;
+    }
   }
 
   // AI 批量打标：分批调用 aiTag，遇 429/限流指数退避重试，避免单次 token 超限
@@ -1287,7 +1474,14 @@
           }
         }
       }
-      if (!map && lastErr) throw lastErr;
+      if (!map && lastErr) {
+        const ruleTags = lastErr.ruleTags || {};
+        if (Object.keys(ruleTags).length) {
+          if (opts.onBatch) await opts.onBatch(ruleTags, Math.min(i + batch.length, total), total);
+          Object.assign(out, ruleTags);
+        }
+        throw lastErr;
+      }
       if (opts.onBatch) {
         await opts.onBatch(map || {}, Math.min(i + batch.length, total), total);
       }
@@ -1468,17 +1662,17 @@
     const tags = (await loadTags()) || {};
     const hiddenIds = [...(await loadHiddenIds())];
     const fixedTags = (await loadFixedTags()).filter(t => t !== FALLBACK_TAG);
-    const domainGroups = (await loadDomainGroups()) || {};
+    const tagRules = (await loadTagRules()) || {};
     const data = {
       app: BACKUP_APP,
-      version: 2,               // v2：增加标签/隐藏/标签池/域名分组
+      version: 3,               // v3：增加统一域名与关键字标签规则
       exportedAt: Date.now(),
       bookmarks: tree,
       trash,
       tags,                     // { 旧bookmarkId: [标签] } —— 导入时按 id 映射恢复
       hiddenIds,
       fixedTags,
-      domainGroups
+      tagRules
     };
     return { json: JSON.stringify(data, null, 2), count: countBookmarks(tree) };
   }
@@ -1646,9 +1840,25 @@
           } catch (e) { /* ignore */ }
         }
       }
-      // 域名分组（全局覆盖）
-      if (data.domainGroups && typeof data.domainGroups === 'object') {
-        try { await chrome.storage.local.set({ bmDomainGroups: data.domainGroups }); invalidateDomainGroups(); } catch (e) { /* ignore */ }
+      // v3 的统一规则直接恢复；旧 v2 没有关键字规则，导入时保留当前关键字配置。
+      if ((data.tagRules && typeof data.tagRules === 'object') ||
+        (data.domainGroups && typeof data.domainGroups === 'object')) {
+        try {
+          const hasUnifiedRules = data.tagRules && typeof data.tagRules === 'object' && !Array.isArray(data.tagRules);
+          let rules;
+          if (hasUnifiedRules) {
+            rules = normalizeTagRules(data.tagRules, data.domainGroups);
+          } else {
+            const current = await chrome.storage.local.get(TAG_RULES_KEY);
+            const currentRules = normalizeTagRules(current[TAG_RULES_KEY]);
+            rules = normalizeTagRules({ domain: data.domainGroups, keyword: currentRules.keyword });
+          }
+          await chrome.storage.local.set({
+            [TAG_RULES_KEY]: rules,
+            [LEGACY_DOMAIN_GROUPS_MIGRATED_KEY]: true
+          });
+          invalidateTagRules();
+        } catch (e) { /* ignore */ }
       }
     }
     return stats;
@@ -1665,12 +1875,26 @@
     } catch (e) { /* ignore */ }
   }
 
-  // ---- storage 版本迁移钩子（预留：后续 schema 变更时在此迁移） ----
-  const STORAGE_VERSION = 1;
+  // ---- storage 版本迁移 ----
+  const STORAGE_VERSION = 3;
   async function migrateStorage() {
     try {
-      const r = await chrome.storage.local.get('bmStorageVersion');
-      if (!r.bmStorageVersion) await chrome.storage.local.set({ bmStorageVersion: STORAGE_VERSION });
+      const r = await chrome.storage.local.get([
+        'bmStorageVersion', FIXED_TAGS_KEY, TAG_RULES_KEY,
+        'bmDomainGroups', LEGACY_DOMAIN_GROUPS_MIGRATED_KEY
+      ]);
+      const version = Number(r.bmStorageVersion) || 0;
+      if (version >= STORAGE_VERSION && r[LEGACY_DOMAIN_GROUPS_MIGRATED_KEY]) return;
+      const updates = { bmStorageVersion: STORAGE_VERSION };
+      const upgradedTags = upgradeDefaultFixedTags(r[FIXED_TAGS_KEY]);
+      if (upgradedTags !== r[FIXED_TAGS_KEY]) updates[FIXED_TAGS_KEY] = upgradedTags;
+      if (version < 3 || !r[LEGACY_DOMAIN_GROUPS_MIGRATED_KEY]) {
+        updates[TAG_RULES_KEY] = normalizeTagRules(r[TAG_RULES_KEY], r.bmDomainGroups);
+        updates[LEGACY_DOMAIN_GROUPS_MIGRATED_KEY] = true;
+      }
+      await chrome.storage.local.set(updates);
+      if (updates[FIXED_TAGS_KEY]) invalidateFixedTags();
+      if (updates[TAG_RULES_KEY]) invalidateTagRules();
     } catch (e) { /* ignore */ }
   }
 
@@ -1709,13 +1933,22 @@
     unionTagLists,
     normalizeTag,
     FIXED_TAGS_KEY,
+    TAG_RULES_KEY,
+    LEGACY_DEFAULT_FIXED_TAGS,
     DEFAULT_FIXED_TAGS,
+    DOMAIN_TAG_RULES,
     FALLBACK_TAG,
     MAX_FIXED_TAGS,
     loadFixedTags,
     invalidateFixedTags,
     getFixedTags,
+    loadTagRules,
+    invalidateTagRules,
+    getTagRules,
+    normalizeTagRules,
+    matchCustomTagRules,
     normalizeToPool,
+    upgradeDefaultFixedTags,
     loadHiddenIds,
     invalidateHiddenIds,
     isHidden,
@@ -1730,6 +1963,8 @@
     clearTags,
     getTagStats,
     suggestTags,
+    inferDomainTags,
+    inferHighConfidenceTags,
     getTagSyncEnabled,
     pushTagsToCloud,
     pullTagsFromCloud,

@@ -89,11 +89,12 @@
     const tree = await chrome.bookmarks.getTree();
     const { items, emptyFolders } = collectItemsAndEmptyFolders(tree);
 
-    // 四份配置相互独立；并行加载可缩短首次扫描的 storage 等待时间。
+    // 配置相互独立；并行加载可缩短首次扫描的 storage 等待时间。
     await Promise.all([
       Promise.resolve().then(() => BM.loadDomainGroups()).catch(() => {}),
       Promise.resolve().then(() => BM.loadTags()).catch(() => {}),
       Promise.resolve().then(() => BM.loadFixedTags()).catch(() => {}),
+      Promise.resolve().then(() => BM.loadTagRules()).catch(() => {}),
       Promise.resolve().then(() => BM.loadHiddenIds()).catch(() => {})
     ]);
 

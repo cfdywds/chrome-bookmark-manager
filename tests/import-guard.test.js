@@ -14,6 +14,69 @@ function restoreChrome(previous) {
 }
 
 describe('备份恢复创建保护', () => {
+  it('导入 V2 域名分组时保留现有关键字规则', async () => {
+    const previousChrome = globalThis.chrome;
+    const store = {
+      bmTagRules: { domain: { current: ['工作'] }, keyword: { release: ['资讯'] } }
+    };
+    const get = vi.fn(async keys => {
+      const result = {};
+      (Array.isArray(keys) ? keys : [keys]).forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(store, key)) result[key] = store[key];
+      });
+      return result;
+    });
+    const set = vi.fn(async values => Object.assign(store, values));
+    globalThis.chrome = {
+      bookmarks: { getTree: vi.fn().mockResolvedValue([{ children: [{ id: 'bar', title: '书签栏', children: [] }] }]) },
+      storage: { local: { get, set }, sync: { get: vi.fn().mockResolvedValue({}) } },
+      runtime: { sendMessage: vi.fn().mockResolvedValue(undefined) }
+    };
+
+    try {
+      new Function(libCode)();
+      await globalThis.BM.importBookmarksJSON(JSON.stringify({
+        app: 'bookmark-manager', version: 2, bookmarks: [], domainGroups: { legacy: '代码' }
+      }));
+      expect(store.bmTagRules).toEqual({ domain: { legacy: ['代码'] }, keyword: { release: ['资讯'] } });
+      expect(store.bmDomainGroupsMigrated).toBe(true);
+    } finally {
+      restoreChrome(previousChrome);
+    }
+  });
+
+  it('导入 V3 统一规则时恢复域名和关键字规则', async () => {
+    const previousChrome = globalThis.chrome;
+    const store = { bmTagRules: { domain: { current: ['工作'] }, keyword: {} } };
+    const get = vi.fn(async keys => {
+      const result = {};
+      (Array.isArray(keys) ? keys : [keys]).forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(store, key)) result[key] = store[key];
+      });
+      return result;
+    });
+    const set = vi.fn(async values => Object.assign(store, values));
+    globalThis.chrome = {
+      bookmarks: { getTree: vi.fn().mockResolvedValue([{ children: [{ id: 'bar', title: '书签栏', children: [] }] }]) },
+      storage: { local: { get, set }, sync: { get: vi.fn().mockResolvedValue({}) } },
+      runtime: { sendMessage: vi.fn().mockResolvedValue(undefined) }
+    };
+
+    try {
+      new Function(libCode)();
+      await globalThis.BM.importBookmarksJSON(JSON.stringify({
+        app: 'bookmark-manager', version: 3, bookmarks: [],
+        tagRules: { domain: { corp: ['工作', '代码'] }, keyword: { release: ['资讯'] } }
+      }));
+      expect(store.bmTagRules).toEqual({
+        domain: { corp: ['工作', '代码'] }, keyword: { release: ['资讯'] }
+      });
+      expect(store.bmDomainGroupsMigrated).toBe(true);
+    } finally {
+      restoreChrome(previousChrome);
+    }
+  });
+
   it('默认合并完整 URL 并合并标签，显式选择后才保留副本', async () => {
     const previousChrome = globalThis.chrome;
     const store = {

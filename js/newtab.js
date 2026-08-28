@@ -288,7 +288,7 @@
   let syncTimer = null;
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
-    const keys = ['bmTags', 'bmHiddenIds', 'bmFixedTags', 'bmDomainGroups'];
+    const keys = ['bmTags', 'bmHiddenIds', 'bmFixedTags', 'bmTagRules'];
     if (!keys.some(k => changes[k])) return;
     clearTimeout(syncTimer);
     syncTimer = setTimeout(async () => {
@@ -296,7 +296,7 @@
         window.BM.invalidateTags && window.BM.invalidateTags();
         window.BM.invalidateHiddenIds && window.BM.invalidateHiddenIds();
         window.BM.invalidateFixedTags && window.BM.invalidateFixedTags();
-        window.BM.invalidateDomainGroups && window.BM.invalidateDomainGroups();
+        window.BM.invalidateTagRules && window.BM.invalidateTagRules();
         DATA = await window.BMAnalyzer.analyze();
         render();
       } catch (e) { /* 忽略同步失败 */ }
@@ -314,10 +314,10 @@
 
   // 初始化：加载配置 + 分析书签
   (async function init() {
-    try { await window.BM.loadDomainGroups(); } catch (e) { /* 默认规则 */ }
     try { await window.BM.pullTagsFromCloud(); } catch (e) { /* 保留本地标签 */ }
     try { await window.BM.loadTags(); } catch (e) { /* 无标签 */ }
     try { await window.BM.loadFixedTags(); } catch (e) { /* 默认池 */ }
+    try { await window.BM.loadTagRules(); } catch (e) { /* 无自定义规则 */ }
     try {
       DATA = await window.BMAnalyzer.analyze();
       render();

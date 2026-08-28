@@ -98,11 +98,32 @@ function toast(msg, type, action) {
   }, action ? 10000 : 2600); // 可撤销操作给足 10s 窗口
 }
 
-function showPersistentError(title, detail) {
+function showPersistentError(title, detail, action) {
   $('#operationNoticeTitle').textContent = title;
   $('#operationNoticeDetail').textContent = detail;
+  const actionButton = $('#operationNoticeAction');
+  if (actionButton) {
+    if (action) {
+      actionButton.textContent = action.label;
+      actionButton.onclick = action.onClick;
+      actionButton.classList.remove('hidden');
+    } else {
+      actionButton.onclick = null;
+      actionButton.classList.add('hidden');
+    }
+  }
   $('#operationNotice').classList.remove('hidden');
   $('#app').classList.add('has-operation-notice');
+}
+
+function clearPersistentError() {
+  const actionButton = $('#operationNoticeAction');
+  if (actionButton) {
+    actionButton.onclick = null;
+    actionButton.classList.add('hidden');
+  }
+  $('#operationNotice').classList.add('hidden');
+  $('#app').classList.remove('has-operation-notice');
 }
 
 // 与标签页的“未打标”口径一致：没有有效标签，或仅有“其他”，都应继续交给 AI 打标。
@@ -116,6 +137,103 @@ function getAiTagTargets(force) {
   // 常规打标始终排除隐藏书签；全量重打才包含隐藏书签。
   const scope = items.filter(item => !item.hidden);
   return scope.filter(isAiTagPending);
+}
+
+function getCustomRuleCount() {
+  const rules = BM.getTagRules ? (BM.getTagRules() || {}) : {};
+  return Object.keys(rules.domain || {}).length + Object.keys(rules.keyword || {}).length;
+}
+
+// 同址书签统一处理：标题不同仍可命中不同规则，但最终标签保持一致。
+function collectCustomRuleApplications(mode) {
+  const tagsById = BM.getTags() || {};
+  const groups = new Map();
+  ((DATA && DATA.items) || []).forEach(item => {
+    const key = item.key || BM.urlKey(item.url || '') || ('bookmark:' + item.id);
+    const list = groups.get(key);
+    if (list) list.push(item);
+    else groups.set(key, [item]);
+  });
+
+  const changes = {};
+  let matched = 0;
+  groups.forEach(items => {
+    const ruleTags = BM.unionTagLists(items.map(item => {
+      const result = BM.matchCustomTagRules({ host: item.host, url: item.url, title: item.title });
+      return [...(result.domain || []), ...(result.keyword || [])];
+    }));
+    if (!ruleTags.length) return;
+    matched += items.length;
+
+    const current = BM.unionTagLists(items.map(item => tagsById[item.id] || item.tags || []));
+    const hasMeaningfulTag = current.some(tag => tag && tag !== BM.FALLBACK_TAG);
+    if (mode === 'untagged' && hasMeaningfulTag) return;
+    const next = mode === 'append' ? BM.unionTagLists([current, ruleTags]) : ruleTags;
+    items.forEach(item => {
+      const existing = tagsById[item.id] || item.tags || [];
+      if (existing.length !== next.length || existing.some((tag, index) => tag !== next[index])) {
+        changes[item.id] = next;
+      }
+    });
+  });
+  return { matched, changes, changed: Object.keys(changes).length };
+}
+
+async function applyCustomRules(trigger) {
+  const originalText = trigger ? trigger.textContent : '';
+  if (trigger) {
+    trigger.disabled = true;
+    trigger.textContent = '读取规则…';
+  }
+  try {
+    await Promise.all([BM.loadTags(), BM.loadFixedTags(), BM.loadTagRules()]);
+    if (!getCustomRuleCount()) {
+      toast('请先在设置中配置至少一条自定义规则', 'warn');
+      return;
+    }
+
+    const previews = {
+      append: collectCustomRuleApplications('append'),
+      replace: collectCustomRuleApplications('replace'),
+      untagged: collectCustomRuleApplications('untagged')
+    };
+    const matched = previews.append.matched;
+    if (!matched) {
+      toast('没有书签命中当前自定义规则', 'warn');
+      return;
+    }
+    if (trigger) trigger.textContent = '选择策略…';
+    const choice = await confirmDialog({
+      title: '应用自定义规则',
+      message: `命中 <b>${matched}</b> 个书签；全程在本地处理，不调用 AI。<br>`
+        + `仅未标：${previews.untagged.changed} 项；追加：${previews.append.changed} 项；覆盖：${previews.replace.changed} 项。`,
+      confirmText: '追加',
+      thirdText: '覆盖',
+      fourthText: '仅未标',
+      danger: false
+    });
+    const mode = choice === true ? 'append' : choice === 'third' ? 'replace' : choice === 'fourth' ? 'untagged' : '';
+    if (!mode) return;
+
+    const result = collectCustomRuleApplications(mode);
+    if (!result.changed) {
+      toast('没有需要更新的标签', 'ok');
+      return;
+    }
+    const saved = await BM.setTagsBatch(result.changes);
+    if (!saved) throw new Error('标签保存失败');
+    const modeLabel = mode === 'append' ? '追加' : mode === 'replace' ? '覆盖' : '补全未标';
+    toast(`已按自定义规则${modeLabel} ${result.changed} 个书签`, 'ok');
+    refresh();
+  } catch (e) {
+    toast('应用规则失败：' + (e.message || e), 'danger');
+    try { BM.logError('apply-custom-rules', e); } catch (e2) { /* ignore */ }
+  } finally {
+    if (trigger && document.contains(trigger)) {
+      trigger.disabled = false;
+      trigger.textContent = originalText;
+    }
+  }
 }
 
 // 自定义确认弹层（替代原生 confirm，视觉统一、可定制文案）
@@ -135,10 +253,17 @@ function confirmDialog(opts) {
     } else {
       third.classList.add('hidden');
     }
+    const fourth = $('#confirmFourth');
+    if (opts.fourthText) {
+      fourth.textContent = opts.fourthText;
+      fourth.classList.remove('hidden');
+    } else {
+      fourth.classList.add('hidden');
+    }
     wrap.classList.remove('hidden');
     const done = v => {
       wrap.classList.add('hidden');
-      yes.onclick = no.onclick = wrap.onclick = third.onclick = null;
+      yes.onclick = no.onclick = wrap.onclick = third.onclick = fourth.onclick = null;
       document.removeEventListener('keydown', onKey);
       resolve(v);
     };
@@ -147,6 +272,7 @@ function confirmDialog(opts) {
     yes.onclick = () => done(true);
     no.onclick = () => done(false);
     if (opts.thirdText) third.onclick = () => done('third');
+    if (opts.fourthText) fourth.onclick = () => done('fourth');
     wrap.addEventListener('click', e => { if (e.target === wrap) done(false); });
     document.addEventListener('keydown', onKey);
     yes.focus();
@@ -710,11 +836,13 @@ function renderTags() {
   const entries = entriesAll.filter(([t]) => poolSet.has(t));
   const looseCount = entriesAll.reduce((s, [t, n]) => s + (poolSet.has(t) ? 0 : n), 0);
   const untaggedCount = getAiTagTargets(false).length;
+  const customRuleCount = getCustomRuleCount();
   if (!entries.length && !looseCount) {
     content().innerHTML = emptyState(ICON('tag'), '还没有标签', '给书签打标签后即可按标签快速浏览（一个书签可多个标签）') + `
       <div class="section-toolbar" style="margin-top:14px;">
         <span class="sec-title">${untaggedCount} 个书签未打标 ${helpDot('可在新增或编辑书签时填写标签，或使用 AI 批量打标。')}</span>
         ${hiddenCount ? `<button class="btn small ghost" data-action="toggle-hidden-view">👁 隐藏（${hiddenCount}）</button>` : ''}
+        ${customRuleCount ? `<button class="btn small ghost" data-action="apply-custom-rules">⚡ 应用规则</button>` : ''}
         <button class="btn small primary" data-action="ai-tag-all">🤖 AI 批量打标</button>
       </div>`;
     return;
@@ -735,6 +863,10 @@ function renderTags() {
       </span>
     </div>
     <div class="tag-summary-bar"><div class="tag-summary-bar-fill" style="width:${pct}%"></div></div>
+    ${customRuleCount ? `<div class="tag-summary-tip">
+      <span>已配置 <b>${customRuleCount}</b> 条自定义规则，可批量应用到已有书签，不调用 AI。</span>
+      <button class="btn small primary" data-action="apply-custom-rules">⚡ 应用规则</button>
+    </div>` : ''}
     ${looseCount ? `<div class="tag-summary-tip">
       <span><span class="dot" style="background:var(--warn)"></span><b>${looseCount}</b> 个书签有散落标签（不在固定池内），池外会归到「其他」</span>
       <button class="btn small primary" data-action="migrate-tags">🧹 立即收敛</button>
@@ -1609,6 +1741,8 @@ async function init() {
         // 全量重打：覆盖所有书签标签
         if (aiTagRunning) aiTagCancel = true;
         else aiTagAll(true);
+      } else if (action === 'apply-custom-rules') {
+        applyCustomRules(btn);
       } else if (action === 'migrate-tags') {
         migrateTags();
       } else if (action === 'toggle-hidden') {
@@ -1875,9 +2009,19 @@ async function init() {
           if (p && !SETTINGS.model) SETTINGS.model = p.model;
         }
       }
-      // 域名优先分组配置变更：失效缓存，下次 analyze 用新配置
-      if (area === 'local' && changes.bmDomainGroups) {
-        try { BM.invalidateDomainGroups(); } catch (e) { /* noop */ }
+      if (area === 'local' && changes.bmFixedTags) {
+        try { BM.invalidateFixedTags(); } catch (e) { /* noop */ }
+        try {
+          if (BM.loadFixedTags) BM.loadFixedTags().then(() => {
+            const manager = $('#tagMgrWrap');
+            if (manager && !manager.classList.contains('hidden')) openTagManager();
+          }).catch(() => {});
+        } catch (e) { /* noop */ }
+      }
+      if (area === 'local' && changes.bmTagRules) {
+        try { BM.invalidateTagRules(); } catch (e) { /* noop */ }
+        try { if (BM.loadTagRules) BM.loadTagRules().catch(() => {}); } catch (e) { /* noop */ }
+        refresh();
       }
       if (area === 'local' && changes.bmTags) {
         try { BM.invalidateTags(); } catch (e) { /* noop */ }
@@ -1900,7 +2044,10 @@ async function init() {
 // ---------- 设置：读取（设置 UI 已迁移至独立 options.html 选项页）----------
 async function loadSettings() {
   try {
-    const r = await chrome.storage.local.get('bmSettings');
+    const [r] = await Promise.all([
+      chrome.storage.local.get('bmSettings'),
+      BM.loadTagRules ? BM.loadTagRules() : Promise.resolve()
+    ]);
     if (r.bmSettings) {
       SETTINGS = Object.assign({ provider: 'deepseek', baseUrl: '', apiKey: '', model: '' }, r.bmSettings);
       const p = PROVIDERS[SETTINGS.provider];
@@ -2218,15 +2365,25 @@ async function saveAdd() {
 // ---------- AI 批量打标：force=false 只打未打标；force=true 全量重打（覆盖） ----------
 let aiTagRunning = false;
 let aiTagCancel = false;   // 终止标志：为 true 时停止发起新批次，已成功的结果保留
+let aiResumeState = null;  // 失败后仅保留尚未成功写入的代表书签，避免从头请求
+let aiTagStarting = false; // 权限检查与确认期间也占用启动锁，避免重复点击续打
 
-async function aiTagAll(force) {
-  if (aiTagRunning) return;
+function claimAiTagStart() {
+  if (aiTagRunning || aiTagStarting) return false;
+  aiTagStarting = true;
+  return true;
+}
+
+async function aiTagAll(force, resumeItems) {
+  if (!claimAiTagStart()) return;
+  try {
   await settingsReady;
   if (aiTagRunning) return;
   aiTagCancel = false;
+  const isResume = Array.isArray(resumeItems);
   // 选择目标书签：force=true → 全部；否则与标签页“未打标”计数保持同一口径。
-  const targets = getAiTagTargets(force);
-  if (!targets.length) { toast(force ? '没有书签' : '所有书签都已打标 ✓', 'ok'); return; }
+  const targets = isResume ? resumeItems : getAiTagTargets(force);
+  if (!targets.length) { toast(isResume || force ? '没有待处理书签' : '所有书签都已打标 ✓', 'ok'); return; }
   if (!SETTINGS.apiKey || !SETTINGS.baseUrl || !SETTINGS.model) {
     toast('请先在 ⚙️ 设置中配置 LLM API', 'warn');
     try { chrome.runtime.openOptionsPage(); } catch (e) { /* noop */ }
@@ -2263,7 +2420,7 @@ async function aiTagAll(force) {
   const affectedCount = new Set([...siblingsByKey.values()].flatMap(items => items.map(it => it.id))).size;
   const representativeById = new Map(aiBatch.map(it => [String(it.id), it]));
 
-  const ok = await confirmDialog({
+  const ok = isResume || await confirmDialog({
     title: force ? `全量重新打标 ${affectedCount} 个书签？` : `AI 批量打标 ${affectedCount} 个书签？`,
     message: (force
       ? `⚠️ 将<b>覆盖</b> ${affectedCount} 个书签的现有标签，重新生成 1-3 个标签。`
@@ -2275,6 +2432,8 @@ async function aiTagAll(force) {
   });
   if (!ok) return;
 
+  aiResumeState = null;
+  clearPersistentError();
   aiTagRunning = true;
   const btns = document.querySelectorAll('[data-action="ai-tag-all"], [data-action="ai-tag-all-force"]');
   btns.forEach(b => { b.disabled = false; b.textContent = '⏹ 终止打标'; });
@@ -2282,7 +2441,7 @@ async function aiTagAll(force) {
     onCancel: () => { aiTagCancel = true; }
   });
   let applied = 0;
-  let processed = 0;
+  const completedRepresentatives = new Set();
   try {
     // 每批 AI 成功后立即批量落盘；后续批次失败不影响已保存结果。
     // aiBatch 已是同址去重后的代表书签集；结果按 urlKey 回填到同址全部书签。
@@ -2290,24 +2449,27 @@ async function aiTagAll(force) {
       batchSize: 40,
       retries: 2,
       shouldStop: () => aiTagCancel,
-      onBatch: async (map, done) => {
-        processed = done;
+      onBatch: async map => {
         const changes = {};
         const updated = [];
+        const completedInBatch = new Set();
         for (const [id, tags] of Object.entries(map)) {
           const rep = representativeById.get(String(id));
-          if (!rep || !tags || !tags.length) continue;
+          // 仅有“其他”仍视为未打标，保留给失败后的继续打标。
+          if (!rep || !Array.isArray(tags) || isAiTagPending({ tags })) continue;
           const siblings = siblingsByKey.get(rep.key || BM.urlKey(rep.url)) || [rep];
           const nextTags = mergeAiTagsWithSameUrl(siblings, tags, force);
           for (const it of siblings) {
             changes[it.id] = nextTags;
             updated.push({ it, tags: nextTags });
           }
+          completedInBatch.add(String(id));
         }
         if (!updated.length) return;
         const saved = await BM.setTagsBatch(changes);
         if (!saved) throw new Error('标签保存失败，请重试');
         updated.forEach(({ it, tags }) => { it.tags = tags; });
+        completedInBatch.forEach(id => completedRepresentatives.add(id));
         applied += updated.length;
       },
       onProgress: (ratio, done, total) => {
@@ -2315,18 +2477,46 @@ async function aiTagAll(force) {
       }
     });
     endProgress();
-    if (aiTagCancel) {
-      const remain = aiBatch.length - processed;
-      toast(`已终止：保留 ${applied} 个结果，剩余 ${remain} 个未处理`, 'warn');
+    const remainingItems = getPendingAiRepresentatives(aiBatch, completedRepresentatives);
+    if (remainingItems.length) {
+      const title = aiTagCancel ? 'AI 打标已终止' : 'AI 打标未完成';
+      const detail = aiTagCancel
+        ? `已保留 ${applied} 个结果，仍有 ${remainingItems.length} 个待处理。`
+        : `已保留 ${applied} 个结果；模型未返回 ${remainingItems.length} 个书签的有效标签。`;
+      aiResumeState = { force, items: remainingItems };
+      showPersistentError(title, detail, {
+        label: '继续打标（' + remainingItems.length + '）',
+        onClick: () => {
+          if (aiTagRunning || aiTagStarting || !aiResumeState) return;
+          const state = aiResumeState;
+          aiTagAll(state.force, state.items);
+        }
+      });
+      toast(detail, 'warn');
     } else {
       toast((force ? '全量重打完成：已为 ' : 'AI 已为 ') + applied + ' 个书签打标 ✓', 'ok');
+      aiResumeState = null;
     }
     refresh();
   } catch (e) {
     endProgress();
     const error = e.message || e;
     const title = applied ? 'AI 打标未完成，已保留 ' + applied + ' 个结果' : 'AI 打标失败';
-    showPersistentError(title, error);
+    const remainingItems = getPendingAiRepresentatives(aiBatch, completedRepresentatives);
+    if (remainingItems.length) {
+      aiResumeState = { force, items: remainingItems };
+      showPersistentError(title, error, {
+        label: '继续打标（' + remainingItems.length + '）',
+        onClick: () => {
+          if (aiTagRunning || aiTagStarting || !aiResumeState) return;
+          const state = aiResumeState;
+          aiTagAll(state.force, state.items);
+        }
+      });
+    } else {
+      aiResumeState = null;
+      showPersistentError(title, error);
+    }
     if (applied) refresh();
     try { BM.logError('ai-tag-all', e); } catch (e2) { /* ignore */ }
   } finally {
@@ -2334,6 +2524,9 @@ async function aiTagAll(force) {
     aiTagCancel = false;
     const btns = document.querySelectorAll('[data-action="ai-tag-all"], [data-action="ai-tag-all-force"]');
     btns.forEach(b => { b.disabled = false; b.textContent = b.dataset.action === 'ai-tag-all-force' ? '🔄 全量重新打标' : '🤖 AI 批量打标'; });
+  }
+  } finally {
+    aiTagStarting = false;
   }
 }
 
@@ -2391,6 +2584,10 @@ function mergeAiTagsWithSameUrl(siblings, aiTags, force) {
     ...(siblings || []).map(item => tagsById[item.id] || item.tags || []),
     aiTags
   ]);
+}
+
+function getPendingAiRepresentatives(items, completedIds) {
+  return (items || []).filter(item => !completedIds.has(String(item.id)));
 }
 
 // 同址（urlKey 相同）标签统一：某书签标签变更后，把并集写回同址全部书签，避免同址不同标。

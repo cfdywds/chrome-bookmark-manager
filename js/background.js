@@ -10,10 +10,15 @@ if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
 
 // ---- 接管 ⭐ 收藏按钮：后台默认打标，不打开侧边栏或新增抽屉 ----
 const STAR_HOOK_KEY = 'bmStarHook';   // storage.local 键，true/false，默认 true
+const AUTO_AI_TAG_KEY = 'bmAutoAiTag'; // 明确开启后，普通浏览器收藏才允许静默请求 LLM
 const TAGS_KEY = 'bmTags';
 const FIXED_TAGS_KEY = 'bmFixedTags';
+const TAG_RULES_KEY = 'bmTagRules';
+const LEGACY_DOMAIN_GROUPS_MIGRATED_KEY = 'bmDomainGroupsMigrated';
 const TAG_MUTATION_MESSAGE = 'bmTagMutation';
 const FALLBACK_TAG = '其他';
+const MAX_FIXED_TAGS = 50;
+const MAX_TAGS_PER_BOOKMARK = 6;
 const AUTO_TAG_BATCH_DELAY_MS = 200;
 const SYNC_ENABLED_KEY = 'bmSyncEnabled';
 const SYNC_TAG_PREFIX = 'bmSyncTag_p';
@@ -21,10 +26,23 @@ const SYNC_TAG_CNT = 'bmSyncTag_cnt';
 const SYNC_STATUS_KEY = 'bmTagSyncStatus';
 const SYNC_CHUNK_CHARS = 2500;
 const SYNC_TAG_DELAY_MS = 1500;
-const DEFAULT_FIXED_TAGS = [
+const LEGACY_DEFAULT_FIXED_TAGS = [
   'AI', '前端', '后端', '移动端', 'JAVA', 'Python', '数据库', '运维', '安全', '设计',
   '学习', '教程', '工具', '效率', '工作', '资讯', '阅读', '视频', '娱乐', '生活', '社交', '博客',
   'linux.do', 'GitHub', '掘金', '知乎', 'V2EX', '中转站', 'Telegram', '微信公众号'
+];
+const DEFAULT_FIXED_TAGS = [
+  'AI', '代码', '前端', '后端', '移动端', 'JAVA', 'Python', '数据库', '运维', '安全', '设计',
+  '学习', '教程', '工具', '效率', '工作', '资讯', '阅读', '视频', '娱乐', '生活', '社交', '论坛', '博客'
+];
+const DOMAIN_TAG_RULES = [
+  { signals: ['figma', 'mastergo', 'js.design', 'modao'], tags: ['设计', '工作'] },
+  { signals: ['github', 'gitlab', 'gitee', 'bitbucket', 'codeberg', 'sourceforge'], tags: ['代码'] },
+  { signals: ['reddit', 'discourse', 'stackoverflow', 'stackexchange', 'segmentfault'], tags: ['论坛'] },
+  { signals: ['tailscale', 'zerotier', 'wireguard'], tags: ['运维', '工具'] },
+  { signals: ['docker', 'kubernetes', 'rancher', 'jenkins', 'grafana'], tags: ['运维'] },
+  { signals: ['notion', 'feishu', 'dingtalk', 'yuque', 'shimo'], tags: ['工作', '效率'] },
+  { signals: ['openai', 'anthropic', 'deepseek', 'huggingface'], tags: ['AI'] }
 ];
 const BACKGROUND_TAG_HINTS = [
   ['AI', ['openai', 'chatgpt', 'claude', 'gemini', 'deepseek', 'qwen', 'ollama', 'huggingface', 'llm', '大模型', '人工智能']],
@@ -47,14 +65,7 @@ const BACKGROUND_TAG_HINTS = [
   ['娱乐', ['game', '游戏', '娱乐', 'music', '音乐']],
   ['社交', ['twitter', 'x.com', 'weibo', '微博', 'zhihu', '知乎', 'reddit', 'discord']],
   ['博客', ['blog', '博客', 'medium', 'substack']],
-  ['GitHub', ['github.com']],
-  ['掘金', ['juejin']],
-  ['知乎', ['zhihu.com']],
-  ['V2EX', ['v2ex']],
-  ['linux.do', ['linux.do']],
-  ['Telegram', ['telegram', 't.me']],
-  ['微信公众号', ['mp.weixin', '公众号']],
-  ['中转站', ['v2ray', 'clash', 'shadowsocks', '机场', 'vpn']]
+  ['运维', ['v2ray', 'clash', 'shadowsocks', 'vpn']]
 ];
 let tagMutationQueue = Promise.resolve();
 let autoTagFlushTimer = null;
@@ -129,47 +140,48 @@ function serializeBackgroundSyncTags(tags) {
   return out;
 }
 
-async function isBackgroundTagSyncEnabled() {
-  const synced = await chrome.storage.sync.get(SYNC_ENABLED_KEY);
+async function isBackgroundTagSyncEnabled(api) {
+  const synced = await api.storage.sync.get(SYNC_ENABLED_KEY);
   if (synced[SYNC_ENABLED_KEY]) return true;
-  const local = await chrome.storage.local.get(SYNC_ENABLED_KEY);
+  const local = await api.storage.local.get(SYNC_ENABLED_KEY);
   if (!local[SYNC_ENABLED_KEY]) return false;
-  await chrome.storage.sync.set({ [SYNC_ENABLED_KEY]: true });
+  await api.storage.sync.set({ [SYNC_ENABLED_KEY]: true });
   return true;
 }
 
-async function setBackgroundTagSyncStatus(lastError) {
+async function setBackgroundTagSyncStatus(api, lastError) {
   const at = Date.now();
   const status = lastError
     ? { lastError: String(lastError), at }
     : { lastError: '', at, lastSuccessAt: at };
   try {
-    await chrome.storage.local.set({ [SYNC_STATUS_KEY]: status });
+    await api.storage.local.set({ [SYNC_STATUS_KEY]: status });
   } catch (e) { /* 保留原始同步错误 */ }
 }
 
-async function pushBackgroundTagsToCloud() {
+async function pushBackgroundTagsToCloud(api) {
   try {
-    if (!await isBackgroundTagSyncEnabled()) return false;
+    if (!await isBackgroundTagSyncEnabled(api)) return false;
     const [stored, tree] = await Promise.all([
-      chrome.storage.local.get(TAGS_KEY),
-      chrome.bookmarks.getTree()
+      api.storage.local.get(TAGS_KEY),
+      api.bookmarks.getTree()
     ]);
     const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
-    await chrome.storage.sync.set(serializeBackgroundSyncTags(projectTagsForBackgroundSync(tags, tree)));
-    await setBackgroundTagSyncStatus('');
+    await api.storage.sync.set(serializeBackgroundSyncTags(projectTagsForBackgroundSync(tags, tree)));
+    await setBackgroundTagSyncStatus(api, '');
     return true;
   } catch (e) {
-    await setBackgroundTagSyncStatus((e && e.message) || e);
+    await setBackgroundTagSyncStatus(api, (e && e.message) || e);
     throw e;
   }
 }
 
 function scheduleBackgroundTagSync() {
   if (tagSyncTimer) clearTimeout(tagSyncTimer);
+  const api = chrome;
   tagSyncTimer = setTimeout(() => {
     tagSyncTimer = null;
-    pushBackgroundTagsToCloud().catch(error => console.warn('[书签管家] 标签云同步失败', error));
+    pushBackgroundTagsToCloud(api).catch(error => console.warn('[书签管家] 标签云同步失败', error));
   }, SYNC_TAG_DELAY_MS);
 }
 
@@ -184,36 +196,251 @@ function poolTag(pool, name) {
   return pool.find(tag => String(tag).toLowerCase() === normalized) || '';
 }
 
-function configuredDomainTag(host, domainGroups, pool) {
-  const normalizedHost = String(host || '').toLowerCase().replace(/^www\./, '');
-  const groupKey = Object.keys(domainGroups || {}).find(key => {
-    const domain = String(key).toLowerCase().replace(/^www\./, '');
-    return normalizedHost === domain || normalizedHost.endsWith('.' + domain);
-  });
-  return groupKey ? poolTag(pool, domainGroups[groupKey]) : '';
+function backgroundFixedTagPool(storedTags) {
+  let pool = [];
+  if (!Array.isArray(storedTags) || !storedTags.length) {
+    pool = [...DEFAULT_FIXED_TAGS];
+  } else {
+    const isLegacyDefault = storedTags.length === LEGACY_DEFAULT_FIXED_TAGS.length &&
+      storedTags.every((tag, index) => tag === LEGACY_DEFAULT_FIXED_TAGS[index]);
+    pool = isLegacyDefault ? [...DEFAULT_FIXED_TAGS] : [...new Set(storedTags)];
+  }
+  if (!pool.includes(FALLBACK_TAG)) pool.push(FALLBACK_TAG);
+  return pool.slice(0, MAX_FIXED_TAGS);
 }
 
-function defaultTagsForBookmark(bookmark, fixedTags, domainGroups) {
+function domainTagsForBookmark(bookmark, pool) {
+  let host = '';
+  try { host = new URL(bookmark.url).hostname.toLowerCase().replace(/^www\./, ''); }
+  catch (e) { return []; }
+  const tags = [];
+  const add = name => {
+    const tag = poolTag(pool, name);
+    if (tag && tag !== FALLBACK_TAG && !tags.includes(tag) && tags.length < 3) tags.push(tag);
+  };
+  DOMAIN_TAG_RULES.forEach(rule => {
+    if (rule.signals.some(signal => host.includes(signal))) rule.tags.forEach(add);
+  });
+  return tags;
+}
+
+function normalizeBackgroundTagRules(raw, legacyGroups) {
+  raw = raw && typeof raw === 'object' ? raw : {};
+  const normalizeMap = value => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    return Object.fromEntries(Object.entries(value).flatMap(([rawKey, rawTags]) => {
+      const key = String(rawKey || '').trim();
+      const values = Array.isArray(rawTags) ? rawTags : String(rawTags || '').split(/[,，、;；]/);
+      const tags = [...new Set(values.map(tag => String(tag || '').trim()).filter(Boolean))];
+      return key && tags.length ? [[key, tags]] : [];
+    }));
+  };
+  const domain = normalizeMap(raw.domain);
+  if (legacyGroups && typeof legacyGroups === 'object' && !Array.isArray(legacyGroups)) {
+    Object.entries(legacyGroups).forEach(([rawDomain, rawCategory]) => {
+      const name = String(rawDomain || '').trim().toLowerCase().replace(/^www\./, '');
+      const category = String(rawCategory || '').trim();
+      if (!name || !category || Object.keys(domain).some(key => key.toLowerCase() === name)) return;
+      domain[name] = [category];
+    });
+  }
+  return { domain, keyword: normalizeMap(raw.keyword) };
+}
+
+function customTagsForBookmark(bookmark, rules, pool) {
+  let host = '';
+  let pathname = '';
+  try {
+    const url = new URL(bookmark.url);
+    host = url.hostname.toLowerCase().replace(/^www\./, '');
+    try { pathname = decodeURIComponent(url.pathname); }
+    catch (e) { pathname = url.pathname; }
+  } catch (e) { /* 无效 URL 仍允许标题匹配 */ }
+  const keywordText = [bookmark.title || '', host, pathname].join(' ').toLowerCase();
+  const match = (map, text) => {
+    const tags = [];
+    Object.entries(map).forEach(([signal, values]) => {
+      if (!text.includes(signal.toLowerCase())) return;
+      values.forEach(value => {
+        const tag = poolTag(pool, value);
+        if (tag && tag !== FALLBACK_TAG && !tags.includes(tag) && tags.length < MAX_TAGS_PER_BOOKMARK) tags.push(tag);
+      });
+    });
+    return tags;
+  };
+  const normalized = normalizeBackgroundTagRules(rules);
+  return { domain: match(normalized.domain, host), keyword: match(normalized.keyword, keywordText) };
+}
+
+function defaultTagsForBookmark(bookmark, fixedTags, tagRules) {
   const pool = Array.isArray(fixedTags) && fixedTags.length ? [...new Set(fixedTags)] : [...DEFAULT_FIXED_TAGS];
   if (!pool.includes(FALLBACK_TAG)) pool.push(FALLBACK_TAG);
   let host = '';
-  try { host = new URL(bookmark.url).hostname; } catch (e) { /* keep empty */ }
-  const text = (host + ' ' + bookmark.url + ' ' + (bookmark.title || '')).toLowerCase();
+  let pathname = '';
+  try {
+    const url = new URL(bookmark.url);
+    host = url.hostname;
+    pathname = url.pathname;
+  } catch (e) { /* keep empty */ }
+  const text = (host + ' ' + pathname + ' ' + (bookmark.title || '')).toLowerCase();
   const tags = [];
   const add = tag => {
-    if (tag && tag !== FALLBACK_TAG && !tags.includes(tag) && tags.length < 3) tags.push(tag);
+    if (tag && tag !== FALLBACK_TAG && !tags.includes(tag) && tags.length < MAX_TAGS_PER_BOOKMARK) tags.push(tag);
   };
+  const custom = customTagsForBookmark(bookmark, tagRules, pool);
+  custom.domain.forEach(add);
+  const domainTags = domainTagsForBookmark(bookmark, pool);
+  domainTags.forEach(add);
+  custom.keyword.forEach(add);
+  const highConfidence = !!custom.domain.length || !!domainTags.length || !!custom.keyword.length;
+  if (!highConfidence) {
+    BACKGROUND_TAG_HINTS.forEach(([tag, hints]) => {
+      if (hints.some(hint => text.includes(hint))) add(poolTag(pool, tag));
+    });
+    pool.forEach(tag => {
+      const normalized = String(tag).toLowerCase();
+      if (normalized === FALLBACK_TAG || normalized.length < 3 || tags.length >= 3) return;
+      if (text.includes(normalized)) add(tag);
+    });
+  }
+  return { tags: tags.length ? tags : [FALLBACK_TAG], highConfidence };
+}
 
-  add(configuredDomainTag(host, domainGroups, pool));
-  BACKGROUND_TAG_HINTS.forEach(([tag, hints]) => {
-    if (hints.some(hint => text.includes(hint))) add(poolTag(pool, tag));
+function sanitizeUrlForBackgroundAI(rawUrl) {
+  const url = new URL(rawUrl);
+  url.search = '';
+  url.hash = '';
+  return url.origin + url.pathname;
+}
+
+function isBackgroundAiEligible(bookmark) {
+  let url;
+  try { url = new URL(bookmark.url); } catch (e) { return false; }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+  const loginSignals = new Set(['login', 'signin', 'sign-in', 'auth', 'sso', 'oauth', 'passport', 'accounts']);
+  const hostLabels = url.hostname.toLowerCase().split('.');
+  if (hostLabels.some(label => loginSignals.has(label))) return false;
+  const loginPath = url.pathname.split('/').filter(Boolean).some(segment => {
+    try { segment = decodeURIComponent(segment); } catch (e) { /* keep original */ }
+    return loginSignals.has(segment.toLowerCase().replace(/\.(?:html?|php|aspx?)$/, ''));
   });
-  pool.forEach(tag => {
-    const normalized = String(tag).toLowerCase();
-    if (normalized === FALLBACK_TAG || normalized.length < 3 || tags.length >= 3) return;
-    if (text.includes(normalized)) add(tag);
+  if (loginPath) return false;
+  const sensitiveKeys = new Set([
+    'token', 'access_token', 'refresh_token', 'session', 'sess', 'sid', 'phpsessid', 'jsessionid',
+    'password', 'pwd', 'passwd', 'api_key', 'apikey', 'secret', 'authorization', 'code', 'ticket', 'jwt', 'bearer'
+  ]);
+  const parameterSources = [url.search.slice(1), url.hash.slice(1)];
+  const fragmentQuery = url.hash.indexOf('?');
+  if (fragmentQuery >= 0) parameterSources.push(url.hash.slice(fragmentQuery + 1));
+  if (parameterSources.some(source => {
+    const params = new URLSearchParams(source);
+    for (const [key, value] of params) {
+      if (sensitiveKeys.has(key.toLowerCase()) && value) return true;
+    }
+    return false;
+  })) return false;
+  const financialLabels = new Set([
+    'bank', 'banking', 'paypal', 'alipay', 'metamask', 'binance', 'coinbase', 'okx', 'kraken', 'bybit'
+  ]);
+  if (hostLabels.some(label => financialLabels.has(label))) return false;
+  return !/(网上银行|银行账户|支付账户|证券账户|加密钱包|数字钱包|crypto wallet)/i.test(bookmark.title || '');
+}
+
+function normalizeBackgroundLlmBaseUrl(rawBaseUrl) {
+  const url = new URL(String(rawBaseUrl || '').trim());
+  const loopback = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
+    throw new Error('LLM 服务必须使用 HTTPS；本地服务仅允许回环地址');
+  }
+  return url.href.replace(/\/+$/, '');
+}
+
+function backgroundChatEndpoints(rawBaseUrl) {
+  const base = normalizeBackgroundLlmBaseUrl(rawBaseUrl);
+  const endpoints = [base + '/chat/completions'];
+  if (base.endsWith('/v1')) endpoints.push(base.replace(/\/v1$/, '') + '/chat/completions');
+  else endpoints.push(base + '/v1/chat/completions');
+  return [...new Set(endpoints)];
+}
+
+function parseBackgroundAiTags(content, items, pool) {
+  let text = String(content || '').trim();
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) text = fence[1].trim();
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start >= 0 && end > start) text = text.slice(start, end + 1);
+  const parsed = JSON.parse(text);
+  const allowedIds = new Set(items.map(item => String(item.id)));
+  const out = {};
+  const collect = (id, values) => {
+    id = String(id);
+    if (!allowedIds.has(id)) return;
+    if (!Array.isArray(values)) values = typeof values === 'string' ? values.split(/[,，、;；]/) : [];
+    const tags = [];
+    values.forEach(value => {
+      const tag = poolTag(pool, value);
+      if (tag && tag !== FALLBACK_TAG && !tags.includes(tag) && tags.length < 3) tags.push(tag);
+    });
+    if (tags.length) out[id] = tags;
+  };
+  const rows = Array.isArray(parsed) ? parsed : (parsed.results || parsed.data);
+  if (Array.isArray(rows)) rows.forEach(row => {
+    if (row && row.id != null) collect(row.id, row.tags != null ? row.tags : row.tag);
   });
-  return tags.length ? tags : [FALLBACK_TAG];
+  else if (parsed && typeof parsed === 'object') Object.keys(parsed).forEach(id => collect(id, parsed[id]));
+  return out;
+}
+
+async function requestBackgroundAiTags(items, cfg, pool) {
+  const eligible = items.filter(isBackgroundAiEligible);
+  if (!eligible.length) return {};
+  const candidates = pool.filter(tag => tag !== FALLBACK_TAG);
+  const body = {
+    model: cfg.model,
+    messages: [
+      { role: 'system', content: [
+        '你是浏览器书签打标签助手。根据域名、路径和标题判断站点实际用途。',
+        '从候选标签中选择 1-3 个，不得自创。代码托管选代码，论坛平台选论坛，设计协作选设计/工作，组网或运维平台选运维/工具。',
+        '候选标签：' + candidates.join('、') + '。只返回 JSON：{"results":[{"id":"<id>","tags":["标签"]}]}'
+      ].join('\n') },
+      { role: 'user', content: eligible.map((item, index) =>
+        `${index + 1}. [id=${item.id}] ${(item.title || '').slice(0, 80)} — ${sanitizeUrlForBackgroundAI(item.url)}`
+      ).join('\n') }
+    ],
+    temperature: 0.2,
+    response_format: { type: 'json_object' }
+  };
+  let lastError = null;
+  for (const endpoint of backgroundChatEndpoints(cfg.baseUrl)) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.apiKey },
+        body: JSON.stringify(body)
+      });
+      const type = response.headers.get('content-type') || '';
+      if (!response.ok || type.includes('text/html') || type.includes('text/plain')) {
+        lastError = new Error('LLM 端点返回 HTTP ' + response.status);
+        if (response.status === 401 || response.status === 403) break;
+        continue;
+      }
+      const data = await response.json();
+      const message = data && data.choices && data.choices[0] && data.choices[0].message;
+      const content = message && message.content;
+      if (!content) throw new Error('LLM 响应缺少标签内容');
+      return parseBackgroundAiTags(content, eligible, pool);
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError || new Error('LLM 后台打标失败');
+}
+
+function mergeAutoTags(localTags, aiTags) {
+  const merged = [...new Set([...(localTags || []), ...(aiTags || [])])];
+  const meaningful = merged.filter(tag => tag !== FALLBACK_TAG);
+  return (meaningful.length ? meaningful : merged).slice(0, MAX_TAGS_PER_BOOKMARK);
 }
 
 function sameTags(left, right) {
@@ -261,7 +488,7 @@ function removeTagChanges(tags, changes) {
 
 async function mutateTags(mutator) {
   return queueTagMutation(async () => {
-    const stored = await chrome.storage.local.get([TAGS_KEY, FIXED_TAGS_KEY, 'bmDomainGroups']) || {};
+    const stored = await chrome.storage.local.get([TAGS_KEY, FIXED_TAGS_KEY]) || {};
     const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? { ...stored[TAGS_KEY] } : {};
     const changed = await mutator(tags, stored);
     if (changed) await chrome.storage.local.set({ [TAGS_KEY]: tags });
@@ -277,16 +504,50 @@ function commitTagChanges(changes, mode) {
   });
 }
 
-function autoTagBrowserBookmarks(entries) {
-  return mutateTags((tags, stored) => {
-    const changes = {};
-    entries.forEach(([id, bookmark]) => {
-      if (!Object.prototype.hasOwnProperty.call(tags, id)) {
-        changes[id] = defaultTagsForBookmark(bookmark, stored[FIXED_TAGS_KEY], stored.bmDomainGroups);
-      }
-    });
-    return applyTagChanges(tags, changes);
+async function autoTagBrowserBookmarks(entries) {
+  const stored = await chrome.storage.local.get([
+    FIXED_TAGS_KEY, TAG_RULES_KEY, 'bmDomainGroups', LEGACY_DOMAIN_GROUPS_MIGRATED_KEY,
+    'bmSettings', AUTO_AI_TAG_KEY
+  ]) || {};
+  const pool = backgroundFixedTagPool(stored[FIXED_TAGS_KEY]);
+  const rules = normalizeBackgroundTagRules(
+    stored[TAG_RULES_KEY],
+    stored[LEGACY_DOMAIN_GROUPS_MIGRATED_KEY] ? null : stored.bmDomainGroups
+  );
+  const changes = {};
+  const aiCandidates = [];
+  entries.forEach(([id, bookmark, allowAi]) => {
+    const local = defaultTagsForBookmark(bookmark, pool, rules);
+    changes[id] = local.tags;
+    if (allowAi && stored[AUTO_AI_TAG_KEY] === true && !local.highConfidence) {
+      aiCandidates.push({ id, title: bookmark.title || '', url: bookmark.url });
+    }
   });
+  const localResult = await mutateTags(tags => {
+    const missingOnly = {};
+    Object.entries(changes).forEach(([id, values]) => {
+      if (!Object.prototype.hasOwnProperty.call(tags, id)) missingOnly[id] = values;
+    });
+    return applyTagChanges(tags, missingOnly);
+  });
+  const cfg = stored.bmSettings || {};
+  if (aiCandidates.length && cfg.apiKey && cfg.baseUrl && cfg.model) {
+    try {
+      const aiTags = await requestBackgroundAiTags(aiCandidates, cfg, pool);
+      return mutateTags(tags => {
+        const merged = {};
+        aiCandidates.forEach(item => {
+          if (aiTags[item.id] && sameTags(tags[item.id] || [], changes[item.id])) {
+            merged[item.id] = mergeAutoTags(tags[item.id], aiTags[item.id]);
+          }
+        });
+        return applyTagChanges(tags, merged);
+      });
+    } catch (e) {
+      console.warn('[书签管家] 后台 AI 打标失败，已使用本地规则', e);
+    }
+  }
+  return localResult;
 }
 
 function scheduleAutoTagFlush() {
@@ -297,10 +558,11 @@ function scheduleAutoTagFlush() {
   }, AUTO_TAG_BATCH_DELAY_MS);
 }
 
-function queueBrowserBookmarkAutoTag(id, bookmark, deferFlush) {
+function queueBrowserBookmarkAutoTag(id, bookmark, deferFlush, allowAi) {
   return new Promise((resolve, reject) => {
-    const entry = pendingAutoTags.get(id) || { bookmark, waiters: [] };
+    const entry = pendingAutoTags.get(id) || { bookmark, allowAi: false, waiters: [] };
     entry.bookmark = bookmark;
+    entry.allowAi = entry.allowAi || allowAi;
     entry.waiters.push({ resolve, reject });
     pendingAutoTags.set(id, entry);
     if (!deferFlush) scheduleAutoTagFlush();
@@ -312,7 +574,7 @@ async function flushPendingAutoTags() {
   const entries = [...pendingAutoTags.entries()];
   pendingAutoTags.clear();
   try {
-    const result = await autoTagBrowserBookmarks(entries.map(([id, entry]) => [id, entry.bookmark]));
+    const result = await autoTagBrowserBookmarks(entries.map(([id, entry]) => [id, entry.bookmark, entry.allowAi]));
     entries.forEach(([, entry]) => entry.waiters.forEach(waiter => waiter.resolve(result)));
   } catch (e) {
     entries.forEach(([, entry]) => entry.waiters.forEach(waiter => waiter.reject(e)));
@@ -441,7 +703,7 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
       if (cfg[STAR_HOOK_KEY] === false) return;
     } catch (e) { /* noop */ }
     // 5. 浏览器已完成创建：后台批量写默认标签，不唤起或预填插件界面。
-    autoTagTask = queueBrowserBookmarkAutoTag(id, bookmark, fromNativeImport);
+    autoTagTask = queueBrowserBookmarkAutoTag(id, bookmark, fromNativeImport, !fromNativeImport);
   } finally {
     if (fromNativeImport) {
       nativeImportCreatedInFlight--;

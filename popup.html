@@ -76,6 +76,7 @@
         <strong id="operationNoticeTitle">操作失败</strong>
         <span id="operationNoticeDetail"></span>
       </div>
+      <button id="operationNoticeAction" class="btn small primary hidden" type="button">继续打标</button>
     </div>
 
     <div id="progressWrap" class="progress-wrap hidden" role="status" aria-live="polite">
@@ -111,6 +112,7 @@
       <div class="modal-title" id="confirmTitle">确认操作？</div>
       <div class="modal-msg" id="confirmMsg"></div>
       <div class="modal-actions">
+        <button id="confirmFourth" class="btn ghost hidden">第四按钮</button>
         <button id="confirmThird" class="btn ghost hidden">第三按钮</button>
         <button id="confirmNo" class="btn ghost">取消</button>
         <button id="confirmYes" class="btn danger">确认</button>
@@ -163,7 +165,7 @@
       <div class="form-row">
         <label>🏷️ 标签（可多个，逗号分隔）</label>
         <div class="cat-pick">
-          <input id="addTags" type="text" placeholder="开发, github, 工作" autocomplete="off" spellcheck="false" />
+          <input id="addTags" type="text" placeholder="代码, 工作, 教程" autocomplete="off" spellcheck="false" />
           <button id="addAiTag" class="btn small ghost" type="button">🤖 AI 打标</button>
         </div>
         <div id="tagSuggest" class="tag-suggest"></div>

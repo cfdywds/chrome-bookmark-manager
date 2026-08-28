@@ -23,15 +23,15 @@ function setMsg(text, cls, autohide) {
   }
 }
 
-function setDgMsg(text, cls) {
-  const el = $('#domainGroupsMsg');
+function setFtMsg(text, cls) {
+  const el = $('#fixedTagsMsg');
   if (!el) return;
   el.textContent = text || '';
   el.className = 'settings-msg' + (cls ? ' ' + cls : '');
 }
 
-function setFtMsg(text, cls) {
-  const el = $('#fixedTagsMsg');
+function setTrMsg(text, cls) {
+  const el = $('#tagRulesMsg');
   if (!el) return;
   el.textContent = text || '';
   el.className = 'settings-msg' + (cls ? ' ' + cls : '');
@@ -50,24 +50,30 @@ function parseFixedTags(text) {
     .filter(l => l && !l.startsWith('#')))];
 }
 
-// ---- 域名优先分组：textarea ↔ map 转换（DRY）----
-// 每行：`域名` 或 `域名=组名`；# 开头为注释；组名留空则用域名本身
-function parseDomainGroups(text) {
-  const map = {};
+// 每行 `关键字=标签1,标签2`；忽略空行和 # 注释。
+function parseTagRuleMap(text) {
+  const entries = [];
   String(text || '').split('\n').forEach(line => {
     line = line.trim();
     if (!line || line.startsWith('#')) return;
     const eq = line.indexOf('=');
-    const dom = (eq > 0 ? line.slice(0, eq) : line).trim().toLowerCase().replace(/^www\./, '');
-    const name = eq > 0 ? line.slice(eq + 1).trim() : '';
-    if (!dom) return;
-    map[dom] = name || dom;
+    if (eq <= 0) return;
+    const key = line.slice(0, eq).trim();
+    const tags = [...new Set(line.slice(eq + 1).split(/[,，、;；]/).map(tag => tag.trim()).filter(Boolean))];
+    if (key && tags.length) entries.push([key, tags]);
   });
-  return map;
+  return Object.fromEntries(entries);
 }
 
-function serializeDomainGroups(map) {
-  return Object.keys(map || {}).map(k => (k === map[k] ? k : k + '=' + map[k])).join('\n');
+function parseTagRules(domainText, keywordText) {
+  return { domain: parseTagRuleMap(domainText), keyword: parseTagRuleMap(keywordText) };
+}
+
+function serializeTagRuleMap(map) {
+  return Object.entries(map || {}).map(([key, tags]) => {
+    const values = Array.isArray(tags) ? tags : [tags];
+    return key + '=' + values.join(',');
+  }).join('\n');
 }
 
 function createProfileId() {
@@ -139,7 +145,9 @@ function consumeOwnProfileWrite(changes) {
   const index = pendingOwnProfileWrites.findIndex(marker =>
     (!changes[LLM_PROFILES_KEY] || sameStoredValue(marker.profiles, changes[LLM_PROFILES_KEY].newValue)) &&
     (!changes[ACTIVE_LLM_PROFILE_KEY] || marker.activeId === changes[ACTIVE_LLM_PROFILE_KEY].newValue) &&
-    (!changes.bmSettings || sameStoredValue(marker.settings, changes.bmSettings.newValue))
+    (!changes.bmSettings || sameStoredValue(marker.settings, changes.bmSettings.newValue)) &&
+    (!changes.bmFixedTags || sameStoredValue(marker.fixedTags, changes.bmFixedTags.newValue)) &&
+    (!changes.bmTagRules || sameStoredValue(marker.tagRules, changes.bmTagRules.newValue))
   );
   if (index < 0) return false;
   pendingOwnProfileWrites.splice(index, 1);
@@ -152,7 +160,9 @@ function queueProfileWrite(values) {
     const marker = {
       profiles: payload[LLM_PROFILES_KEY],
       activeId: payload[ACTIVE_LLM_PROFILE_KEY],
-      settings: payload.bmSettings
+      settings: payload.bmSettings,
+      fixedTags: payload.bmFixedTags,
+      tagRules: payload.bmTagRules
     };
     pendingOwnProfileWrites.push(marker);
     try {
@@ -236,28 +246,41 @@ function applyProviderPreset() {
 async function persistSilent() {
   const profile = updateActiveProfileFromForm();
   if (!profile) return;
-  const dg = parseDomainGroups($('#setDomainGroups').value);
   const ft = parseFixedTags($('#setFixedTags').value);
+  const tagRules = parseTagRules($('#setDomainTagRules').value, $('#setKeywordTagRules').value);
   try {
     await queueProfileWrite({
       [LLM_PROFILES_KEY]: llmProfiles,
       [ACTIVE_LLM_PROFILE_KEY]: activeLlmProfileId,
       bmSettings: profileSettings(profile),
-      bmDomainGroups: dg,
-      bmFixedTags: ft
+      bmFixedTags: ft,
+      bmTagRules: tagRules
     });
     // 让 popup/analyzer 下次读取新配置
     if (typeof BM !== 'undefined') {
-      if (BM.invalidateDomainGroups) BM.invalidateDomainGroups();
       if (BM.invalidateFixedTags) BM.invalidateFixedTags();
+      if (BM.invalidateTagRules) BM.invalidateTagRules();
     }
   } catch (e) { console.warn('[书签管家] 保存设置失败', e); }
 }
 
 // 实时保存（带提示）
 async function persist() {
+  let permissionError = null;
+  try {
+    await ensureBackgroundAiPermission(formSettings());
+  } catch (e) {
+    permissionError = e;
+    const autoAi = $('#setAutoAiTag');
+    if (autoAi) autoAi.checked = false;
+    await chrome.storage.local.set({ bmAutoAiTag: false });
+  }
   await persistSilent();
-  setMsg('✓ 已自动保存', 'ok');
+  if (permissionError) {
+    setMsg('配置已保存；后台 AI 因未获新域名权限而关闭：' + (permissionError.message || permissionError), 'err', false);
+  } else {
+    setMsg('✓ 已自动保存', 'ok');
+  }
 }
 
 async function saveWithLlmPermission() {
@@ -270,17 +293,18 @@ async function saveWithLlmPermission() {
   }
 }
 
-async function persistDomainGroups() {
-  await persistSilent();
-  const map = parseDomainGroups($('#setDomainGroups').value);
-  setDgMsg('✓ 已保存 ' + Object.keys(map).length + ' 个域名分组', 'ok');
-}
-
 async function persistFixedTags() {
   await persistSilent();
   const tags = parseFixedTags($('#setFixedTags').value);
   const max = (typeof BM !== 'undefined' && BM.MAX_FIXED_TAGS) || 50;
   setFtMsg(`✓ 已保存 ${tags.length} 个标签${tags.length > max ? `（超出 ${max}，AI 打标仅取前 ${max}）` : ''}`, 'ok');
+}
+
+async function persistTagRules() {
+  await persistSilent();
+  const rules = parseTagRules($('#setDomainTagRules').value, $('#setKeywordTagRules').value);
+  const count = Object.keys(rules.domain).length + Object.keys(rules.keyword).length;
+  setTrMsg('✓ 已保存 ' + count + ' 条自定义规则', 'ok');
 }
 
 // 用活动配置填充表单（provider 缺失时回退 DeepSeek 预设）
@@ -293,14 +317,41 @@ function fillForm(profile) {
   $('#setKey').value = settings.apiKey;
 }
 
+async function ensureBackgroundAiPermission(settings) {
+  const stored = await chrome.storage.local.get('bmAutoAiTag');
+  if (stored.bmAutoAiTag !== true) return;
+  if (!settings || !settings.baseUrl || !settings.apiKey || !settings.model) return;
+  if (BM.hasLlmHostPermission && await BM.hasLlmHostPermission(settings.baseUrl)) return;
+  await BM.requestLlmHostPermission(settings.baseUrl);
+}
+
+async function commitActiveProfileState(nextProfiles, nextActiveId) {
+  const previousProfiles = llmProfiles;
+  const previousActiveId = activeLlmProfileId;
+  const nextProfile = nextProfiles.find(profile => profile.id === nextActiveId);
+  if (!nextProfile) throw new Error('目标 LLM 配置不存在');
+  try {
+    await ensureBackgroundAiPermission(profileSettings(nextProfile));
+    llmProfiles = nextProfiles;
+    activeLlmProfileId = nextActiveId;
+    renderProfileSelect();
+    fillForm(nextProfile);
+    await persistProfileState(profileSettings(nextProfile));
+    return nextProfile;
+  } catch (e) {
+    llmProfiles = previousProfiles;
+    activeLlmProfileId = previousActiveId;
+    renderProfileSelect();
+    fillForm(activeLlmProfile());
+    throw e;
+  }
+}
+
 async function switchLlmProfile(profileId) {
   const profile = llmProfiles.find(item => item.id === profileId);
   if (!profile || profile.id === activeLlmProfileId) return;
-  activeLlmProfileId = profile.id;
-  renderProfileSelect();
-  fillForm(profile);
   try {
-    await persistProfileState(profileSettings(profile));
+    await commitActiveProfileState(llmProfiles, profile.id);
     setMsg('已切换到「' + profile.name + '」', 'ok');
   } catch (e) {
     setMsg('切换失败：' + (e.message || e), 'err');
@@ -310,12 +361,8 @@ async function switchLlmProfile(profileId) {
 async function createLlmProfile() {
   const settings = normalizeLlmSettings({ provider: 'deepseek' });
   const profile = createProfile({ ...settings, name: '新配置 ' + (llmProfiles.length + 1) });
-  llmProfiles.push(profile);
-  activeLlmProfileId = profile.id;
-  renderProfileSelect();
-  fillForm(profile);
   try {
-    await persistProfileState(profileSettings(profile));
+    await commitActiveProfileState([...llmProfiles, profile], profile.id);
     $('#setProfileName').focus();
     $('#setProfileName').select();
     setMsg('已新建配置，可填写后自动保存', 'ok');
@@ -329,27 +376,17 @@ async function deleteActiveLlmProfile() {
   if (!profile) return;
   if (!window.confirm('删除配置「' + profile.name + '」？此操作无法恢复。')) return;
   const currentIndex = llmProfiles.findIndex(item => item.id === profile.id);
-  llmProfiles = llmProfiles.filter(item => item.id !== profile.id);
-  if (!llmProfiles.length) {
-    llmProfiles.push(createProfile({ provider: 'deepseek', name: '默认配置' }));
+  const remaining = llmProfiles.filter(item => item.id !== profile.id);
+  if (!remaining.length) {
+    remaining.push(createProfile({ provider: 'deepseek', name: '默认配置' }));
   }
-  activeLlmProfileId = llmProfiles[Math.max(0, Math.min(currentIndex, llmProfiles.length - 1))].id;
-  const next = activeLlmProfile();
-  renderProfileSelect();
-  fillForm(next);
+  const next = remaining[Math.max(0, Math.min(currentIndex, remaining.length - 1))];
   try {
-    await persistProfileState(profileSettings(next));
+    await commitActiveProfileState(remaining, next.id);
     setMsg('已删除配置', 'ok');
   } catch (e) {
     setMsg('删除失败：' + (e.message || e), 'err');
   }
-}
-
-// 填充域名分组 textarea
-function fillDomainGroups(map) {
-  const el = $('#setDomainGroups');
-  if (!el) return;
-  el.value = serializeDomainGroups(map || {});
 }
 
 // 填充固定标签池 textarea（未配置时显示默认池）
@@ -363,11 +400,20 @@ function fillFixedTags(list) {
   el.value = (tags || []).filter(t => t !== '其他').join('\n');
 }
 
+function fillTagRules(rules) {
+  rules = rules && typeof rules === 'object' ? rules : {};
+  const domain = $('#setDomainTagRules');
+  const keyword = $('#setKeywordTagRules');
+  if (domain) domain.value = serializeTagRuleMap(rules.domain);
+  if (keyword) keyword.value = serializeTagRuleMap(rules.keyword);
+}
+
 async function load() {
   try {
+    await BM.migrateStorage();
     const r = await chrome.storage.local.get([
       'bmSettings', LLM_PROFILES_KEY, ACTIVE_LLM_PROFILE_KEY,
-      'bmDomainGroups', 'bmFixedTags', 'bmStarHook', BM.SYNC_ENABLED_KEY, BM.SYNC_STATUS_KEY
+      'bmFixedTags', 'bmTagRules', 'bmStarHook', 'bmAutoAiTag', BM.SYNC_ENABLED_KEY, BM.SYNC_STATUS_KEY
     ]);
     llmProfiles = normalizeLlmProfiles(r[LLM_PROFILES_KEY], r.bmSettings);
     activeLlmProfileId = llmProfiles.some(profile => profile.id === r[ACTIVE_LLM_PROFILE_KEY])
@@ -375,11 +421,13 @@ async function load() {
       : llmProfiles[0].id;
     renderProfileSelect();
     fillForm(activeLlmProfile());
-    fillDomainGroups(r.bmDomainGroups || {});
     fillFixedTags(r.bmFixedTags);
+    fillTagRules(r.bmTagRules);
     // ⭐ 接管开关：默认开启（兼容老用户未配置）
     const star = $('#setStarHook');
     if (star) star.checked = r.bmStarHook !== false;
+    const autoAi = $('#setAutoAiTag');
+    if (autoAi) autoAi.checked = r.bmAutoAiTag === true;
     // 标签云同步开关：默认关闭（隐私权衡，需主动开启）
     const syncEl = $('#setTagSync');
     if (syncEl) syncEl.checked = await BM.getTagSyncEnabled();
@@ -394,6 +442,23 @@ async function load() {
 
 async function persistStarHook() {
   try { await chrome.storage.local.set({ bmStarHook: $('#setStarHook').checked }); } catch (e) { /* noop */ }
+}
+
+async function persistAutoAiTag() {
+  try {
+    const enabled = $('#setAutoAiTag').checked;
+    if (enabled) {
+      const cfg = formSettings();
+      if (!cfg.baseUrl || !cfg.apiKey || !cfg.model) throw new Error('请先填写并保存 LLM 配置');
+      await BM.requestLlmHostPermission(cfg.baseUrl);
+    }
+    await chrome.storage.local.set({ bmAutoAiTag: enabled });
+    setMsg(enabled ? '已开启浏览器收藏后台 AI 补充' : '已关闭浏览器收藏后台 AI 补充', 'ok');
+  } catch (e) {
+    $('#setAutoAiTag').checked = false;
+    await chrome.storage.local.set({ bmAutoAiTag: false });
+    setMsg('无法开启：' + (e.message || e), 'err', false);
+  }
 }
 
 // 标签云同步开关：开启时立刻把本地标签推上云端；关闭时停止读写
@@ -429,11 +494,13 @@ async function persistTagSync() {
   } catch (e) { /* noop */ }
 }
 
-// 外部（popup 抽屉等）修改 bmSettings / bmDomainGroups / bmFixedTags 时，实时同步到本页表单
+// 外部（popup 抽屉等）修改设置时，实时同步到本页表单。
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   const hasProfileChanges = changes[LLM_PROFILES_KEY] || changes[ACTIVE_LLM_PROFILE_KEY];
-  const ownProfileChange = hasProfileChanges && consumeOwnProfileWrite(changes);
+  const hasEditableChanges = hasProfileChanges || changes.bmSettings ||
+    changes.bmFixedTags || changes.bmTagRules;
+  const ownProfileChange = hasEditableChanges && consumeOwnProfileWrite(changes);
   if (hasProfileChanges && !ownProfileChange) {
     const legacy = changes.bmSettings ? changes.bmSettings.newValue : profileSettings(activeLlmProfile());
     llmProfiles = normalizeLlmProfiles(
@@ -451,11 +518,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
       persistProfileState(profileSettings(profile)).catch(e => console.warn('[书签管家] 同步外部 LLM 配置失败', e));
     }
   }
-  if (changes.bmDomainGroups) {
-    fillDomainGroups(changes.bmDomainGroups.newValue || {});
-  }
-  if (changes.bmFixedTags) {
+  if (changes.bmFixedTags && !ownProfileChange) {
     fillFixedTags(changes.bmFixedTags.newValue);
+  }
+  if (changes.bmTagRules && !ownProfileChange) {
+    fillTagRules(changes.bmTagRules.newValue);
   }
   if (changes[BM.SYNC_STATUS_KEY]) {
     renderTagSyncStatus(changes[BM.SYNC_STATUS_KEY].newValue);
@@ -497,9 +564,12 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#profileDelete').addEventListener('click', deleteActiveLlmProfile);
   $('#settingsSave').addEventListener('click', saveWithLlmPermission);
   $('#settingsTest').addEventListener('click', testConnection);
-  $('#setDomainGroups').addEventListener('input', persistDomainGroups);
   $('#setFixedTags').addEventListener('input', persistFixedTags);
+  // 规则编辑完成并失焦后再保存，避免每次敲键都让已打开的侧边栏全量刷新。
+  $('#setDomainTagRules').addEventListener('change', persistTagRules);
+  $('#setKeywordTagRules').addEventListener('change', persistTagRules);
   $('#setStarHook').addEventListener('change', persistStarHook);
+  $('#setAutoAiTag').addEventListener('change', persistAutoAiTag);
   $('#setTagSync').addEventListener('change', persistTagSync);
   load();
 });
