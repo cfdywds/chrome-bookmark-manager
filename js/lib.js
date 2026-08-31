@@ -564,10 +564,11 @@
     if (fixedTagsCache) return fixedTagsCache;
     try {
       const r = await chrome.storage.local.get(FIXED_TAGS_KEY);
-      const stored = Array.isArray(r[FIXED_TAGS_KEY]) ? r[FIXED_TAGS_KEY].map(normalizeTag).filter(Boolean) : [];
-      const cfg = upgradeDefaultFixedTags(stored);
+      const hasStoredPool = Array.isArray(r[FIXED_TAGS_KEY]);
+      const stored = hasStoredPool ? r[FIXED_TAGS_KEY].map(normalizeTag).filter(Boolean) : [];
+      const cfg = hasStoredPool ? upgradeDefaultFixedTags(stored) : [...DEFAULT_FIXED_TAGS];
       // 用户配置（含「其他」兜底）；未配置用默认池
-      fixedTagsCache = cfg.length ? [...new Set(cfg)] : [...DEFAULT_FIXED_TAGS];
+      fixedTagsCache = [...new Set(cfg)];
       if (!fixedTagsCache.includes(FALLBACK_TAG)) fixedTagsCache.push(FALLBACK_TAG);
       fixedTagsCache = fixedTagsCache.slice(0, MAX_FIXED_TAGS);
     } catch (e) {
@@ -789,6 +790,288 @@
   const SYNC_TAG_CNT = 'bmSyncTag_cnt';
   const SYNC_STATUS_KEY = 'bmTagSyncStatus';
   const SYNC_CHUNK_CHARS = 2500;      // 每片字符数（中文 UTF-8 3 字节 → ~7.5KB < 8KB 限制）
+  const SYNC_CONFIG_PREFIX = 'bmSyncConfig_p';
+  const SYNC_CONFIG_CNT = 'bmSyncConfig_cnt';
+  const SYNC_CONFIG_REVISION_KEY = 'bmSyncConfigRevision';
+  const SYNC_CONFIG_DEVICE_ID_KEY = 'bmSyncConfigDeviceId';
+  const SYNC_CONFIG_INITIALIZED_KEY = 'bmSyncConfigInitialized';
+  const SYNC_CONFIG_VERSION = 1;
+  let configSyncQueue = Promise.resolve();
+
+  function configRevision(value) {
+    const updatedAt = Math.max(0, Math.floor(Number(value && value.updatedAt) || 0));
+    return { updatedAt, deviceId: String(value && value.deviceId || '').trim() };
+  }
+
+  function compareConfigRevision(left, right) {
+    const a = configRevision(left);
+    const b = configRevision(right);
+    if (a.updatedAt !== b.updatedAt) return a.updatedAt - b.updatedAt;
+    return a.deviceId.localeCompare(b.deviceId);
+  }
+
+  function normalizeConfigFixedTags(tags) {
+    if (!Array.isArray(tags)) return null;
+    return [...new Set(tags.map(normalizeTag).filter(Boolean))].slice(0, MAX_FIXED_TAGS);
+  }
+
+  function normalizeSyncConfig(config) {
+    if (!config || typeof config !== 'object' || config.version !== SYNC_CONFIG_VERSION) return null;
+    if (!Array.isArray(config.fixedTags) || !config.tagRules || typeof config.tagRules !== 'object' || Array.isArray(config.tagRules)) return null;
+    const revision = configRevision(config.revision);
+    if (!revision.updatedAt || !revision.deviceId) return null;
+    return {
+      version: SYNC_CONFIG_VERSION,
+      revision,
+      fixedTags: normalizeConfigFixedTags(config.fixedTags),
+      tagRules: normalizeTagRules(config.tagRules)
+    };
+  }
+
+  function deserializeSyncConfig(json) {
+    try { return normalizeSyncConfig(JSON.parse(json)); }
+    catch (e) { return null; }
+  }
+
+  function serializeSyncConfig(config) {
+    const normalized = normalizeSyncConfig(config);
+    if (!normalized) throw new Error('标签配置格式无效');
+    const json = JSON.stringify(normalized);
+    const chunks = [];
+    for (let index = 0; index < json.length; index += SYNC_CHUNK_CHARS) {
+      chunks.push(json.slice(index, index + SYNC_CHUNK_CHARS));
+    }
+    const out = {};
+    chunks.forEach((chunk, index) => { out[SYNC_CONFIG_PREFIX + index] = chunk; });
+    out[SYNC_CONFIG_CNT] = chunks.length;
+    return out;
+  }
+
+  function queueConfigSync(operation) {
+    const result = configSyncQueue.then(operation, operation);
+    configSyncQueue = result.catch(() => {});
+    return result;
+  }
+
+  async function parseSyncConfig() {
+    const header = await chrome.storage.sync.get(SYNC_CONFIG_CNT);
+    if (header[SYNC_CONFIG_CNT] === undefined) return null;
+    const count = Number(header[SYNC_CONFIG_CNT]);
+    if (!Number.isInteger(count) || count < 1 || count > 100) {
+      throw new Error('标签同步配置分片数量无效');
+    }
+    const keys = [SYNC_CONFIG_CNT];
+    for (let index = 0; index < count; index++) keys.push(SYNC_CONFIG_PREFIX + index);
+    const chunks = await chrome.storage.sync.get(keys);
+    let json = '';
+    for (let index = 0; index < count; index++) {
+      const chunk = chunks[SYNC_CONFIG_PREFIX + index];
+      if (typeof chunk !== 'string') throw new Error('标签同步配置分片缺失');
+      json += chunk;
+    }
+    const config = deserializeSyncConfig(json);
+    if (!config) throw new Error('标签同步配置格式无效');
+    return config;
+  }
+
+  async function replaceSyncedTagConfiguration(config) {
+    const normalized = normalizeSyncConfig(config);
+    if (!normalized) return false;
+    await chrome.storage.local.set({
+      [FIXED_TAGS_KEY]: normalized.fixedTags,
+      [TAG_RULES_KEY]: normalized.tagRules,
+      [SYNC_CONFIG_REVISION_KEY]: normalized.revision
+    });
+    invalidateFixedTags();
+    invalidateTagRules();
+    return true;
+  }
+
+  async function applySyncedTagConfiguration(config) {
+    const normalized = normalizeSyncConfig(config);
+    if (!normalized) return false;
+    const current = await chrome.storage.local.get(SYNC_CONFIG_REVISION_KEY);
+    if (compareConfigRevision(normalized.revision, current[SYNC_CONFIG_REVISION_KEY]) <= 0) return false;
+    return replaceSyncedTagConfiguration(normalized);
+  }
+
+  function storedConfigFixedTags(value) {
+    if (!Array.isArray(value)) return [...DEFAULT_FIXED_TAGS];
+    return normalizeConfigFixedTags(upgradeDefaultFixedTags(value));
+  }
+
+  function createConfigDeviceId() {
+    if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+      return globalThis.crypto.randomUUID();
+    }
+    return 'device-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+  }
+
+  function createNextSyncConfig(fixedTags, tagRules, localRevision, cloudRevision, deviceId) {
+    const normalizedFixedTags = normalizeConfigFixedTags(fixedTags);
+    if (!normalizedFixedTags) throw new Error('固定标签格式无效');
+    const local = configRevision(localRevision);
+    const cloud = configRevision(cloudRevision);
+    const id = String(deviceId || '').trim() || createConfigDeviceId();
+    return {
+      version: SYNC_CONFIG_VERSION,
+      revision: {
+        updatedAt: Math.max(Date.now(), local.updatedAt + 1, cloud.updatedAt + 1),
+        deviceId: id
+      },
+      fixedTags: normalizedFixedTags,
+      tagRules: normalizeTagRules(tagRules)
+    };
+  }
+
+  async function writeConfigToCloud(config) {
+    await chrome.storage.sync.set(serializeSyncConfig(config));
+  }
+
+  async function pushConfigToCloud(config) {
+    return queueConfigSync(async () => {
+      try {
+        if (!await getTagSyncEnabled()) return false;
+        let next = normalizeSyncConfig(config);
+        if (!next) {
+          const stored = await chrome.storage.local.get([
+            FIXED_TAGS_KEY, TAG_RULES_KEY, SYNC_CONFIG_REVISION_KEY
+          ]);
+          next = normalizeSyncConfig({
+            version: SYNC_CONFIG_VERSION,
+            revision: stored[SYNC_CONFIG_REVISION_KEY],
+            fixedTags: storedConfigFixedTags(stored[FIXED_TAGS_KEY]),
+            tagRules: stored[TAG_RULES_KEY]
+          });
+        }
+        if (!next) return false;
+        await writeConfigToCloud(next);
+        await setTagSyncStatus('');
+        return true;
+      } catch (e) {
+        await setTagSyncStatus((e && e.message) || e);
+        throw e;
+      }
+    });
+  }
+
+  async function saveSyncedTagConfiguration(fixedTags, tagRules) {
+    return queueConfigSync(async () => {
+      let syncEnabled = false;
+      try {
+        syncEnabled = await getTagSyncEnabled();
+        const cloud = syncEnabled ? await parseSyncConfig() : null;
+        if (cloud) await applySyncedTagConfiguration(cloud);
+
+        const current = await chrome.storage.local.get([
+          SYNC_CONFIG_REVISION_KEY, SYNC_CONFIG_DEVICE_ID_KEY
+        ]);
+        const config = createNextSyncConfig(
+          fixedTags,
+          tagRules,
+          current[SYNC_CONFIG_REVISION_KEY],
+          cloud && cloud.revision,
+          current[SYNC_CONFIG_DEVICE_ID_KEY]
+        );
+        await chrome.storage.local.set({
+          [FIXED_TAGS_KEY]: config.fixedTags,
+          [TAG_RULES_KEY]: config.tagRules,
+          [SYNC_CONFIG_REVISION_KEY]: config.revision,
+          [SYNC_CONFIG_DEVICE_ID_KEY]: config.revision.deviceId
+        });
+        invalidateFixedTags();
+        invalidateTagRules();
+        if (!syncEnabled) return true;
+        await writeConfigToCloud(config);
+        await setTagSyncStatus('');
+        return true;
+      } catch (e) {
+        if (syncEnabled) await setTagSyncStatus((e && e.message) || e);
+        throw e;
+      }
+    });
+  }
+
+  async function initializeSyncedTagConfiguration() {
+    return queueConfigSync(async () => {
+      try {
+        if (!await getTagSyncEnabled()) return false;
+        const cloud = await parseSyncConfig();
+        if (cloud) {
+          const initialized = await chrome.storage.local.get(SYNC_CONFIG_INITIALIZED_KEY);
+          const applied = initialized[SYNC_CONFIG_INITIALIZED_KEY]
+            ? await applySyncedTagConfiguration(cloud)
+            : await replaceSyncedTagConfiguration(cloud);
+          await chrome.storage.local.set({ [SYNC_CONFIG_INITIALIZED_KEY]: true });
+          if (applied) await setTagSyncStatus('');
+          return applied;
+        }
+
+        const stored = await chrome.storage.local.get([
+          FIXED_TAGS_KEY, TAG_RULES_KEY, SYNC_CONFIG_REVISION_KEY, SYNC_CONFIG_DEVICE_ID_KEY
+        ]);
+        let config = normalizeSyncConfig({
+          version: SYNC_CONFIG_VERSION,
+          revision: stored[SYNC_CONFIG_REVISION_KEY],
+          fixedTags: storedConfigFixedTags(stored[FIXED_TAGS_KEY]),
+          tagRules: stored[TAG_RULES_KEY]
+        });
+        if (!config) {
+          config = createNextSyncConfig(
+            storedConfigFixedTags(stored[FIXED_TAGS_KEY]),
+            stored[TAG_RULES_KEY],
+            stored[SYNC_CONFIG_REVISION_KEY],
+            null,
+            stored[SYNC_CONFIG_DEVICE_ID_KEY]
+          );
+          await chrome.storage.local.set({
+            [FIXED_TAGS_KEY]: config.fixedTags,
+            [TAG_RULES_KEY]: config.tagRules,
+            [SYNC_CONFIG_REVISION_KEY]: config.revision,
+            [SYNC_CONFIG_DEVICE_ID_KEY]: config.revision.deviceId
+          });
+          invalidateFixedTags();
+          invalidateTagRules();
+        }
+        await writeConfigToCloud(config);
+        await chrome.storage.local.set({ [SYNC_CONFIG_INITIALIZED_KEY]: true });
+        await setTagSyncStatus('');
+        return true;
+      } catch (e) {
+        await setTagSyncStatus((e && e.message) || e);
+        throw e;
+      }
+    });
+  }
+
+  async function pullConfigFromCloud() {
+    return queueConfigSync(async () => {
+      try {
+        if (!await getTagSyncEnabled()) return false;
+        const config = await parseSyncConfig();
+        if (!config) return false;
+        const applied = await applySyncedTagConfiguration(config);
+        if (applied) await setTagSyncStatus('');
+        return applied;
+      } catch (e) {
+        await setTagSyncStatus((e && e.message) || e);
+        return false;
+      }
+    });
+  }
+
+  function watchTagConfiguration(onChange) {
+    const onChanged = chrome.storage && chrome.storage.sync && chrome.storage.sync.onChanged;
+    if (!onChanged || typeof onChanged.addListener !== 'function') return;
+    onChanged.addListener((changes, area) => {
+      if (area !== 'sync') return;
+      if (!Object.keys(changes).some(key =>
+        key === SYNC_ENABLED_KEY || key === SYNC_CONFIG_CNT || key.startsWith(SYNC_CONFIG_PREFIX)
+      )) return;
+      pullConfigFromCloud().then(changed => { if (changed && onChange) onChange(); }).catch(() => {});
+    });
+  }
+
   let syncTimer = null;
 
   async function getTagSyncEnabled() {
@@ -1969,6 +2252,17 @@
     pushTagsToCloud,
     pullTagsFromCloud,
     watchTagSync,
+    pullConfigFromCloud,
+    pushConfigToCloud,
+    saveSyncedTagConfiguration,
+    initializeSyncedTagConfiguration,
+    watchTagConfiguration,
+    compareConfigRevision,
+    deserializeSyncConfig,
+    serializeSyncConfig,
+    SYNC_CONFIG_PREFIX,
+    SYNC_CONFIG_CNT,
+    SYNC_CONFIG_REVISION_KEY,
     projectTagsForSync,
     resolveSyncTags,
     deserializeSyncTags,

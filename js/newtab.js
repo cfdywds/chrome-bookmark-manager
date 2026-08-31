@@ -21,6 +21,22 @@
     try { return window.BM.normalizeHttpUrl(rawUrl).href; } catch (e) { return ''; }
   }
 
+  function faviconUrl(rawUrl) {
+    const href = safeHttpUrl(rawUrl);
+    if (!href) return '';
+    return chrome.runtime.getURL('/_favicon/') + '?pageUrl=' + encodeURIComponent(href) + '&size=64';
+  }
+
+  function suppressHoverAfterOpen(card) {
+    if (!card || !card.hasAttribute('href')) return;
+    const wrap = card.closest('.nt-card-wrap');
+    if (!wrap) return;
+    wrap.classList.add('nt-card-opening');
+    wrap.addEventListener('mouseleave', () => {
+      wrap.classList.remove('nt-card-opening');
+    }, { once: true });
+  }
+
   // 过滤 + 排序（最近添加在前）。
   // 搜索语法：
   //   - 普通词："空格分词 AND"，每词都得在 hay (title/url/host/tags) 里出现
@@ -72,18 +88,23 @@
 
   function cardHtml(it) {
     const href = safeHttpUrl(it.url);
+    const favicon = faviconUrl(it.url);
+    const initial = esc((it.host || it.title || '?').trim().charAt(0).toUpperCase() || '?');
     const tags = (it.tags || []).map(t => `<span class="nt-card-tag">#${esc(t)}</span>`).join('');
     const hiddenBadge = it.hidden ? '<span class="nt-card-hidden">已隐藏</span>' : '';
-    // 卡片操作按钮：👁 隐藏 / ✏️ 编辑 / 🗑 删除（事件加 data-attr 便于事件委托）
+    const hiddenLabel = it.hidden ? '取消隐藏' : '隐藏';
     const actions = `
       <div class="nt-actions" data-id="${esc(it.id)}">
-        <button class="nt-action" data-nt-act="toggle-hidden" title="${it.hidden ? '取消隐藏' : '隐藏（从日常视图排除）'}">${ICON('eye')}</button>
-        <button class="nt-action" data-nt-act="edit" title="编辑">${ICON('edit')}</button>
-        <button class="nt-action danger" data-nt-act="delete" title="删除（30 天内可恢复）">${ICON('trash')}</button>
+        <button type="button" class="nt-action" data-nt-act="toggle-hidden" title="${hiddenLabel}" aria-label="${hiddenLabel}">${ICON('eye')}</button>
+        <button type="button" class="nt-action" data-nt-act="edit" title="编辑" aria-label="编辑">${ICON('edit')}</button>
+        <button type="button" class="nt-action danger" data-nt-act="delete" title="删除（30 天内可恢复）" aria-label="删除">${ICON('trash')}</button>
       </div>`;
     return `<div class="nt-card-wrap">
       <a class="nt-card"${href ? ` href="${esc(href)}" target="_blank" rel="noopener"` : ' aria-disabled="true"'} title="${esc(it.title)}">
-        <span class="nt-fav nt-fav-ph">🌐</span>
+        <span class="nt-fav" aria-hidden="true">
+          <span class="nt-fav-fallback">${initial}</span>
+          ${favicon ? `<img class="nt-fav-img" src="${esc(favicon)}" alt="" loading="lazy" />` : ''}
+        </span>
         <div class="nt-card-body">
           <div class="nt-card-title">${esc(it.title)}</div>
           <div class="nt-card-host">${esc(it.host || '')}</div>
@@ -179,6 +200,18 @@
     render();
   });
   $('#ntOpenPanel').addEventListener('click', openPanel);
+
+  $('#ntGrid').addEventListener('click', e => {
+    suppressHoverAfterOpen(e.target.closest('.nt-card'));
+  });
+  $('#ntGrid').addEventListener('auxclick', e => {
+    if (e.button === 1) suppressHoverAfterOpen(e.target.closest('.nt-card'));
+  });
+
+  $('#ntGrid').addEventListener('error', e => {
+    const img = e.target.closest && e.target.closest('.nt-fav-img');
+    if (img) img.classList.add('is-error');
+  }, true);
 
   // 卡片操作按钮（事件委托）：👁 隐藏 / ✏️ 编辑 / 🗑 删除
   $('#ntGrid').addEventListener('click', async e => {
@@ -302,19 +335,32 @@
       } catch (e) { /* 忽略同步失败 */ }
     }, 300);
   });
-  // 标签云同步（开启时）：跨设备云端变更 → 拉取合并 → 刷新
-  try {
-    window.BM.watchTagSync && window.BM.watchTagSync(() => {
-      window.BM.invalidateTags && window.BM.invalidateTags();
-      setTimeout(async () => {
-        try { DATA = await window.BMAnalyzer.analyze(); render(); } catch (e) { /* ignore */ }
-      }, 300);
-    });
-  } catch (e) { /* noop */ }
 
   // 初始化：加载配置 + 分析书签
   (async function init() {
-    try { await window.BM.pullTagsFromCloud(); } catch (e) { /* 保留本地标签 */ }
+    let tagConfigurationSyncReady = true;
+    try { await window.BM.initializeSyncedTagConfiguration(); }
+    catch (e) { tagConfigurationSyncReady = false; }
+    try {
+      window.BM.watchTagConfiguration && window.BM.watchTagConfiguration(() => {
+        window.BM.invalidateFixedTags && window.BM.invalidateFixedTags();
+        window.BM.invalidateTagRules && window.BM.invalidateTagRules();
+        setTimeout(async () => {
+          try { DATA = await window.BMAnalyzer.analyze(); render(); } catch (e) { /* ignore */ }
+        }, 300);
+      });
+    } catch (e) { /* 保留本地标签配置 */ }
+    if (tagConfigurationSyncReady) {
+      try { await window.BM.pullTagsFromCloud(); } catch (e) { /* 保留本地标签 */ }
+      try {
+        window.BM.watchTagSync && window.BM.watchTagSync(() => {
+          window.BM.invalidateTags && window.BM.invalidateTags();
+          setTimeout(async () => {
+            try { DATA = await window.BMAnalyzer.analyze(); render(); } catch (e) { /* ignore */ }
+          }, 300);
+        });
+      } catch (e) { /* noop */ }
+    }
     try { await window.BM.loadTags(); } catch (e) { /* 无标签 */ }
     try { await window.BM.loadFixedTags(); } catch (e) { /* 默认池 */ }
     try { await window.BM.loadTagRules(); } catch (e) { /* 无自定义规则 */ }

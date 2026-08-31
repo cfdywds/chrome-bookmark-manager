@@ -1008,3 +1008,96 @@ describe('浏览器收藏接管', () => {
     }
   });
 });
+
+  it('地址栏收藏的 V2 URL 键保留非默认端口', async () => {
+    const previousChrome = globalThis.chrome;
+    vi.useFakeTimers();
+    const harness = createBackgroundHarness([], {
+      localData: { bmFixedTags: ['代码', '其他'], bmTags: {} },
+      syncData: { bmSyncEnabled: true },
+      getTree: vi.fn().mockResolvedValue([{ children: [{
+        id: 'browser-created', url: 'https://github.com:8443/example/project'
+      }] }])
+    });
+    globalThis.chrome = harness.chrome;
+
+    try {
+      new Function(backgroundCode)();
+      const created = harness.triggerBookmarkCreated('browser-created', {
+        parentId: 'bar', url: 'https://github.com:8443/example/project', title: '项目仓库'
+      });
+      await vi.advanceTimersByTimeAsync(250);
+      await created;
+      await vi.advanceTimersByTimeAsync(1600);
+
+      const payload = harness.syncSet.mock.calls.at(-1)[0];
+      expect(JSON.parse(payload.bmSyncTag_p0)).toEqual({
+        version: 2,
+        tags: { 'github.com:8443/example/project': ['代码'] }
+      });
+    } finally {
+      vi.useRealTimers();
+      restoreGlobal('chrome', previousChrome);
+    }
+  });
+
+it('后台自动打标保留显式空标签池', async () => {
+  const previousChrome = globalThis.chrome;
+  const harness = createBackgroundHarness([], {
+    localData: { bmFixedTags: [], bmTags: {} }
+  });
+  globalThis.chrome = harness.chrome;
+
+  try {
+    new Function(backgroundCode)();
+    await harness.triggerBookmarkCreated('browser-created', {
+      parentId: 'bar', url: 'https://github.com/example/project', title: '项目仓库'
+    });
+
+    expect(harness.chrome.storage.local.set).toHaveBeenCalledWith({
+      bmTags: { 'browser-created': ['其他'] }
+    });
+  } finally {
+    restoreGlobal('chrome', previousChrome);
+  }
+});
+
+it('后台自动打标前采用云端较新的固定标签和规则', async () => {
+  const previousChrome = globalThis.chrome;
+  const config = JSON.stringify({
+    version: 1,
+    revision: { updatedAt: 100, deviceId: 'device-a' },
+    fixedTags: ['工作'],
+    tagRules: { domain: { github: ['工作'] }, keyword: {} }
+  });
+  const harness = createBackgroundHarness([], {
+    localData: {
+      bmFixedTags: ['代码'],
+      bmTagRules: { domain: {}, keyword: {} },
+      bmTags: {}
+    },
+    syncData: { bmSyncEnabled: true, bmSyncConfig_cnt: 1, bmSyncConfig_p0: config }
+  });
+  globalThis.chrome = harness.chrome;
+
+  try {
+    new Function(backgroundCode)();
+    await vi.waitFor(() => {
+      expect(harness.storageSet).toHaveBeenCalledWith(expect.objectContaining({
+        bmFixedTags: ['工作'],
+        bmTagRules: { domain: { github: ['工作'] }, keyword: {} },
+        bmSyncConfigRevision: { updatedAt: 100, deviceId: 'device-a' }
+      }));
+    });
+
+    await harness.triggerBookmarkCreated('browser-created', {
+      parentId: 'bar', url: 'https://github.com/example/project', title: '项目仓库'
+    });
+
+    expect(harness.chrome.storage.local.set).toHaveBeenLastCalledWith({
+      bmTags: { 'browser-created': ['工作'] }
+    });
+  } finally {
+    restoreGlobal('chrome', previousChrome);
+  }
+});

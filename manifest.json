@@ -7,6 +7,7 @@
     "bookmarks",
     "storage",
     "alarms",
+    "favicon",
     "sidePanel"
   ],
   "host_permissions": [

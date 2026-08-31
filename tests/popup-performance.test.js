@@ -69,6 +69,20 @@ describe('侧边栏导航', () => {
   });
 });
 
+describe('标签池重命名', () => {
+  it('同步更新域名和关键字规则中的标签引用', () => {
+    const renameTagInRules = eval(`(${getFunctionSource('renameTagInRules')})`);
+
+    expect(renameTagInRules({
+      domain: { github: ['代码', '工具'] },
+      keyword: { roadmap: ['代码'] }
+    }, '代码', '开发')).toEqual({
+      domain: { github: ['开发', '工具'] },
+      keyword: { roadmap: ['开发'] }
+    });
+  });
+});
+
 describe('操作反馈', () => {
   it('短提示位于底部，长任务状态放在内容区与底栏之间', () => {
     expect(popupCss).toContain('position: fixed; bottom: 68px;');
@@ -167,8 +181,19 @@ describe('侧边栏首屏', () => {
   });
 
   it('并行读取设置与首轮扫描，不串行阻塞概览渲染', () => {
-    expect(popupSource).toContain('settingsReady = loadSettings();');
+    expect(popupSource).toContain('tagConfigurationReady = BM.initializeSyncedTagConfiguration');
+    expect(popupSource).toContain('settingsReady = tagConfigurationReady.then(loadSettings);');
+    expect(getFunctionSource('runRefresh')).toContain('await tagConfigurationReady;');
     expect(popupSource).toContain('await Promise.all([settingsReady, refresh(true)]);');
+    expect(popupSource).toContain('if (!tagConfigurationSyncFailed)');
+    expect(popupSource).toContain('BM.watchTagConfiguration');
+  });
+
+  it('标签池编辑通过共享配置同步保存', () => {
+    expect(getFunctionSource('createTag')).toContain('BM.saveSyncedTagConfiguration');
+    expect(getFunctionSource('renameTag')).toContain('BM.saveSyncedTagConfiguration');
+    expect(getFunctionSource('removeTagFromPool')).toContain('BM.saveSyncedTagConfiguration');
+    expect(popupSource).not.toContain('chrome.storage.local.set({ bmFixedTags');
   });
 
   it('标签池外部变更后重载缓存并刷新已打开的标签管理器', async () => {

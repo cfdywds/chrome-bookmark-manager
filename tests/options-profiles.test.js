@@ -80,7 +80,38 @@ describe('LLM 多配置', () => {
   it('设置页会显示持久化的标签同步失败，文档说明标签可选同步', () => {
     expect(optionsSource).toContain('BM.SYNC_STATUS_KEY');
     expect(optionsSource).toContain('renderTagSyncStatus');
-    expect(readme).toContain('标签数据可通过 Chrome 同步');
+    expect(readme).toContain('固定标签池和自定义标签规则');
+  });
+
+  it('设置页展示扩展 ID，并明确排除 API Key', () => {
+    const elements = { '#tagSyncExtensionId': { textContent: '' } };
+    const $ = selector => elements[selector];
+    const chrome = { runtime: { id: 'stable-extension-id' } };
+    const renderTagSyncDiagnostics = eval(`(${getFunctionSource('renderTagSyncDiagnostics')})`);
+
+    renderTagSyncDiagnostics();
+
+    expect(optionsHtml).toContain('id="tagSyncExtensionId"');
+    expect(elements['#tagSyncExtensionId'].textContent).toBe('扩展 ID：stable-extension-id');
+    expect(readme).toContain('不包含 API Key');
+  });
+
+
+  it('标签同步成功时显示最近成功时间而不显示内容', () => {
+    const elements = { '#tagSyncMsg': { textContent: '', className: '' } };
+    const $ = selector => elements[selector];
+    const renderTagSyncStatus = eval(`(${getFunctionSource('renderTagSyncStatus')})`);
+
+    renderTagSyncStatus({ lastSuccessAt: 1767225600000, lastError: '' });
+
+    expect(elements['#tagSyncMsg'].textContent).toContain('上次同步成功：');
+    expect(elements['#tagSyncMsg'].className).toBe('settings-msg ok');
+  });
+
+
+  it('读取本地标签配置前先采用较新的云端配置', () => {
+    expect(getFunctionSource('load')).toContain('await BM.initializeSyncedTagConfiguration();');
+    expect(optionsSource).toContain('BM.watchTagConfiguration');
   });
 
   it('解析并展示域名与标题路径自定义规则', () => {
@@ -95,9 +126,14 @@ describe('LLM 多配置', () => {
     expect(optionsHtml).toContain('id="setKeywordTagRules"');
     expect(optionsHtml).not.toContain('id="setDomainGroups"');
     expect(optionsSource).not.toContain('bmDomainGroups:');
-    expect(getFunctionSource('persistSilent')).toContain('bmTagRules: tagRules');
+    expect(getFunctionSource('persistSilent')).not.toContain('bmFixedTags');
+    expect(getFunctionSource('persistSilent')).not.toContain('bmTagRules');
+    expect(getFunctionSource('persistFixedTags')).toContain('BM.saveSyncedTagConfiguration');
+    expect(getFunctionSource('persistTagRules')).toContain('BM.saveSyncedTagConfiguration');
+    expect(optionsSource).not.toContain('chrome.storage.sync.set({ bmSettings');
     expect(optionsSource).toContain("$('#setDomainTagRules').addEventListener('change', persistTagRules)");
     expect(optionsSource).toContain("$('#setKeywordTagRules').addEventListener('change', persistTagRules)");
+    expect(getFunctionSource('persistTagSync')).toContain('await BM.initializeSyncedTagConfiguration();');
     expect(optionsSource).not.toContain("$('#setDomainTagRules').addEventListener('input', persistTagRules)");
   });
 

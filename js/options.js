@@ -39,9 +39,26 @@ function setTrMsg(text, cls) {
 
 function renderTagSyncStatus(status) {
   const msg = $('#tagSyncMsg');
-  if (!msg || !status || !status.lastError) return;
-  msg.textContent = '上次同步失败：' + status.lastError;
-  msg.className = 'settings-msg err';
+  if (!msg) return;
+  if (status && status.lastError) {
+    msg.textContent = '上次同步失败：' + status.lastError;
+    msg.className = 'settings-msg err';
+    return;
+  }
+  if (status && status.lastSuccessAt) {
+    msg.textContent = '上次同步成功：' + new Date(status.lastSuccessAt).toLocaleString();
+    msg.className = 'settings-msg ok';
+    return;
+  }
+  msg.textContent = '';
+  msg.className = 'settings-msg';
+}
+
+function renderTagSyncDiagnostics() {
+  const el = $('#tagSyncExtensionId');
+  if (!el) return;
+  const id = chrome.runtime && chrome.runtime.id ? chrome.runtime.id : '';
+  el.textContent = id ? '扩展 ID：' + id : '';
 }
 
 // ---- 固定标签池：textarea ↔ 数组转换（每行一个，忽略 # 注释）----
@@ -145,9 +162,7 @@ function consumeOwnProfileWrite(changes) {
   const index = pendingOwnProfileWrites.findIndex(marker =>
     (!changes[LLM_PROFILES_KEY] || sameStoredValue(marker.profiles, changes[LLM_PROFILES_KEY].newValue)) &&
     (!changes[ACTIVE_LLM_PROFILE_KEY] || marker.activeId === changes[ACTIVE_LLM_PROFILE_KEY].newValue) &&
-    (!changes.bmSettings || sameStoredValue(marker.settings, changes.bmSettings.newValue)) &&
-    (!changes.bmFixedTags || sameStoredValue(marker.fixedTags, changes.bmFixedTags.newValue)) &&
-    (!changes.bmTagRules || sameStoredValue(marker.tagRules, changes.bmTagRules.newValue))
+    (!changes.bmSettings || sameStoredValue(marker.settings, changes.bmSettings.newValue))
   );
   if (index < 0) return false;
   pendingOwnProfileWrites.splice(index, 1);
@@ -160,9 +175,7 @@ function queueProfileWrite(values) {
     const marker = {
       profiles: payload[LLM_PROFILES_KEY],
       activeId: payload[ACTIVE_LLM_PROFILE_KEY],
-      settings: payload.bmSettings,
-      fixedTags: payload.bmFixedTags,
-      tagRules: payload.bmTagRules
+      settings: payload.bmSettings
     };
     pendingOwnProfileWrites.push(marker);
     try {
@@ -246,21 +259,12 @@ function applyProviderPreset() {
 async function persistSilent() {
   const profile = updateActiveProfileFromForm();
   if (!profile) return;
-  const ft = parseFixedTags($('#setFixedTags').value);
-  const tagRules = parseTagRules($('#setDomainTagRules').value, $('#setKeywordTagRules').value);
   try {
     await queueProfileWrite({
       [LLM_PROFILES_KEY]: llmProfiles,
       [ACTIVE_LLM_PROFILE_KEY]: activeLlmProfileId,
-      bmSettings: profileSettings(profile),
-      bmFixedTags: ft,
-      bmTagRules: tagRules
+      bmSettings: profileSettings(profile)
     });
-    // 让 popup/analyzer 下次读取新配置
-    if (typeof BM !== 'undefined') {
-      if (BM.invalidateFixedTags) BM.invalidateFixedTags();
-      if (BM.invalidateTagRules) BM.invalidateTagRules();
-    }
   } catch (e) { console.warn('[书签管家] 保存设置失败', e); }
 }
 
@@ -294,17 +298,27 @@ async function saveWithLlmPermission() {
 }
 
 async function persistFixedTags() {
-  await persistSilent();
   const tags = parseFixedTags($('#setFixedTags').value);
+  const rules = parseTagRules($('#setDomainTagRules').value, $('#setKeywordTagRules').value);
   const max = (typeof BM !== 'undefined' && BM.MAX_FIXED_TAGS) || 50;
-  setFtMsg(`✓ 已保存 ${tags.length} 个标签${tags.length > max ? `（超出 ${max}，AI 打标仅取前 ${max}）` : ''}`, 'ok');
+  try {
+    await BM.saveSyncedTagConfiguration(tags, rules);
+    setFtMsg(`✓ 已保存 ${tags.length} 个标签${tags.length > max ? `（超出 ${max}，AI 打标仅取前 ${max}）` : ''}`, 'ok');
+  } catch (e) {
+    setFtMsg('保存失败：' + (e.message || e), 'err');
+  }
 }
 
 async function persistTagRules() {
-  await persistSilent();
+  const tags = parseFixedTags($('#setFixedTags').value);
   const rules = parseTagRules($('#setDomainTagRules').value, $('#setKeywordTagRules').value);
   const count = Object.keys(rules.domain).length + Object.keys(rules.keyword).length;
-  setTrMsg('✓ 已保存 ' + count + ' 条自定义规则', 'ok');
+  try {
+    await BM.saveSyncedTagConfiguration(tags, rules);
+    setTrMsg('✓ 已保存 ' + count + ' 条自定义规则', 'ok');
+  } catch (e) {
+    setTrMsg('保存失败：' + (e.message || e), 'err');
+  }
 }
 
 // 用活动配置填充表单（provider 缺失时回退 DeepSeek 预设）
@@ -411,6 +425,7 @@ function fillTagRules(rules) {
 async function load() {
   try {
     await BM.migrateStorage();
+    try { await BM.initializeSyncedTagConfiguration(); } catch (e) { /* 保留本地标签配置 */ }
     const r = await chrome.storage.local.get([
       'bmSettings', LLM_PROFILES_KEY, ACTIVE_LLM_PROFILE_KEY,
       'bmFixedTags', 'bmTagRules', 'bmStarHook', 'bmAutoAiTag', BM.SYNC_ENABLED_KEY, BM.SYNC_STATUS_KEY
@@ -432,6 +447,7 @@ async function load() {
     const syncEl = $('#setTagSync');
     if (syncEl) syncEl.checked = await BM.getTagSyncEnabled();
     renderTagSyncStatus(r[BM.SYNC_STATUS_KEY]);
+    renderTagSyncDiagnostics();
   } catch (e) {
     console.warn('[书签管家] 读取设置失败', e);
   }
@@ -474,6 +490,7 @@ async function persistTagSync() {
       msg.textContent = '已开启 · 正在推送本地标签到云端…';
       msg.className = 'settings-msg ok';
       try {
+        await BM.initializeSyncedTagConfiguration();
         await BM.pullTagsFromCloud();
         await BM.pushTagsToCloud();
         await BM.loadTags();
@@ -498,9 +515,7 @@ async function persistTagSync() {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   const hasProfileChanges = changes[LLM_PROFILES_KEY] || changes[ACTIVE_LLM_PROFILE_KEY];
-  const hasEditableChanges = hasProfileChanges || changes.bmSettings ||
-    changes.bmFixedTags || changes.bmTagRules;
-  const ownProfileChange = hasEditableChanges && consumeOwnProfileWrite(changes);
+  const ownProfileChange = (hasProfileChanges || changes.bmSettings) && consumeOwnProfileWrite(changes);
   if (hasProfileChanges && !ownProfileChange) {
     const legacy = changes.bmSettings ? changes.bmSettings.newValue : profileSettings(activeLlmProfile());
     llmProfiles = normalizeLlmProfiles(
@@ -528,6 +543,17 @@ chrome.storage.onChanged.addListener((changes, area) => {
     renderTagSyncStatus(changes[BM.SYNC_STATUS_KEY].newValue);
   }
 });
+
+try {
+  BM.watchTagConfiguration(() => {
+    if (BM.invalidateFixedTags) BM.invalidateFixedTags();
+    if (BM.invalidateTagRules) BM.invalidateTagRules();
+    Promise.all([BM.loadFixedTags(), BM.loadTagRules()]).then(([tags, rules]) => {
+      fillFixedTags(tags);
+      fillTagRules(rules);
+    }).catch(() => {});
+  });
+} catch (e) { /* sync 权限不可用时保持本地配置 */ }
 
 async function testConnection() {
   const cfg = {

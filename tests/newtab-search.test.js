@@ -16,6 +16,11 @@ function getFunctionSource(name) {
 describe('新标签页搜索', () => {
   it('初始化时主动拉取已有的云端标签', () => {
     expect(newtabSource).toContain('await window.BM.pullTagsFromCloud()');
+    expect(newtabSource).toContain('await window.BM.initializeSyncedTagConfiguration()');
+    expect(newtabSource.indexOf('await window.BM.initializeSyncedTagConfiguration()'))
+      .toBeLessThan(newtabSource.indexOf('await window.BM.pullTagsFromCloud()'));
+    expect(newtabSource).toContain('if (tagConfigurationSyncReady)');
+    expect(newtabSource).toContain('window.BM.watchTagConfiguration');
   });
 
   it('仅在输入搜索词时纳入匹配的隐藏书签', () => {
@@ -49,6 +54,7 @@ describe('新标签页搜索', () => {
   it('将隐藏搜索结果标记为已隐藏，并提供取消隐藏操作', () => {
     const esc = eval(`(${getFunctionSource('esc')})`);
     const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
+    const faviconUrl = () => 'chrome-extension://test/_favicon/?pageUrl=https%3A%2F%2Fexample.com%2F&size=64';
     const ICON = () => '';
     const cardHtml = eval(`(${getFunctionSource('cardHtml')})`);
 
@@ -63,6 +69,7 @@ describe('新标签页搜索', () => {
   it('对标题进行 HTML 转义，并禁用非 HTTP(S) 链接', () => {
     const esc = eval(`(${getFunctionSource('esc')})`);
     const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
+    const faviconUrl = () => '';
     const ICON = () => '';
     const cardHtml = eval(`(${getFunctionSource('cardHtml')})`);
 
@@ -73,5 +80,68 @@ describe('新标签页搜索', () => {
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(html).not.toContain('href="javascript:');
     expect(html).toContain('aria-disabled="true"');
+  });
+
+  it('仅为 HTTP(S) 网站生成扩展内 favicon 地址', () => {
+    const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
+    const chrome = {
+      runtime: {
+        getURL: path => `chrome-extension://test${path}`
+      }
+    };
+    const faviconUrl = eval(`(${getFunctionSource('faviconUrl')})`);
+
+    expect(faviconUrl('https://example.com/docs?a=1')).toBe(
+      'chrome-extension://test/_favicon/?pageUrl=https%3A%2F%2Fexample.com%2Fdocs%3Fa%3D1&size=64'
+    );
+    expect(faviconUrl('javascript:alert(1)')).toBe('');
+  });
+
+  it('卡片包含网站图标回退内容和三个悬浮操作', () => {
+    const esc = eval(`(${getFunctionSource('esc')})`);
+    const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
+    const faviconUrl = () => 'chrome-extension://test/_favicon/?pageUrl=https%3A%2F%2Fexample.com%2F&size=64';
+    const ICON = () => '<svg></svg>';
+    const cardHtml = eval(`(${getFunctionSource('cardHtml')})`);
+
+    const html = cardHtml({
+      id: 'example', title: 'Example', host: 'example.com', url: 'https://example.com/', tags: []
+    });
+
+    expect(html).toContain('class="nt-fav-fallback">E</span>');
+    expect(html).toContain('class="nt-fav-img"');
+    expect(html).toContain('aria-label="隐藏"');
+    expect(html).toContain('aria-label="编辑"');
+    expect(html).toContain('aria-label="删除"');
+    expect((html.match(/data-nt-act=/g) || [])).toHaveLength(3);
+  });
+
+  it('打开书签后隐藏悬浮操作，直到鼠标移出卡片', () => {
+    const activeClasses = new Set();
+    let leaveHandler = null;
+    let leaveOptions = null;
+    const wrap = {
+      classList: {
+        add: name => activeClasses.add(name),
+        remove: name => activeClasses.delete(name)
+      },
+      addEventListener: (type, handler, options) => {
+        expect(type).toBe('mouseleave');
+        leaveHandler = handler;
+        leaveOptions = options;
+      }
+    };
+    const card = {
+      hasAttribute: name => name === 'href',
+      closest: selector => selector === '.nt-card-wrap' ? wrap : null
+    };
+    const suppressHoverAfterOpen = eval(`(${getFunctionSource('suppressHoverAfterOpen')})`);
+
+    suppressHoverAfterOpen(card);
+
+    expect(activeClasses.has('nt-card-opening')).toBe(true);
+    expect(leaveOptions).toEqual({ once: true });
+    leaveHandler();
+    expect(activeClasses.has('nt-card-opening')).toBe(false);
   });
 });

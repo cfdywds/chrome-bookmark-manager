@@ -32,6 +32,8 @@ const SELF_CREATION_MESSAGE = 'bmSelfCreatingBookmark';
 const PROVIDERS = BM.PROVIDERS;
 let SETTINGS = { provider: 'deepseek', baseUrl: '', apiKey: '', model: 'deepseek-chat' };
 let settingsReady = Promise.resolve();
+let tagConfigurationReady = Promise.resolve();
+let tagConfigurationSyncFailed = false;
 
 // ---- SVG 图标助手（配合 popup.html 的 <symbol> sprite，替代 emoji）----
 const ICON = name => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-${name}"/></svg>`;
@@ -1171,6 +1173,7 @@ function showError(err) {
 
 // ---------- 数据加载 ----------
 async function runRefresh() {
+  await tagConfigurationReady;
   tabRenderToken++;
   listRenderLimits = Object.create(null);
   content().innerHTML = '<div class="loading">正在扫描书签…</div>';
@@ -1652,7 +1655,13 @@ async function dropOntoGroup(head) {
 // ---------- 初始化 ----------
 async function init() {
   // 设置只影响 AI 操作；与首轮书签分析并行读取，避免首屏多等待一次 storage。
-  settingsReady = loadSettings();
+  tagConfigurationReady = BM.initializeSyncedTagConfiguration
+    ? BM.initializeSyncedTagConfiguration().catch(() => {
+      tagConfigurationSyncFailed = true;
+      return false;
+    })
+    : Promise.resolve(false);
+  settingsReady = tagConfigurationReady.then(loadSettings);
 
   // 标签切换
   document.querySelectorAll('.tab').forEach(t => {
@@ -2033,11 +2042,18 @@ async function init() {
   await Promise.all([settingsReady, refresh(true)]);
 
   // 标签云同步（开启时）：启动拉取云端标签合并 + 监听跨端变更实时刷新
-  try {
-    const changed = await BM.pullTagsFromCloud();
-    if (changed) { BM.invalidateTags(); await refresh(true); }
-    BM.watchTagSync(() => { BM.invalidateTags(); refresh(true); });
-  } catch (e) { /* 无 sync 权限等忽略 */ }
+  if (!tagConfigurationSyncFailed) {
+    try {
+      const changed = await BM.pullTagsFromCloud();
+      if (changed) { BM.invalidateTags(); await refresh(true); }
+      BM.watchTagConfiguration(() => {
+        BM.invalidateFixedTags();
+        BM.invalidateTagRules();
+        refresh(true);
+      });
+      BM.watchTagSync(() => { BM.invalidateTags(); refresh(true); });
+    } catch (e) { /* 无 sync 权限等忽略 */ }
+  }
 
 }
 
@@ -2671,11 +2687,26 @@ async function createTag() {
   if (pool.length >= max) { toast('标签池已达上限（' + max + '），请先删除或重命名', 'warn'); return; }
   pool.push(clean);
   try {
-    await chrome.storage.local.set({ bmFixedTags: pool });
-    BM.invalidateFixedTags();
+    await BM.loadTagRules();
+    await BM.saveSyncedTagConfiguration(
+      pool.filter(tag => tag !== BM.FALLBACK_TAG), BM.getTagRules() || {}
+    );
     toast('已新建标签 #' + clean + ' ✓', 'ok');
   } catch (e) { toast('新建失败：' + (e.message || e), 'danger'); }
   refresh();
+}
+
+function renameTagInRules(rules, oldName, newName) {
+  const oldKey = String(oldName || '').trim().toLowerCase();
+  const replaceInMap = map => Object.fromEntries(Object.entries(
+    map && typeof map === 'object' && !Array.isArray(map) ? map : {}
+  ).map(([key, tags]) => [key, (Array.isArray(tags) ? tags : []).map(tag =>
+    String(tag || '').trim().toLowerCase() === oldKey ? newName : tag
+  )]));
+  return {
+    domain: replaceInMap(rules && rules.domain),
+    keyword: replaceInMap(rules && rules.keyword)
+  };
 }
 
 // 重命名标签：同步改池 + 所有带此标签的书签
@@ -2696,7 +2727,13 @@ async function renameTag(oldName) {
   if (idx >= 0) {
     if (pool.includes(clean)) { toast('目标标签已存在', 'warn'); return; }
     pool[idx] = clean;
-    try { await chrome.storage.local.set({ bmFixedTags: pool }); } catch (e) { /* ignore */ }
+    try {
+      await BM.loadTagRules();
+      const rules = renameTagInRules(BM.getTagRules() || {}, oldName, clean);
+      await BM.saveSyncedTagConfiguration(
+        pool.filter(tag => tag !== BM.FALLBACK_TAG), rules
+      );
+    } catch (e) { /* 配置已保留在本地，下次同步重试 */ }
   }
   // 2. 改所有书签的标签
   try { await BM.loadTags(); } catch (e) { /* noop */ }
@@ -2729,8 +2766,12 @@ async function removeTagFromPool(name) {
   if (!ok) return;
   try { await BM.loadFixedTags(); } catch (e) { /* noop */ }
   const pool = [...(BM.getFixedTags() || [])].filter(t => t !== name);
-  try { await chrome.storage.local.set({ bmFixedTags: pool }); } catch (e) { /* ignore */ }
-  BM.invalidateFixedTags();
+  try {
+    await BM.loadTagRules();
+    await BM.saveSyncedTagConfiguration(
+      pool.filter(tag => tag !== BM.FALLBACK_TAG), BM.getTagRules() || {}
+    );
+  } catch (e) { toast('移除失败：' + (e.message || e), 'danger'); return; }
   toast('已从池移除 #' + name, 'ok');
   refresh();
 }

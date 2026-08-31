@@ -80,32 +80,74 @@
 /* ---- 书签卡片网格 ---- */
 .nt-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
 }
-.nt-card {
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 13px 14px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  text-decoration: none; color: inherit;
-  transition: all .15s;
+.nt-card-wrap {
+  position: relative;
+  width: 100%;
+  height: 112px;
+  transition: transform .15s;
 }
-.nt-card:hover {
-  border-color: var(--primary-3);
-  box-shadow: var(--shadow);
+.nt-card-wrap:hover,
+.nt-card-wrap:focus-within {
   transform: translateY(-2px);
 }
+.nt-card-wrap.editing {
+  height: auto;
+  transform: none;
+}
+.nt-card-wrap.nt-card-opening {
+  transform: none;
+}
+.nt-card {
+  box-sizing: border-box;
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; height: 100%;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  text-decoration: none; color: inherit;
+  transition: border-color .15s, box-shadow .15s;
+}
+.nt-card-wrap:hover .nt-card,
+.nt-card-wrap:focus-within .nt-card {
+  border-color: var(--primary-3);
+  box-shadow: var(--shadow);
+}
+.nt-card-wrap.nt-card-opening .nt-card {
+  border-color: var(--line);
+  box-shadow: none;
+}
 .nt-fav {
-  width: 28px; height: 28px; border-radius: 8px;
+  position: relative;
+  display: grid; place-items: center;
+  width: 48px; height: 48px; border-radius: 10px;
+  overflow: hidden;
   flex-shrink: 0; object-fit: contain;
+  background: var(--grad-soft);
+  border: 1px solid var(--line);
 }
-.nt-fav-ph {
-  display: flex; align-items: center; justify-content: center;
-  background: var(--grad-soft); font-size: 15px;
+.nt-fav-fallback {
+  font-size: 18px; line-height: 1; font-weight: 800;
+  color: var(--primary);
 }
-.nt-card-body { flex: 1; min-width: 0; }
+.nt-fav-img {
+  position: absolute; inset: 0;
+  box-sizing: border-box;
+  width: 100%; height: 100%; padding: 8px;
+  object-fit: contain;
+  background: var(--panel);
+  transition: opacity .12s;
+}
+.nt-fav-img.is-error { opacity: 0; }
+.nt-card-body {
+  flex: 1; min-width: 0;
+  align-self: stretch;
+  display: flex; flex-direction: column; justify-content: center;
+}
 .nt-card-title {
   font-size: 13px; font-weight: 600; line-height: 1.35;
   overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
@@ -116,9 +158,11 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .nt-card-tags {
-  display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;
+  display: flex; gap: 4px; margin-top: 6px;
+  overflow: hidden; white-space: nowrap;
 }
 .nt-card-tag {
+  display: inline-flex;
   font-size: 10px; padding: 1px 7px; border-radius: 999px;
   background: var(--ok-soft); color: var(--ok); font-weight: 500;
 }
@@ -140,30 +184,50 @@
 .nt-empty-desc { font-size: 13px; }
 
 /* ===== 卡片操作按钮（hover 显示）===== */
-.nt-card-wrap { position: relative; }
 .nt-actions {
-  position: absolute; top: 6px; right: 6px;
-  display: flex; gap: 3px;
-  opacity: 0; transition: opacity .15s;
+  position: absolute; top: 50%; right: 10px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(20, 22, 31, .76);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .18);
+  opacity: 0; visibility: hidden;
+  transform: translate(6px, -50%);
+  pointer-events: none;
+  transition: opacity .15s, visibility .15s, transform .15s;
   z-index: 2;
 }
 .nt-card-wrap:hover .nt-actions,
-.nt-card-wrap:focus-within .nt-actions { opacity: 1; }
+.nt-card-wrap:focus-within .nt-actions {
+  opacity: 1; visibility: visible;
+  transform: translate(0, -50%);
+}
+.nt-card-wrap.nt-card-opening .nt-actions {
+  opacity: 0; visibility: hidden;
+  transform: translate(6px, -50%);
+}
 .nt-action {
-  border: none; background: var(--panel);
-  color: var(--ink-2);
-  width: 26px; height: 26px; padding: 4px;
-  border-radius: 6px; cursor: pointer;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, .7);
+  background: rgba(255, 255, 255, .94);
+  color: #272938;
+  width: 36px; height: 36px; padding: 8px;
+  border-radius: 7px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 1px 3px rgba(0,0,0,.1);
-  transition: all .12s;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .2);
+  pointer-events: auto;
+  transition: background .12s, color .12s, transform .12s;
 }
 .nt-action:hover { background: var(--primary-soft, #eef0ff); color: var(--primary); transform: translateY(-1px); }
 .nt-action.danger:hover { background: var(--danger-soft, #ffe4e9); color: var(--danger); }
-.nt-action svg { width: 14px; height: 14px; }
+.nt-action:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.nt-action svg { width: 18px; height: 18px; }
 
 /* ===== Inline 编辑浮层 ===== */
 .nt-edit {
+  box-sizing: border-box;
+  width: 100%;
   background: var(--panel);
   border: 2px solid var(--primary);
   border-radius: 14px;
@@ -207,5 +271,7 @@
 
 @media (max-width: 560px) {
   .nt-wrap { padding: 18px 14px 50px; }
-  .nt-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  .nt-grid { grid-template-columns: minmax(0, 1fr); }
+  .nt-card-wrap,
+  .nt-edit { width: 100%; }
 }

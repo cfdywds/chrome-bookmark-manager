@@ -12,7 +12,9 @@ Chrome / Edge Manifest V3 书签管理扩展。用标签整理书签，清理重
 
 ## 安装
 
-需要 Chrome 或 Microsoft Edge 114 及以上版本。
+需要 Chrome 或 Microsoft Edge 114 及以上版本。生产环境必须从同一个 Chrome Web Store 条目安装，以保持相同扩展 ID 和 Chrome Sync 命名空间；详细发布、迁移和回退流程见 [Chrome Web Store 发布手册](./docs/release/chrome-web-store.md)。
+
+### 开发安装
 
 ```bash
 git clone https://github.com/cfdywds/chrome-bookmark-manager.git
@@ -22,7 +24,7 @@ git clone https://github.com/cfdywds/chrome-bookmark-manager.git
 2. 开启「开发者模式」，选择「加载已解压的扩展程序」。
 3. 选择本项目根目录，随后在工具栏点击「书签管家」打开侧边栏。
 
-当前以解压扩展方式分发，尚未上架 Chrome Web Store。
+解压安装仅用于开发。它的扩展 ID 与 Chrome Web Store 版本不同，不能作为跨设备生产同步方案。不要提交私钥、API Key 或个人书签备份。
 
 ## AI 打标
 
@@ -58,7 +60,7 @@ release=资讯
 - 书签、标签、隐藏状态、回收站和自定义打标规则默认保存在本机。
 - 备份不包含 LLM 配置或 API Key。
 - 检查更新只访问 GitHub Releases API，不会发送书签数据。
-- 书签由 Chrome 原生同步；启用「标签云同步」后，标签数据可通过 Chrome 同步到同一配置文件的其他设备。同步仅包含规范化 URL 键和标签名，不包含书签标题或页面内容。
+- 书签由 Chrome 原生同步；启用「标签云同步」后，规范化 URL 键的标签、固定标签池和自定义标签规则可通过 Chrome 同步到同一配置文件的其他设备。同步不包含书签标题或页面内容；不包含 API Key、LLM 配置、端点或模型。标签名和规则文字仍可能反映浏览偏好。
 
 完整安全边界与漏洞报告方式见 [SECURITY.md](./SECURITY.md)。
 

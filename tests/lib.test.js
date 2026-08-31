@@ -151,6 +151,326 @@ describe('标签云同步 V2（URL 主键）', () => {
   });
 });
 
+describe('标签配置云同步（版本化快照）', () => {
+  it('保留显式空标签池和空规则，并按修订号比较快照', () => {
+    const config = {
+      version: 1,
+      revision: { updatedAt: 100, deviceId: 'device-a' },
+      fixedTags: [],
+      tagRules: { domain: {}, keyword: {} }
+    };
+
+    const chunks = BM.serializeSyncConfig(config);
+
+    expect(JSON.parse(chunks.bmSyncConfig_p0)).toEqual(config);
+    expect(BM.deserializeSyncConfig(chunks.bmSyncConfig_p0)).toEqual(config);
+    expect(BM.deserializeSyncConfig(JSON.stringify({ ...config, tagRules: [] }))).toBeNull();
+    expect(BM.compareConfigRevision(config.revision, {
+      updatedAt: 100, deviceId: 'device-b'
+    })).toBeLessThan(0);
+  });
+  it('显式空标签池只保留兜底标签，不回退默认池', async () => {
+    const previousChrome = globalThis.chrome;
+    globalThis.chrome = {
+      storage: { local: { get: vi.fn().mockResolvedValue({ bmFixedTags: [] }) } }
+    };
+
+    try {
+      BM.invalidateFixedTags();
+      await expect(BM.loadFixedTags()).resolves.toEqual(['其他']);
+    } finally {
+      BM.invalidateFixedTags();
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('采用云端较新的标签池和规则而不读取 LLM 配置', async () => {
+    const previousChrome = globalThis.chrome;
+    const config = {
+      version: 1,
+      revision: { updatedAt: 100, deviceId: 'device-a' },
+      fixedTags: ['工作'],
+      tagRules: { domain: { github: ['工作'] }, keyword: {} }
+    };
+    const chunks = BM.serializeSyncConfig(config);
+    const localData = {
+      bmFixedTags: ['代码'],
+      bmTagRules: { domain: {}, keyword: {} },
+      bmSyncConfigRevision: { updatedAt: 10, deviceId: 'device-old' },
+      bmSettings: { apiKey: 'secret-api-key' }
+    };
+    const syncData = { [BM.SYNC_ENABLED_KEY]: true, ...chunks };
+    const localGet = vi.fn(async keys => {
+      const wanted = Array.isArray(keys) ? keys : [keys];
+      return Object.fromEntries(wanted.map(key => [key, localData[key]]));
+    });
+    globalThis.chrome = {
+      storage: {
+        local: {
+          get: localGet,
+          set: vi.fn(async values => { Object.assign(localData, values); })
+        },
+        sync: {
+          get: vi.fn(async keys => {
+            const wanted = Array.isArray(keys) ? keys : [keys];
+            return Object.fromEntries(wanted.map(key => [key, syncData[key]]));
+          })
+        }
+      }
+    };
+
+    try {
+      await expect(BM.pullConfigFromCloud()).resolves.toBe(true);
+      expect(localData.bmFixedTags).toEqual(['工作']);
+      expect(localData.bmTagRules).toEqual({ domain: { github: ['工作'] }, keyword: {} });
+      expect(localGet.mock.calls.flat()).not.toContain('bmSettings');
+    } finally {
+      BM.invalidateFixedTags();
+      BM.invalidateTagRules();
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('远端配置变更仅在更高修订已写入本地后通知界面', async () => {
+    const previousChrome = globalThis.chrome;
+    const cloud = {
+      version: 1,
+      revision: { updatedAt: 200, deviceId: 'device-remote' },
+      fixedTags: ['远端'],
+      tagRules: { domain: { github: ['远端'] }, keyword: {} }
+    };
+    const syncData = { [BM.SYNC_ENABLED_KEY]: true, ...BM.serializeSyncConfig(cloud) };
+    const localData = {
+      bmFixedTags: ['本地'],
+      bmTagRules: { domain: {}, keyword: {} },
+      bmSyncConfigRevision: { updatedAt: 100, deviceId: 'device-local' }
+    };
+    let listener;
+    globalThis.chrome = {
+      storage: {
+        local: {
+          get: vi.fn(async keys => {
+            const wanted = Array.isArray(keys) ? keys : [keys];
+            return Object.fromEntries(wanted.map(key => [key, localData[key]]));
+          }),
+          set: vi.fn(async values => { Object.assign(localData, values); })
+        },
+        sync: {
+          get: vi.fn(async keys => {
+            const wanted = Array.isArray(keys) ? keys : [keys];
+            return Object.fromEntries(wanted.map(key => [key, syncData[key]]));
+          }),
+          onChanged: { addListener: callback => { listener = callback; } }
+        }
+      }
+    };
+    const onChange = vi.fn();
+
+    try {
+      BM.watchTagConfiguration(onChange);
+      listener({ [BM.SYNC_CONFIG_CNT]: { oldValue: 0, newValue: 1 } }, 'sync');
+
+      await vi.waitFor(() => expect(onChange).toHaveBeenCalledOnce());
+      expect(localData.bmFixedTags).toEqual(['远端']);
+      expect(localData.bmTagRules).toEqual({ domain: { github: ['远端'] }, keyword: {} });
+    } finally {
+      BM.invalidateFixedTags();
+      BM.invalidateTagRules();
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('首次启用时采用有效云端配置而不读取 LLM 配置', async () => {
+    const previousChrome = globalThis.chrome;
+    const cloud = {
+      version: 1,
+      revision: { updatedAt: 100, deviceId: 'device-a' },
+      fixedTags: ['云端'],
+      tagRules: { domain: { github: ['云端'] }, keyword: {} }
+    };
+    const chunks = BM.serializeSyncConfig(cloud);
+    const localData = {
+      bmFixedTags: ['离线'],
+      bmTagRules: { domain: {}, keyword: {} },
+      bmSyncConfigRevision: { updatedAt: 200, deviceId: 'device-local' },
+      bmSettings: { apiKey: 'secret-api-key' }
+    };
+    const syncData = { [BM.SYNC_ENABLED_KEY]: true, ...chunks };
+    const localGet = vi.fn(async keys => {
+      const wanted = Array.isArray(keys) ? keys : [keys];
+      return Object.fromEntries(wanted.map(key => [key, localData[key]]));
+    });
+    globalThis.chrome = {
+      storage: {
+        local: {
+          get: localGet,
+          set: vi.fn(async values => { Object.assign(localData, values); })
+        },
+        sync: {
+          get: vi.fn(async keys => {
+            const wanted = Array.isArray(keys) ? keys : [keys];
+            return Object.fromEntries(wanted.map(key => [key, syncData[key]]));
+          }),
+          set: vi.fn(async values => { Object.assign(syncData, values); })
+        }
+      }
+    };
+
+    try {
+      await expect(BM.initializeSyncedTagConfiguration()).resolves.toBe(true);
+      expect(localData.bmFixedTags).toEqual(['云端']);
+      expect(localData.bmTagRules).toEqual({ domain: { github: ['云端'] }, keyword: {} });
+      expect(localGet.mock.calls.flat()).not.toContain('bmSettings');
+    } finally {
+      BM.invalidateFixedTags();
+      BM.invalidateTagRules();
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('读取云端配置失败时保留本地配置并记录同步错误', async () => {
+    const previousChrome = globalThis.chrome;
+    const localData = {
+      bmSyncEnabled: true,
+      bmFixedTags: ['本地'],
+      bmTagRules: { domain: { local: ['本地'] }, keyword: {} },
+      bmSyncConfigRevision: { updatedAt: 100, deviceId: 'device-local' }
+    };
+    const syncSet = vi.fn();
+    globalThis.chrome = {
+      storage: {
+        local: {
+          get: vi.fn(async keys => {
+            const wanted = Array.isArray(keys) ? keys : [keys];
+            return Object.fromEntries(wanted.map(key => [key, localData[key]]));
+          }),
+          set: vi.fn(async values => { Object.assign(localData, values); })
+        },
+        sync: {
+          get: vi.fn(async key => {
+            if (key === BM.SYNC_ENABLED_KEY) return { [BM.SYNC_ENABLED_KEY]: true };
+            throw new Error('Sync 暂不可用');
+          }),
+          set: syncSet
+        }
+      }
+    };
+
+    try {
+      await expect(BM.initializeSyncedTagConfiguration()).rejects.toThrow('Sync 暂不可用');
+      expect(localData.bmFixedTags).toEqual(['本地']);
+      expect(localData.bmTagRules).toEqual({ domain: { local: ['本地'] }, keyword: {} });
+      expect(syncSet).not.toHaveBeenCalled();
+      expect(localData[BM.SYNC_STATUS_KEY].lastError).toContain('Sync 暂不可用');
+    } finally {
+      BM.invalidateFixedTags();
+      BM.invalidateTagRules();
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('损坏的云端配置不覆盖本地配置并记录同步错误', async () => {
+    const previousChrome = globalThis.chrome;
+    const localData = {
+      bmSyncEnabled: true,
+      bmFixedTags: ['本地'],
+      bmTagRules: { domain: { local: ['本地'] }, keyword: {} },
+      bmSyncConfigRevision: { updatedAt: 100, deviceId: 'device-local' }
+    };
+    const syncSet = vi.fn();
+    globalThis.chrome = {
+      storage: {
+        local: {
+          get: vi.fn(async keys => {
+            const wanted = Array.isArray(keys) ? keys : [keys];
+            return Object.fromEntries(wanted.map(key => [key, localData[key]]));
+          }),
+          set: vi.fn(async values => { Object.assign(localData, values); })
+        },
+        sync: {
+          get: vi.fn(async keys => {
+            const wanted = Array.isArray(keys) ? keys : [keys];
+            if (wanted.includes(BM.SYNC_CONFIG_CNT)) {
+              return { [BM.SYNC_CONFIG_CNT]: 1, [BM.SYNC_CONFIG_PREFIX + '0']: '{bad json' };
+            }
+            return { [BM.SYNC_ENABLED_KEY]: true };
+          }),
+          set: syncSet
+        }
+      }
+    };
+
+    try {
+      await expect(BM.initializeSyncedTagConfiguration()).rejects.toThrow('标签同步配置格式无效');
+      expect(localData.bmFixedTags).toEqual(['本地']);
+      expect(localData.bmTagRules).toEqual({ domain: { local: ['本地'] }, keyword: {} });
+      expect(syncSet).not.toHaveBeenCalled();
+      expect(localData[BM.SYNC_STATUS_KEY].lastError).toContain('标签同步配置');
+    } finally {
+      BM.invalidateFixedTags();
+      BM.invalidateTagRules();
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+
+  it('开启同步后仅上传固定标签和规则配置', async () => {
+    const previousChrome = globalThis.chrome;
+    const localData = {
+      bmFixedTags: ['本地'],
+      bmTagRules: { domain: {}, keyword: {} },
+      bmSettings: { apiKey: 'secret-api-key', model: 'private-model' }
+    };
+    const syncData = { [BM.SYNC_ENABLED_KEY]: true };
+    const localSet = vi.fn(async values => { Object.assign(localData, values); });
+    const syncSet = vi.fn(async values => { Object.assign(syncData, values); });
+    globalThis.chrome = {
+      storage: {
+        local: {
+          get: vi.fn(async keys => {
+            const wanted = Array.isArray(keys) ? keys : [keys];
+            const out = {};
+            wanted.forEach(key => { out[key] = localData[key]; });
+            return out;
+          }),
+          set: localSet
+        },
+        sync: {
+          get: vi.fn(async keys => {
+            const wanted = Array.isArray(keys) ? keys : [keys];
+            const out = {};
+            wanted.forEach(key => { out[key] = syncData[key]; });
+            return out;
+          }),
+          set: syncSet
+        }
+      }
+    };
+
+    try {
+      await expect(BM.saveSyncedTagConfiguration(['代码'], {
+        domain: { github: ['代码'] }, keyword: {}
+      })).resolves.toBe(true);
+      const payload = JSON.parse(syncData.bmSyncConfig_p0);
+      expect(localData.bmFixedTags).toEqual(['代码']);
+      expect(localData.bmTagRules).toEqual({ domain: { github: ['代码'] }, keyword: {} });
+      expect(payload).toMatchObject({
+        fixedTags: ['代码'], tagRules: { domain: { github: ['代码'] }, keyword: {} }
+      });
+      expect(JSON.stringify(syncSet.mock.calls)).not.toContain('secret-api-key');
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+});
+
 describe('unionTagLists（同址标签取并集）', () => {
   it('去重并保持已有标签优先顺序', () => {
     expect(BM.unionTagLists([['前端', '后端'], ['前端', '数据库']]))

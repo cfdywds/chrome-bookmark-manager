@@ -307,3 +307,20 @@ describe('发布版本校验', () => {
     expect(check.stdout).toContain('历史远端 tag 异常，不阻止更高版本发布');
   });
 });
+
+describe('跨设备分发文档', () => {
+  it('提供商店身份记录并禁止将开发密钥写入生产 manifest', () => {
+    const root = join(__dirname, '..');
+    const runbook = readFileSync(join(root, 'docs', 'release', 'chrome-web-store.md'), 'utf8');
+    const readme = readFileSync(join(root, 'README.md'), 'utf8');
+    const security = readFileSync(join(root, 'SECURITY.md'), 'utf8');
+    const manifest = JSON.parse(readFileSync(join(root, 'manifest.json'), 'utf8'));
+
+    expect(runbook).toContain('Chrome Web Store 条目 URL：');
+    expect(runbook).toContain('生产扩展 ID：');
+    expect(runbook).toContain('extension-private.pem');
+    expect(readme).toContain('Chrome Web Store');
+    expect(security).toContain('扩展私钥');
+    expect(manifest).not.toHaveProperty('key');
+  });
+});

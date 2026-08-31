@@ -26,6 +26,11 @@ const SYNC_TAG_CNT = 'bmSyncTag_cnt';
 const SYNC_STATUS_KEY = 'bmTagSyncStatus';
 const SYNC_CHUNK_CHARS = 2500;
 const SYNC_TAG_DELAY_MS = 1500;
+const SYNC_CONFIG_PREFIX = 'bmSyncConfig_p';
+const SYNC_CONFIG_CNT = 'bmSyncConfig_cnt';
+const SYNC_CONFIG_REVISION_KEY = 'bmSyncConfigRevision';
+const SYNC_CONFIG_VERSION = 1;
+let backgroundConfigHydration = Promise.resolve();
 const LEGACY_DEFAULT_FIXED_TAGS = [
   'AI', '前端', '后端', '移动端', 'JAVA', 'Python', '数据库', '运维', '安全', '设计',
   '学习', '教程', '工具', '效率', '工作', '资讯', '阅读', '视频', '娱乐', '生活', '社交', '博客',
@@ -99,9 +104,10 @@ function syncUrlKey(rawUrl) {
   try {
     const url = new URL(rawUrl);
     const host = String(url.hostname || '').toLowerCase().replace(/^www\./, '');
+    const port = url.port ? ':' + url.port : '';
     const path = url.pathname.replace(/\/+$/, '');
     const hashRoute = /^#!?\//.test(url.hash) ? url.hash.toLowerCase() : '';
-    return (host + path + url.search + hashRoute).toLowerCase();
+    return (host + port + path + url.search + hashRoute).toLowerCase();
   } catch (e) {
     return String(rawUrl || '').trim().toLowerCase();
   }
@@ -140,6 +146,97 @@ function serializeBackgroundSyncTags(tags) {
   return out;
 }
 
+
+function backgroundConfigRevision(value) {
+  return {
+    updatedAt: Math.max(0, Math.floor(Number(value && value.updatedAt) || 0)),
+    deviceId: String(value && value.deviceId || '').trim()
+  };
+}
+
+function compareBackgroundConfigRevision(left, right) {
+  const a = backgroundConfigRevision(left);
+  const b = backgroundConfigRevision(right);
+  if (a.updatedAt !== b.updatedAt) return a.updatedAt - b.updatedAt;
+  return a.deviceId.localeCompare(b.deviceId);
+}
+
+function normalizeBackgroundSyncConfig(config) {
+  if (!config || typeof config !== 'object' || config.version !== SYNC_CONFIG_VERSION) return null;
+  if (!Array.isArray(config.fixedTags) || !config.tagRules || typeof config.tagRules !== 'object' || Array.isArray(config.tagRules)) return null;
+  const revision = backgroundConfigRevision(config.revision);
+  if (!revision.updatedAt || !revision.deviceId) return null;
+  return {
+    version: SYNC_CONFIG_VERSION,
+    revision,
+    fixedTags: [...new Set(config.fixedTags.map(tag => String(tag || '').trim()).filter(Boolean))]
+      .slice(0, MAX_FIXED_TAGS),
+    tagRules: normalizeBackgroundTagRules(config.tagRules)
+  };
+}
+
+function deserializeBackgroundSyncConfig(json) {
+  try { return normalizeBackgroundSyncConfig(JSON.parse(json)); }
+  catch (e) { return null; }
+}
+
+async function parseBackgroundSyncConfig(api) {
+  const header = await api.storage.sync.get(SYNC_CONFIG_CNT);
+  if (header[SYNC_CONFIG_CNT] === undefined) return null;
+  const count = Number(header[SYNC_CONFIG_CNT]);
+  if (!Number.isInteger(count) || count < 1 || count > 100) {
+    throw new Error('标签同步配置分片数量无效');
+  }
+  const keys = [SYNC_CONFIG_CNT];
+  for (let index = 0; index < count; index++) keys.push(SYNC_CONFIG_PREFIX + index);
+  const chunks = await api.storage.sync.get(keys);
+  let json = '';
+  for (let index = 0; index < count; index++) {
+    const chunk = chunks[SYNC_CONFIG_PREFIX + index];
+    if (typeof chunk !== 'string') throw new Error('标签同步配置分片缺失');
+    json += chunk;
+  }
+  const config = deserializeBackgroundSyncConfig(json);
+  if (!config) throw new Error('标签同步配置格式无效');
+  return config;
+}
+
+async function applyBackgroundSyncConfig(api, config) {
+  const normalized = normalizeBackgroundSyncConfig(config);
+  if (!normalized) return false;
+  const current = await api.storage.local.get(SYNC_CONFIG_REVISION_KEY);
+  if (compareBackgroundConfigRevision(normalized.revision, current[SYNC_CONFIG_REVISION_KEY]) <= 0) return false;
+  await api.storage.local.set({
+    [FIXED_TAGS_KEY]: normalized.fixedTags,
+    [TAG_RULES_KEY]: normalized.tagRules,
+    [SYNC_CONFIG_REVISION_KEY]: normalized.revision
+  });
+  return true;
+}
+
+async function hydrateBackgroundSyncConfig(api) {
+  if (!api || !api.storage || !api.storage.sync || typeof api.storage.sync.get !== 'function') return false;
+  try {
+    if (!await isBackgroundConfigSyncEnabled(api)) return false;
+    const config = await parseBackgroundSyncConfig(api);
+    if (!config) return false;
+    const applied = await applyBackgroundSyncConfig(api, config);
+    if (applied) await setBackgroundTagSyncStatus(api, '');
+    return applied;
+  } catch (e) {
+    await setBackgroundTagSyncStatus(api, (e && e.message) || e);
+    return false;
+  }
+}
+
+function refreshBackgroundSyncConfig(api) {
+  backgroundConfigHydration = hydrateBackgroundSyncConfig(api).catch(error => {
+    console.warn('[书签管家] 标签配置同步失败', error);
+    return false;
+  });
+  return backgroundConfigHydration;
+}
+
 async function isBackgroundTagSyncEnabled(api) {
   const synced = await api.storage.sync.get(SYNC_ENABLED_KEY);
   if (synced[SYNC_ENABLED_KEY]) return true;
@@ -147,6 +244,12 @@ async function isBackgroundTagSyncEnabled(api) {
   if (!local[SYNC_ENABLED_KEY]) return false;
   await api.storage.sync.set({ [SYNC_ENABLED_KEY]: true });
   return true;
+}
+
+
+async function isBackgroundConfigSyncEnabled(api) {
+  const synced = await api.storage.sync.get(SYNC_ENABLED_KEY);
+  return !!synced[SYNC_ENABLED_KEY];
 }
 
 async function setBackgroundTagSyncStatus(api, lastError) {
@@ -191,6 +294,18 @@ if (chrome.storage && chrome.storage.onChanged) {
   });
 }
 
+if (chrome.storage && chrome.storage.onChanged) {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'sync') return;
+    if (!Object.keys(changes).some(key =>
+      key === SYNC_ENABLED_KEY || key === SYNC_CONFIG_CNT || key.startsWith(SYNC_CONFIG_PREFIX)
+    )) return;
+    refreshBackgroundSyncConfig(chrome);
+  });
+}
+
+refreshBackgroundSyncConfig(chrome);
+
 function poolTag(pool, name) {
   const normalized = String(name || '').trim().toLowerCase();
   return pool.find(tag => String(tag).toLowerCase() === normalized) || '';
@@ -198,7 +313,7 @@ function poolTag(pool, name) {
 
 function backgroundFixedTagPool(storedTags) {
   let pool = [];
-  if (!Array.isArray(storedTags) || !storedTags.length) {
+  if (!Array.isArray(storedTags)) {
     pool = [...DEFAULT_FIXED_TAGS];
   } else {
     const isLegacyDefault = storedTags.length === LEGACY_DEFAULT_FIXED_TAGS.length &&
@@ -505,6 +620,7 @@ function commitTagChanges(changes, mode) {
 }
 
 async function autoTagBrowserBookmarks(entries) {
+  await backgroundConfigHydration;
   const stored = await chrome.storage.local.get([
     FIXED_TAGS_KEY, TAG_RULES_KEY, 'bmDomainGroups', LEGACY_DOMAIN_GROUPS_MIGRATED_KEY,
     'bmSettings', AUTO_AI_TAG_KEY
