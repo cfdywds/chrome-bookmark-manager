@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const newtabSource = readFileSync(join(__dirname, '..', 'js', 'newtab.js'), 'utf-8').replace(/\r\n/g, '\n');
+const newtabCss = readFileSync(join(__dirname, '..', 'css', 'newtab.css'), 'utf-8').replace(/\r\n/g, '\n');
 
 function getFunctionSource(name) {
   const start = newtabSource.indexOf(`function ${name}(`);
@@ -97,7 +98,7 @@ describe('新标签页搜索', () => {
     expect(faviconUrl('javascript:alert(1)')).toBe('');
   });
 
-  it('卡片包含网站图标回退内容和三个悬浮操作', () => {
+  it('卡片包含网站图标回退内容和四个抽屉操作', () => {
     const esc = eval(`(${getFunctionSource('esc')})`);
     const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
     const faviconUrl = () => 'chrome-extension://test/_favicon/?pageUrl=https%3A%2F%2Fexample.com%2F&size=64';
@@ -110,14 +111,43 @@ describe('新标签页搜索', () => {
 
     expect(html).toContain('class="nt-fav-fallback">E</span>');
     expect(html).toContain('class="nt-fav-img"');
+    expect(html).toContain('aria-label="复制链接"');
     expect(html).toContain('aria-label="隐藏"');
     expect(html).toContain('aria-label="编辑"');
     expect(html).toContain('aria-label="删除"');
-    expect((html.match(/data-nt-act=/g) || [])).toHaveLength(3);
+    expect((html.match(/data-nt-act=/g) || [])).toHaveLength(4);
+  });
+
+  it('复制动作保留书签的完整原始链接', async () => {
+    const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
+    let copied = '';
+    const navigator = { clipboard: { writeText: async value => { copied = value; } } };
+    const copyBookmarkUrl = eval(`(${getFunctionSource('copyBookmarkUrl')})`);
+    const url = 'https://example.com/docs?token=abc#section';
+
+    await expect(copyBookmarkUrl(url)).resolves.toBeUndefined();
+    expect(copied).toBe(url);
+    await expect(copyBookmarkUrl('javascript:alert(1)')).rejects.toThrow('无效书签链接');
+  });
+
+  it('极窄屏将抽屉操作改为两列，避免裁剪删除按钮', () => {
+    expect(newtabCss).toContain('@media (max-width: 320px)');
+    expect(newtabCss).toContain('grid-template-columns: repeat(2, 36px);');
+  });
+
+  it('浅色抽屉保持可辨识的复制成功态和键盘焦点环', () => {
+    expect(newtabCss).toContain('color: #047857;');
+    expect(newtabCss).toContain('outline: 2px solid var(--primary);');
+  });
+
+  it('抽屉使用半透明灰色背景，并为深色主题保留对应层次', () => {
+    expect(newtabCss).toContain('background: rgba(231, 234, 242, .58);');
+    expect(newtabCss).toContain('background: rgba(35, 38, 51, .58);');
   });
 
   it('打开书签后隐藏悬浮操作，直到鼠标移出卡片', () => {
     const activeClasses = new Set();
+    let blurred = false;
     let leaveHandler = null;
     let leaveOptions = null;
     const wrap = {
@@ -133,12 +163,14 @@ describe('新标签页搜索', () => {
     };
     const card = {
       hasAttribute: name => name === 'href',
+      blur: () => { blurred = true; },
       closest: selector => selector === '.nt-card-wrap' ? wrap : null
     };
     const suppressHoverAfterOpen = eval(`(${getFunctionSource('suppressHoverAfterOpen')})`);
 
     suppressHoverAfterOpen(card);
 
+    expect(blurred).toBe(true);
     expect(activeClasses.has('nt-card-opening')).toBe(true);
     expect(leaveOptions).toEqual({ once: true });
     leaveHandler();

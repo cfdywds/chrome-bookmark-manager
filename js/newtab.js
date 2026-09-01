@@ -27,10 +27,33 @@
     return chrome.runtime.getURL('/_favicon/') + '?pageUrl=' + encodeURIComponent(href) + '&size=64';
   }
 
+  function copyBookmarkUrl(rawUrl) {
+    if (!safeHttpUrl(rawUrl)) return Promise.reject(new Error('无效书签链接'));
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+      return Promise.reject(new Error('当前环境不支持复制'));
+    }
+    return navigator.clipboard.writeText(rawUrl);
+  }
+
+  function showCopyState(button, copied) {
+    const label = copied ? '已复制链接' : '复制失败';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.classList.toggle('is-copied', copied);
+    button.classList.toggle('is-copy-error', !copied);
+    window.setTimeout(() => {
+      button.title = '复制链接';
+      button.setAttribute('aria-label', '复制链接');
+      button.classList.remove('is-copied', 'is-copy-error');
+    }, 1600);
+  }
+
   function suppressHoverAfterOpen(card) {
     if (!card || !card.hasAttribute('href')) return;
     const wrap = card.closest('.nt-card-wrap');
     if (!wrap) return;
+    // 鼠标点击后链接仍会保留焦点；返回新标签页时应避免焦点重新展开抽屉。
+    if (typeof card.blur === 'function') card.blur();
     wrap.classList.add('nt-card-opening');
     wrap.addEventListener('mouseleave', () => {
       wrap.classList.remove('nt-card-opening');
@@ -95,6 +118,7 @@
     const hiddenLabel = it.hidden ? '取消隐藏' : '隐藏';
     const actions = `
       <div class="nt-actions" data-id="${esc(it.id)}">
+        <button type="button" class="nt-action" data-nt-act="copy" title="复制链接" aria-label="复制链接">${ICON('copy')}</button>
         <button type="button" class="nt-action" data-nt-act="toggle-hidden" title="${hiddenLabel}" aria-label="${hiddenLabel}">${ICON('eye')}</button>
         <button type="button" class="nt-action" data-nt-act="edit" title="编辑" aria-label="编辑">${ICON('edit')}</button>
         <button type="button" class="nt-action danger" data-nt-act="delete" title="删除（30 天内可恢复）" aria-label="删除">${ICON('trash')}</button>
@@ -118,6 +142,7 @@
   function ICON(name) {
     const paths = {
       eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
+      copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
       edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
       trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>',
       save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>',
@@ -223,7 +248,10 @@
     const it = (DATA.items || []).find(x => String(x.id) === String(id));
     if (!it) return;
     const act = btn.dataset.ntAct;
-    if (act === 'toggle-hidden') {
+    if (act === 'copy') {
+      try { await copyBookmarkUrl(it.url); showCopyState(btn, true); }
+      catch (err) { showCopyState(btn, false); }
+    } else if (act === 'toggle-hidden') {
       await window.BM.toggleHidden(it.id);
       // 实时刷新：onChanged 监听会自动重 analyze（但为即时反馈也可手动 render）
       render();

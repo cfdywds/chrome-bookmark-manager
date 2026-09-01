@@ -87,6 +87,8 @@
   position: relative;
   width: 100%;
   height: 112px;
+  overflow: hidden;
+  border-radius: 12px;
   transition: transform .15s;
 }
 .nt-card-wrap:hover,
@@ -183,46 +185,55 @@
 .nt-empty-title { font-size: 16px; font-weight: 700; color: var(--ink-2); margin-bottom: 6px; }
 .nt-empty-desc { font-size: 13px; }
 
-/* ===== 卡片操作按钮（hover 显示）===== */
+/* ===== 卡片操作抽屉（hover / focus 展开）===== */
 .nt-actions {
-  position: absolute; top: 50%; right: 10px;
-  display: flex; align-items: center; gap: 6px;
-  padding: 6px;
-  border-radius: 10px;
-  background: rgba(20, 22, 31, .76);
-  backdrop-filter: blur(4px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, .18);
+  position: absolute; inset: 1px 1px 1px 74px;
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  padding: 0 12px;
+  border-radius: 0 11px 11px 0;
+  background: rgba(231, 234, 242, .58);
+  backdrop-filter: blur(6px);
+  border-left: 1px solid var(--line-2);
+  box-shadow: -8px 0 18px rgba(52, 58, 93, .1);
   opacity: 0; visibility: hidden;
-  transform: translate(6px, -50%);
+  transform: translateX(100%);
   pointer-events: none;
-  transition: opacity .15s, visibility .15s, transform .15s;
+  transition: opacity .18s, visibility .18s, transform .18s;
   z-index: 2;
 }
 .nt-card-wrap:hover .nt-actions,
 .nt-card-wrap:focus-within .nt-actions {
   opacity: 1; visibility: visible;
-  transform: translate(0, -50%);
+  transform: translateX(0);
 }
 .nt-card-wrap.nt-card-opening .nt-actions {
   opacity: 0; visibility: hidden;
-  transform: translate(6px, -50%);
+  transform: translateX(100%);
 }
 .nt-action {
   box-sizing: border-box;
-  border: 1px solid rgba(255, 255, 255, .7);
-  background: rgba(255, 255, 255, .94);
-  color: #272938;
+  border: 1px solid var(--line-2);
+  background: var(--panel);
+  color: var(--ink-2);
+  flex: 0 0 36px;
   width: 36px; height: 36px; padding: 8px;
   border-radius: 7px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, .2);
+  box-shadow: 0 2px 8px rgba(52, 58, 93, .1);
   pointer-events: auto;
   transition: background .12s, color .12s, transform .12s;
 }
 .nt-action:hover { background: var(--primary-soft, #eef0ff); color: var(--primary); transform: translateY(-1px); }
 .nt-action.danger:hover { background: var(--danger-soft, #ffe4e9); color: var(--danger); }
-.nt-action:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.nt-action.is-copied { background: var(--ok-soft, #e4f8ee); border-color: #78cda2; color: #047857; }
+.nt-action.is-copy-error { background: var(--danger-soft, #ffe4e9); color: var(--danger, #bf3350); }
+.nt-action:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .nt-action svg { width: 18px; height: 18px; }
+
+@media (prefers-color-scheme: dark) {
+  .nt-actions { background: rgba(35, 38, 51, .58); }
+  .nt-action.is-copied { border-color: var(--ok); color: var(--ok); }
+}
 
 /* ===== Inline 编辑浮层 ===== */
 .nt-edit {
@@ -274,4 +285,15 @@
   .nt-grid { grid-template-columns: minmax(0, 1fr); }
   .nt-card-wrap,
   .nt-edit { width: 100%; }
+}
+
+@media (max-width: 320px) {
+  .nt-actions {
+    display: grid;
+    grid-template-columns: repeat(2, 36px);
+    align-content: center;
+    justify-content: end;
+    gap: 6px;
+    padding: 8px 12px;
+  }
 }
