@@ -10,11 +10,11 @@ Chrome / Edge Manifest V3 书签管理扩展。用标签整理书签，清理重
 - 可选的 OpenAI 兼容 LLM 打标，以及本地规则建议。
 - AI 隐私保护：本地识别登录入口、访问凭据参数与金融/钱包服务；命中项不会发送给 LLM。
 
-## 安装
+## 个人使用
 
-需要 Chrome 或 Microsoft Edge 114 及以上版本。生产环境必须从同一个 Chrome Web Store 条目安装，以保持相同扩展 ID 和 Chrome Sync 命名空间；详细发布、迁移和回退流程见 [Chrome Web Store 发布手册](./docs/release/chrome-web-store.md)。
+需要 Chrome 或 Microsoft Edge 114 及以上版本。本地加载不需要 Chrome Web Store 开发者账号。
 
-### 开发安装
+### 单设备本地加载
 
 ```bash
 git clone https://github.com/cfdywds/chrome-bookmark-manager.git
@@ -26,9 +26,9 @@ git clone https://github.com/cfdywds/chrome-bookmark-manager.git
 
 ### 个人本地多设备同步
 
-普通解压安装会在每台设备生成不同扩展 ID，不能同步标签。个人使用请通过项目根目录的 `prepare-local-sync.cmd` 生成带固定 ID 的 `local-sync-build` 目录。
+普通解压安装会在每台设备生成不同扩展 ID，不能同步标签。个人多设备使用请通过项目根目录的 `prepare-local-sync.cmd` 生成带固定 ID 的 `local-sync-build` 目录。
 
-前提：所有设备使用 Chrome、登录同一 Google 账户并启用 Chrome 同步；若使用自定义同步，保持扩展程序或设置相关同步项开启。不要混用 Chrome 和 Edge 作为同步端。
+前提：所有设备使用 Chrome、登录同一 Google 账户并启用 Chrome 同步；若使用自定义同步，保持「扩展程序」同步项开启。不要混用 Chrome 和 Edge 作为同步端。每台设备仍需在 `chrome://extensions` 手动加载一次生成目录。
 
 首次配置只在权威设备执行：
 
@@ -38,7 +38,7 @@ git clone https://github.com/cfdywds/chrome-bookmark-manager.git
 4. 在新扩展中导入备份，启用一次“标签云同步”。
 5. 加密离线备份脚本显示的私钥。它必须保留在权威设备以便换机后生成同一扩展 ID；不要提交、上传到共享同步盘或复制到其他使用设备。
 
-其他设备只需复制整个 `local-sync-build` 目录，在 `chrome://extensions` 中加载它。同步开关会自动从权威设备到达；确认设置页的扩展 ID 与权威设备完全一致。不要再次导入备份。
+其他设备只需复制整个 `local-sync-build` 目录，在 `chrome://extensions` 中加载它。同步开关会自动从权威设备到达；确认设置页的扩展 ID 与权威设备完全一致。不要再次导入备份。完整迁移、更新和回退说明见 [本地同步说明](./docs/release/chrome-web-store.md#本地同步)。
 
 #### 更新本地扩展
 
@@ -49,7 +49,14 @@ git clone https://github.com/cfdywds/chrome-bookmark-manager.git
 3. 更新前可复制一份旧的 `local-sync-build` 目录作为回退版本。将新生成的整个目录复制到其他设备，覆盖旧目录。
 4. 每台设备打开 `chrome://extensions`，点击扩展卡片上的“重新加载”。无需再次启用同步或导入备份。
 
-若更新新增权限，Chrome 会在重新加载时要求确认。需要回退时，恢复旧的 `local-sync-build` 目录并重新加载扩展。详细迁移步骤见 [本地同步说明](./docs/release/chrome-web-store.md#解压本地同步)。
+若更新新增权限，Chrome 会在重新加载时要求确认。需要回退时，恢复旧的 `local-sync-build` 目录并重新加载扩展。
+
+## 备份与恢复
+
+- 备份使用紧凑 V4 JSON，只能由当前版本导出的 V4 文件恢复；迁移前先更新并重新加载原扩展，再导出备份。
+- 书签恢复不会删除当前书签：同一完整 URL 默认合并并合并标签，其余书签新增；确认框可选择保留副本。
+- 隐藏状态和回收站记录会合并保留；固定标签池和自定义标签规则会以备份内容覆盖当前配置。若需要完全隔离的恢复结果，请在新的 Chrome 配置文件中导入。
+- 备份不包含 API Key、LLM 配置、端点、模型或可选主机权限。
 
 ## AI 打标
 
@@ -83,7 +90,6 @@ release=资讯
 ## 隐私
 
 - 书签、标签、隐藏状态、回收站和自定义打标规则默认保存在本机。
-- 备份不包含 LLM 配置或 API Key。V4 备份压缩 Chrome 节点冗余字段，并保留全部书签根目录、标签、隐藏状态、标签池、标签规则和回收站；仅可导入当前版本导出的 V4 备份。
 - 书签由 Chrome 原生同步；启用「标签云同步」后，规范化 URL 键的标签、固定标签池和自定义标签规则可通过 Chrome 同步到同一配置文件的其他设备。同步不包含书签标题或页面内容；不包含 API Key、LLM 配置、端点或模型。标签名和规则文字仍可能反映浏览偏好。
 
 完整安全边界与漏洞报告方式见 [SECURITY.md](./SECURITY.md)。
@@ -100,7 +106,9 @@ npm run lint
 
 贡献规范见 [CONTRIBUTING.md](./CONTRIBUTING.md)，设计与安全决策见 [DESIGN.md](./DESIGN.md)。
 
-## 发布
+## 维护者发布（可选）
+
+只有维护公开商店版本时才需要此流程。所有生产设备必须从同一个 Chrome Web Store 条目安装，才能共享同一个扩展 ID；详细流程见 [发布与回退说明](./docs/release/chrome-web-store.md#chrome-web-store-发布可选)。
 
 当前首发版本为 `v1.0.0`。后续版本使用带注释的 `vX.Y.Z` tag；发布前运行：
 
