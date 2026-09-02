@@ -7,6 +7,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const popupSource = readFileSync(join(__dirname, '..', 'js', 'popup.js'), 'utf-8');
 const popupHtml = readFileSync(join(__dirname, '..', 'popup.html'), 'utf-8');
 const popupCss = readFileSync(join(__dirname, '..', 'css', 'popup.css'), 'utf-8');
+const libSource = readFileSync(join(__dirname, '..', 'js', 'lib.js'), 'utf-8');
+const manifest = JSON.parse(readFileSync(join(__dirname, '..', 'manifest.json'), 'utf-8'));
 
 function getFunctionSource(name) {
   const functionStart = popupSource.indexOf(`function ${name}(`);
@@ -58,14 +60,113 @@ describe('弹窗大列表渲染', () => {
 });
 
 describe('侧边栏导航', () => {
-  it('只保留概览和标签两个顶级页签', () => {
+  it('提供概览、标签和独立隐藏书签页签', () => {
     const tabs = [...popupHtml.matchAll(/data-tab="([^"]+)"/g)].map(match => match[1]);
-    expect(tabs).toEqual(['overview', 'tags']);
+    expect(tabs).toEqual(['overview', 'tags', 'hidden']);
   });
 
   it('标签页仅说明标签数字含义，不重复编码数量', () => {
     expect(popupSource).toContain("helpDot('标签后的数字表示书签数量。')");
     expect(popupSource).not.toContain("pageHint(ICON('tag'), '<b>本页能做什么：</b>按标签浏览书签");
+  });
+});
+
+describe('扩展内更新', () => {
+  it('不提供更新检查入口、运行时请求或 GitHub API 权限', () => {
+    expect(popupSource).not.toContain('check-update');
+    expect(popupSource).not.toContain('checkUpdate');
+    expect(libSource).not.toContain('checkForUpdate');
+    expect(libSource).not.toContain('api.github.com');
+    expect(manifest.host_permissions || []).not.toContain('https://api.github.com/*');
+  });
+});
+
+describe('隐藏书签视图', () => {
+  it('只渲染隐藏书签，并复用书签行操作', () => {
+    const panel = { innerHTML: '' };
+    const content = () => panel;
+    const ICON = name => `<${name}>`;
+    const ICON_SM = name => `<${name}>`;
+    const emptyState = vi.fn();
+    const renderItemRows = vi.fn(() => '<rows>');
+    const FIRST_LIST_COUNT = 80;
+    const DATA = {
+      items: [
+        { id: 'visible', hidden: false },
+        { id: 'hidden-a', hidden: true },
+        { id: 'hidden-b', hidden: true }
+      ]
+    };
+    const renderHidden = eval(`(${getFunctionSource('renderHidden')})`);
+
+    renderHidden();
+
+    expect(renderItemRows).toHaveBeenCalledWith(
+      [DATA.items[1], DATA.items[2]],
+      'hidden-items',
+      FIRST_LIST_COUNT,
+      FIRST_LIST_COUNT
+    );
+    expect(panel.innerHTML).toContain('已隐藏 <b>2</b> 个书签');
+    expect(emptyState).not.toHaveBeenCalled();
+  });
+
+  it('空列表显示隐藏书签专用空状态，并由页签分发到该视图', () => {
+    const panel = { innerHTML: '' };
+    const content = () => panel;
+    const ICON = name => `<${name}>`;
+    const ICON_SM = name => `<${name}>`;
+    const emptyState = vi.fn(() => '<empty>');
+    const renderItemRows = vi.fn();
+    const FIRST_LIST_COUNT = 80;
+    const DATA = { items: [{ id: 'visible', hidden: false }] };
+    const renderHidden = eval(`(${getFunctionSource('renderHidden')})`);
+
+    renderHidden();
+
+    expect(emptyState).toHaveBeenCalledWith('<eye-off>', '没有隐藏的书签', '隐藏的书签会显示在这里');
+    expect(renderItemRows).not.toHaveBeenCalled();
+    expect(getFunctionSource('render')).toContain("else if (tab === 'hidden') renderHidden();");
+  });
+
+  it('在隐藏页搜索时只匹配隐藏书签', () => {
+    const panel = { innerHTML: '' };
+    const content = () => panel;
+    const ICON = name => `<${name}>`;
+    const ICON_SM = name => `<${name}>`;
+    const escapeHtml = value => String(value);
+    const emptyState = vi.fn();
+    const renderItemRows = vi.fn(() => '<rows>');
+    const updateBulk = vi.fn();
+    const FIRST_LIST_COUNT = 80;
+    const SEARCH = 'docs';
+    const currentTab = 'hidden';
+    const DATA = {
+      items: [
+        { id: 'visible', hidden: false, title: 'Visible docs', url: '', host: '' },
+        { id: 'hidden', hidden: true, title: 'Hidden docs', url: '', host: '' }
+      ]
+    };
+    const renderSearch = eval(`(${getFunctionSource('renderSearch')})`);
+
+    renderSearch();
+
+    expect(renderItemRows).toHaveBeenCalledWith(
+      [DATA.items[1]],
+      'search-hidden-docs',
+      FIRST_LIST_COUNT,
+      FIRST_LIST_COUNT,
+      { highlight: SEARCH, search: true }
+    );
+    expect(panel.innerHTML).toContain('隐藏书签搜索');
+    expect(updateBulk).toHaveBeenCalledOnce();
+  });
+
+  it('标签页不再切换到混合隐藏视图，快捷入口跳转独立页面', () => {
+    expect(popupSource).not.toContain('hiddenView');
+    expect(popupSource).not.toContain('toggle-hidden-view');
+    expect(getFunctionSource('renderTags')).toContain('const stats = DATA.tagStats || {};');
+    expect(getFunctionSource('renderTags')).toContain('data-jump="hidden"');
   });
 });
 

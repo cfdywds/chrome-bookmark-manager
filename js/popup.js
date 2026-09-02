@@ -7,7 +7,6 @@ let overviewDetail = '';   // clean | trash；由概览待办项进入的工具�
 let SEARCH = '';            // 全局搜索词
 let searchTimer = null;
 let TAG_FILTER = '';        // 标签筛选：当前选中的标签（'' = 全部）
-let hiddenView = false;     // 查看隐藏书签（true 时显示弱化的隐藏项）
 let tabRenderToken = 0;
 let listRenderLimits = Object.create(null);
 let refreshInFlight = null;
@@ -675,15 +674,6 @@ function renderOverview() {
         <button class="btn small ghost" data-action="backup-export">${ICON_SM('download')} 导出备份</button>
         <button class="btn small" data-action="backup-import">${ICON_SM('upload')} 恢复</button>
       </div>
-    </div>
-    <div class="backup-card">
-      <div>
-        <div class="b-title">${ICON_SM('refresh')} 版本 / 更新</div>
-        <div class="b-desc" id="verDesc">当前 v${escapeHtml((BM.getVersion && BM.getVersion()) || '')}</div>
-      </div>
-      <div class="b-actions">
-        <button class="btn small" data-action="check-update">🔄 检查更新</button>
-      </div>
     </div>`;
   // 首页大搜索框联动顶部搜索
   const hero = $('#heroSearch');
@@ -696,6 +686,20 @@ function renderOverview() {
     renderSearch();
   });
   hero && hero.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+}
+
+// ---------- 隐藏书签：仅列出从日常视图排除的书签 ----------
+function renderHidden() {
+  const items = (DATA.items || []).filter(item => item.hidden);
+  if (!items.length) {
+    content().innerHTML = emptyState(ICON('eye-off'), '没有隐藏的书签', '隐藏的书签会显示在这里');
+    return;
+  }
+  content().innerHTML = `
+    <div class="section-toolbar">
+      <span class="sec-title">${ICON_SM('eye-off')} 已隐藏 <b>${items.length}</b> 个书签</span>
+    </div>
+    ${renderItemRows(items, 'hidden-items', FIRST_LIST_COUNT, FIRST_LIST_COUNT)}`;
 }
 
 function renderExact(container) {
@@ -822,14 +826,14 @@ function appendTagGroups(entries, itemsByTag, startIndex, more, token) {
 
 function renderTags() {
   const tagView = DATA.tagView || (DATA.tagView = buildTagViewFallback(DATA.items || []));
-  const stats = hiddenView ? tagView.allTagStats : (DATA.tagStats || {});
-  const itemsByTag = hiddenView ? tagView.tagItemsByName : tagView.visibleTagItemsByName;
-  const taggedItems = hiddenView ? tagView.taggedItems : tagView.visibleTaggedItems;
-  const totalVisible = hiddenView ? DATA.items.length : tagView.visibleItems.length;
-  const taggedCount = hiddenView ? tagView.taggedItemCount : tagView.visibleTaggedItemCount;
-  const otherCount = hiddenView ? tagView.otherTaggedItemCount : tagView.visibleOtherTaggedItemCount;
-  const fallbackCount = hiddenView ? tagView.fallbackTaggedItemCount : tagView.visibleFallbackTaggedItemCount;
-  const hiddenFallbackCount = hiddenView ? 0 : tagView.fallbackTaggedItemCount - fallbackCount;
+  const stats = DATA.tagStats || {};
+  const itemsByTag = tagView.visibleTagItemsByName;
+  const taggedItems = tagView.visibleTaggedItems;
+  const totalVisible = tagView.visibleItems.length;
+  const taggedCount = tagView.visibleTaggedItemCount;
+  const otherCount = tagView.visibleOtherTaggedItemCount;
+  const fallbackCount = tagView.visibleFallbackTaggedItemCount;
+  const hiddenFallbackCount = tagView.fallbackTaggedItemCount - fallbackCount;
   const hiddenCount = tagView.hiddenItemCount;
   // 固定标签池：标签条只显示池内标签（含「其他」）；池外标签统计为「散落标签」
   const pool = BM.getFixedTags() || [];
@@ -843,7 +847,7 @@ function renderTags() {
     content().innerHTML = emptyState(ICON('tag'), '还没有标签', '给书签打标签后即可按标签快速浏览（一个书签可多个标签）') + `
       <div class="section-toolbar" style="margin-top:14px;">
         <span class="sec-title">${untaggedCount} 个书签未打标 ${helpDot('可在新增或编辑书签时填写标签，或使用 AI 批量打标。')}</span>
-        ${hiddenCount ? `<button class="btn small ghost" data-action="toggle-hidden-view">👁 隐藏（${hiddenCount}）</button>` : ''}
+        ${hiddenCount ? `<button class="btn small ghost" data-jump="hidden">👁 隐藏（${hiddenCount}）</button>` : ''}
         ${customRuleCount ? `<button class="btn small ghost" data-action="apply-custom-rules">⚡ 应用规则</button>` : ''}
         <button class="btn small primary" data-action="ai-tag-all">🤖 AI 批量打标</button>
       </div>`;
@@ -859,7 +863,7 @@ function renderTags() {
       <span class="sep">|</span><span><b>${entries.length}</b> 个标签</span>${helpDot('标签后的数字表示书签数量。')}
       ${looseKinds ? `<span class="sep">|</span><span><span class="dot" style="background:var(--warn)"></span><b>${looseKinds}</b> 个散落标签</span>` : ''}
       <span style="margin-left:auto; display:flex; gap:6px;">
-        <button class="btn small ghost" data-action="toggle-hidden-view" title="查看/恢复隐藏的书签">👁 隐藏（${hiddenCount}）</button>
+        <button class="btn small ghost" data-jump="hidden" title="查看隐藏书签">👁 隐藏（${hiddenCount}）</button>
         <button class="btn small primary" data-action="ai-tag-all" ${untaggedCount ? '' : 'disabled'}>🤖 打标未标（${untaggedCount}）</button>
         <button class="btn small ghost" data-action="ai-tag-all-force">🔄 全量重打</button>
       </span>
@@ -1118,7 +1122,9 @@ function openTagFilter(tag) {
 
 function renderSearch() {
   const q = SEARCH;
-  const hits = DATA.items.filter(it => {
+  const hiddenScope = currentTab === 'hidden';
+  const sourceItems = hiddenScope ? DATA.items.filter(it => it.hidden) : DATA.items;
+  const hits = sourceItems.filter(it => {
     const hay = it.searchText || ((it.title || '') + ' ' + (it.url || '') + ' ' + (it.host || '')).toLowerCase();
     return hay.includes(q);
   });
@@ -1128,7 +1134,7 @@ function renderSearch() {
         <div class="search-query">
           <span class="search-query-icon">${ICON('search')}</span>
           <div class="search-query-copy">
-            <span>搜索结果</span>
+            <span>${hiddenScope ? '隐藏书签搜索' : '搜索结果'}</span>
             <b title="${escapeHtml(q)}">${escapeHtml(q)}</b>
           </div>
         </div>
@@ -1138,7 +1144,7 @@ function renderSearch() {
         </div>
       </header>
       <div class="search-results-list${hits.length === 1 ? ' single' : ''}">
-        ${hits.length ? renderItemRows(hits, 'search-' + q, FIRST_LIST_COUNT, FIRST_LIST_COUNT, { highlight: q, search: true }) : emptyState(ICON('search'), '没有匹配结果', '换个关键词，或检查是否有拼写错误')}
+        ${hits.length ? renderItemRows(hits, 'search-' + currentTab + '-' + q, FIRST_LIST_COUNT, FIRST_LIST_COUNT, { highlight: q, search: true }) : emptyState(ICON('search'), hiddenScope ? '没有匹配的隐藏书签' : '没有匹配结果', '换个关键词，或检查是否有拼写错误')}
       </div>
     </section>`;
   updateBulk();
@@ -1517,6 +1523,7 @@ function render(tab) {
   else if (tab === 'overview' && overviewDetail === 'trash') renderTrashView();
   else if (tab === 'overview') renderOverview();
   else if (tab === 'tags') renderTags();
+  else if (tab === 'hidden') renderHidden();
   applyCollapsed(); // 恢复折叠状态（sessionStorage 记忆）
   updateBulk();
 }
@@ -1761,13 +1768,6 @@ async function init() {
           if (it) it.hidden = BM.isHidden(it.id);
           refresh();
         });
-      } else if (action === 'toggle-hidden-view') {
-        // 查看隐藏书签开关
-        hiddenView = !hiddenView;
-        render('tags');
-      } else if (action === 'check-update') {
-        // 检查 GitHub Release 更新（方案 B）
-        checkUpdate();
       } else if (action === 'create-tag') {
         createTag();
       } else if (action === 'manage-tags') {
@@ -2631,45 +2631,6 @@ async function unifySameUrlTags(bookmarkOrId, tags) {
   const changes = {};
   siblings.forEach(it => { changes[it.id] = union.length ? union : null; });
   try { return await BM.setTagsBatch(changes); } catch (e) { return false; }
-}
-
-// ---------- 检查更新（GitHub Releases，方案 B） ----------
-async function checkUpdate() {
-  const desc = $('#verDesc');
-  const btn = document.querySelector('[data-action="check-update"]');
-  if (btn) { btn.disabled = true; btn.textContent = '检查中…'; }
-  if (desc) desc.textContent = '正在检查 GitHub 最新版本…';
-  const r = await BM.checkForUpdate();
-  if (btn) { btn.disabled = false; btn.textContent = '🔄 检查更新'; }
-  if (desc) desc.textContent = '当前 v' + r.current + ' · 检查 GitHub Release 是否有新版本';
-  if (r.hasUpdate) {
-    // 提取更新说明（前 400 字）
-    const bodySnippet = escapeHtml((r.body || '').split('\n').slice(0, 8).join('<br>').slice(0, 400));
-    const ok = await confirmDialog({
-      title: '发现新版本 v' + r.latest,
-      message: `当前版本 <b>v${escapeHtml(r.current)}</b>，最新 <b>v${escapeHtml(r.latest)}</b>（${escapeHtml((r.name || '') || r.latest)}）<br><br><div class="update-body">${bodySnippet || '（无更新说明）'}</div><br>点击「下载更新」打开 GitHub Release 页面，下载 zip 后重新加载扩展。`,
-      confirmText: '⬇ 下载更新',
-      cancelText: '稍后再说',
-      danger: false
-    });
-    if (ok && r.url) openBookmarkUrl(r.url, true);
-  } else if (r.error) {
-    // 失败：弹窗提供"去 GitHub Releases 页"按钮（绕开 API 限流）
-    if (r.releasesUrl) {
-      const ok = await confirmDialog({
-        title: '检查失败',
-        message: escapeHtml(r.error) + '<br><br>可点击「去 GitHub Releases 页」直接查看最新版本（无需 API）。',
-        confirmText: '去 GitHub Releases 页',
-        cancelText: '关闭',
-        danger: false
-      });
-      if (ok) openBookmarkUrl(r.releasesUrl, true);
-    } else {
-      toast('检查失败：' + r.error, 'warn');
-    }
-  } else {
-    toast('已是最新版本 v' + r.current + ' ✓', 'ok');
-  }
 }
 
 // ---------- 标签管理：新建 / 重命名 / 从池删除 / 批量打标签 ----------

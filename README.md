@@ -6,7 +6,7 @@ Chrome / Edge Manifest V3 书签管理扩展。用标签整理书签，清理重
 
 - 多标签、标签池、搜索和新标签页书签浏览；归一化同址书签自动保持标签一致。
 - 精确重复检测、空文件夹清理、拖拽排序和批量操作。
-- 隐藏书签、30 天回收站、JSON 备份与恢复、HTML 报告导出；恢复默认合并相同 URL，也可保留副本。单书签最多 6 个标签，已有标签优先。
+- 隐藏书签、独立隐藏书签视图、30 天回收站、JSON 备份与恢复、HTML 报告导出；恢复默认合并相同 URL，也可保留副本。单书签最多 6 个标签，已有标签优先。
 - 可选的 OpenAI 兼容 LLM 打标，以及本地规则建议。
 - AI 隐私保护：本地识别登录入口、访问凭据参数与金融/钱包服务；命中项不会发送给 LLM。
 
@@ -24,7 +24,32 @@ git clone https://github.com/cfdywds/chrome-bookmark-manager.git
 2. 开启「开发者模式」，选择「加载已解压的扩展程序」。
 3. 选择本项目根目录，随后在工具栏点击「书签管家」打开侧边栏。
 
-解压安装仅用于开发。它的扩展 ID 与 Chrome Web Store 版本不同，不能作为跨设备生产同步方案。不要提交私钥、API Key 或个人书签备份。
+### 个人本地多设备同步
+
+普通解压安装会在每台设备生成不同扩展 ID，不能同步标签。个人使用请通过项目根目录的 `prepare-local-sync.cmd` 生成带固定 ID 的 `local-sync-build` 目录。
+
+前提：所有设备使用 Chrome、登录同一 Google 账户并启用 Chrome 同步；若使用自定义同步，保持扩展程序或设置相关同步项开启。不要混用 Chrome 和 Edge 作为同步端。
+
+首次配置只在权威设备执行：
+
+1. 从旧解压扩展导出 JSON 备份。
+2. 双击 `prepare-local-sync.cmd`；脚本会检查环境、生成或复用密钥，并显示固定扩展 ID。
+3. 在 `chrome://extensions` 开启开发者模式，加载 `local-sync-build`。
+4. 在新扩展中导入备份，启用一次“标签云同步”。
+5. 加密离线备份脚本显示的私钥。它必须保留在权威设备以便换机后生成同一扩展 ID；不要提交、上传到共享同步盘或复制到其他使用设备。
+
+其他设备只需复制整个 `local-sync-build` 目录，在 `chrome://extensions` 中加载它。同步开关会自动从权威设备到达；确认设置页的扩展 ID 与权威设备完全一致。不要再次导入备份。
+
+#### 更新本地扩展
+
+日常更新不需要重新迁移数据或重新导入备份：
+
+1. 在权威设备更新项目源码，然后双击 `prepare-local-sync.cmd`。
+2. 确认脚本显示“已复用”，且固定扩展 ID 与此前一致；若显示“首次生成”或 ID 变更，停止更新并恢复加密离线备份的私钥。
+3. 更新前可复制一份旧的 `local-sync-build` 目录作为回退版本。将新生成的整个目录复制到其他设备，覆盖旧目录。
+4. 每台设备打开 `chrome://extensions`，点击扩展卡片上的“重新加载”。无需再次启用同步或导入备份。
+
+若更新新增权限，Chrome 会在重新加载时要求确认。需要回退时，恢复旧的 `local-sync-build` 目录并重新加载扩展。详细迁移步骤见 [本地同步说明](./docs/release/chrome-web-store.md#解压本地同步)。
 
 ## AI 打标
 
@@ -59,7 +84,6 @@ release=资讯
 
 - 书签、标签、隐藏状态、回收站和自定义打标规则默认保存在本机。
 - 备份不包含 LLM 配置或 API Key。
-- 检查更新只访问 GitHub Releases API，不会发送书签数据。
 - 书签由 Chrome 原生同步；启用「标签云同步」后，规范化 URL 键的标签、固定标签池和自定义标签规则可通过 Chrome 同步到同一配置文件的其他设备。同步不包含书签标题或页面内容；不包含 API Key、LLM 配置、端点或模型。标签名和规则文字仍可能反映浏览偏好。
 
 完整安全边界与漏洞报告方式见 [SECURITY.md](./SECURITY.md)。
@@ -85,7 +109,7 @@ npm run check-version
 npm run release -- 1.0.1 --push
 ```
 
-发布脚本会校验版本一致性、单测、ESLint 和远端 tag。推送 tag 后，在 GitHub Releases 页面创建对应 Release；扩展会用该 Release 检查更新。详细变更见 [CHANGELOG.md](./CHANGELOG.md)。
+发布脚本会校验版本一致性、单测、ESLint 和远端 tag。推送 tag 后，在 GitHub Releases 页面创建对应 Release。详细变更见 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 许可证
 

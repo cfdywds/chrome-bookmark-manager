@@ -2,7 +2,7 @@
 
 ## Threat Model
 
-The extension processes user-controlled bookmark metadata, imported JSON backups, and responses from configured LLM services and GitHub Releases. The primary threats are scriptable URLs, HTML injection in extension pages, accidental secret export, and unnecessary disclosure of bookmark data.
+The extension processes user-controlled bookmark metadata, imported JSON backups, and responses from configured LLM services. The primary threats are scriptable URLs, HTML injection in extension pages, accidental secret export, and unnecessary disclosure of bookmark data.
 
 ## Security Decisions
 
@@ -15,7 +15,7 @@ The extension processes user-controlled bookmark metadata, imported JSON backups
 
 ## Trust Boundaries
 
-Chrome bookmark APIs and local extension storage are local inputs. LLM endpoints and GitHub Releases are remote trust boundaries. Network access to an LLM origin is explicitly approved by the user.
+Chrome bookmark APIs and local extension storage are local inputs. Configured LLM endpoints are remote trust boundaries. Network access to an LLM origin is explicitly approved by the user.
 
 ## Accepted Risks
 

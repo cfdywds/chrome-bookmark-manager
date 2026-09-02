@@ -10,9 +10,6 @@
     "favicon",
     "sidePanel"
   ],
-  "host_permissions": [
-    "https://api.github.com/*"
-  ],
   "optional_host_permissions": [
     "https://*/*",
     "http://localhost/*",

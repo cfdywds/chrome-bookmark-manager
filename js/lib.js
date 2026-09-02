@@ -1343,72 +1343,6 @@
     };
   }
 
-  // ================= 检查更新（GitHub Releases API，方案 B） =================
-  // 对比 manifest.version 与仓库最新 Release tag；返回 { current, latest, hasUpdate, url, body, error }
-  const UPDATE_REPO = 'cfdywds/chrome-bookmark-manager';
-  function compareVersions(a, b) {
-    const pa = String(a).split('.').map(Number);
-    const pb = String(b).split('.').map(Number);
-    for (let i = 0; i < 3; i++) {
-      const x = pa[i] || 0, y = pb[i] || 0;
-      if (x !== y) return x < y ? -1 : 1;
-    }
-    return 0;
-  }
-  function getVersion() {
-    return (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || '0.0.0';
-  }
-  // 内存缓存（避免 60次/小时 限流）：30 分钟内复用结果，包括失败结果
-  let _lastCheck = null;   // { ts, result }
-  async function checkForUpdate(force) {
-    const current = getVersion();
-    const now = Date.now();
-    if (!force && _lastCheck && (now - _lastCheck.ts) < 30 * 60 * 1000) {
-      return _lastCheck.result;   // 命中缓存：包括失败也复用，避免再触发限流
-    }
-    try {
-      const resp = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
-        // GitHub API 强制要求 User-Agent（裸 fetch 会被 403 拒绝）
-        headers: {
-          Accept: 'application/vnd.github+json',
-          'User-Agent': 'chrome-ext-bookmark-manager'
-        }
-      });
-      if (!resp.ok) {
-        let err = '检查失败（HTTP ' + resp.status + '）';
-        if (resp.status === 404) err = '仓库暂无 Release 发布';
-        else if (resp.status === 403) err = 'GitHub API 拒绝（可能限流或网络问题），可去 GitHub Releases 页查看';
-        else if (resp.status === 429) err = '请求太频繁（限流），稍后再试';
-        const result = { current, latest: null, hasUpdate: false, error: err, releasesUrl: 'https://github.com/' + UPDATE_REPO + '/releases' };
-        _lastCheck = { ts: now, result };
-        return result;
-      }
-      const data = await resp.json();
-      const latest = String(data.tag_name || '').replace(/^v/i, '');
-      if (!latest) {
-        const result = { current, latest: null, hasUpdate: false, error: 'Release 无版本号', releasesUrl: 'https://github.com/' + UPDATE_REPO + '/releases' };
-        _lastCheck = { ts: now, result };
-        return result;
-      }
-      const result = {
-        current,
-        latest,
-        hasUpdate: compareVersions(latest, current) > 0,
-        url: data.html_url || '',
-        name: data.name || '',
-        body: data.body || '',
-        publishedAt: data.published_at || '',
-        releasesUrl: 'https://github.com/' + UPDATE_REPO + '/releases'
-      };
-      _lastCheck = { ts: now, result };
-      return result;
-    } catch (e) {
-      const result = { current, latest: null, hasUpdate: false, error: '网络错误：' + (e.message || e), releasesUrl: 'https://github.com/' + UPDATE_REPO + '/releases' };
-      _lastCheck = { ts: now, result };
-      return result;
-    }
-  }
-
   // ---- LLM 服务商预设（popup.js / options.js 共享，DRY）----
   const PROVIDERS = {
     openai:   { base: 'https://api.openai.com/v1',            model: 'gpt-4o-mini' },
@@ -2270,8 +2204,6 @@
     SYNC_ENABLED_KEY,
     SYNC_TAG_CNT,
     SYNC_STATUS_KEY,
-    checkForUpdate,
-    getVersion,
     parseAiCategories,
     aiTag,
     aiTagBatched,

@@ -2,6 +2,7 @@
 node_modules/
 dist/
 build/
+local-sync-build/
 *.zip
 
 # 工作区数据（WorkBuddy 项目数据，不纳入版本控制）
