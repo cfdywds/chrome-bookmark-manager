@@ -13,8 +13,36 @@ function restoreChrome(previous) {
   else globalThis.chrome = previous;
 }
 
+function createV4Backup(data) {
+  return JSON.stringify({
+    app: 'bookmark-manager',
+    version: 4,
+    exportedAt: 1700000000000,
+    roots: [],
+    trash: [],
+    ...data
+  });
+}
+
+function backupRoot(id, title, children) {
+  return [id, title, children];
+}
+
+function backupFolder(id, title, children) {
+  return [title, children, id];
+}
+
+function backupBookmark(title, url, tags, hidden) {
+  const entry = [title, url];
+  if ((tags && tags.length) || hidden) {
+    entry.push(tags || []);
+    if (hidden) entry.push(1);
+  }
+  return entry;
+}
+
 describe('备份恢复创建保护', () => {
-  it('导入 V2 域名分组时保留现有关键字规则', async () => {
+  it('仅接受 V4 紧凑备份', async () => {
     const previousChrome = globalThis.chrome;
     const store = {
       bmTagRules: { domain: { current: ['工作'] }, keyword: { release: ['资讯'] } }
@@ -35,17 +63,16 @@ describe('备份恢复创建保护', () => {
 
     try {
       new Function(libCode)();
-      await globalThis.BM.importBookmarksJSON(JSON.stringify({
+      await expect(globalThis.BM.importBookmarksJSON(JSON.stringify({
         app: 'bookmark-manager', version: 2, bookmarks: [], domainGroups: { legacy: '代码' }
-      }));
-      expect(store.bmTagRules).toEqual({ domain: { legacy: ['代码'] }, keyword: { release: ['资讯'] } });
-      expect(store.bmDomainGroupsMigrated).toBe(true);
+      }))).rejects.toThrow('不是当前版本导出的有效书签管家备份文件');
+      expect(store.bmTagRules).toEqual({ domain: { current: ['工作'] }, keyword: { release: ['资讯'] } });
     } finally {
       restoreChrome(previousChrome);
     }
   });
 
-  it('导入 V3 统一规则时恢复域名和关键字规则', async () => {
+  it('导入 V4 统一规则时恢复域名和关键字规则', async () => {
     const previousChrome = globalThis.chrome;
     const store = { bmTagRules: { domain: { current: ['工作'] }, keyword: {} } };
     const get = vi.fn(async keys => {
@@ -64,14 +91,39 @@ describe('备份恢复创建保护', () => {
 
     try {
       new Function(libCode)();
-      await globalThis.BM.importBookmarksJSON(JSON.stringify({
-        app: 'bookmark-manager', version: 3, bookmarks: [],
+      await globalThis.BM.importBookmarksJSON(createV4Backup({
         tagRules: { domain: { corp: ['工作', '代码'] }, keyword: { release: ['资讯'] } }
       }));
       expect(store.bmTagRules).toEqual({
         domain: { corp: ['工作', '代码'] }, keyword: { release: ['资讯'] }
       });
       expect(store.bmDomainGroupsMigrated).toBe(true);
+    } finally {
+      restoreChrome(previousChrome);
+    }
+  });
+
+  it('导入显式空标签池时只保留兜底标签的语义', async () => {
+    const previousChrome = globalThis.chrome;
+    const store = { bmFixedTags: ['旧标签'] };
+    const get = vi.fn(async keys => {
+      const result = {};
+      (Array.isArray(keys) ? keys : [keys]).forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(store, key)) result[key] = store[key];
+      });
+      return result;
+    });
+    const set = vi.fn(async values => Object.assign(store, values));
+    globalThis.chrome = {
+      bookmarks: { getTree: vi.fn().mockResolvedValue([{ children: [{ id: 'bar', title: '书签栏', children: [] }] }]) },
+      storage: { local: { get, set }, sync: { get: vi.fn().mockResolvedValue({}) } },
+      runtime: { sendMessage: vi.fn().mockResolvedValue(undefined) }
+    };
+
+    try {
+      new Function(libCode)();
+      await globalThis.BM.importBookmarksJSON(createV4Backup({ fixedTags: [] }));
+      expect(store.bmFixedTags).toEqual([]);
     } finally {
       restoreChrome(previousChrome);
     }
@@ -109,14 +161,12 @@ describe('备份恢复创建保护', () => {
 
     try {
       new Function(libCode)();
-      const backup = JSON.stringify({
-        app: 'bookmark-manager',
-        bookmarks: [{ title: '', children: [{ title: '书签栏', children: [
-          { id: 'backup-bookmark', title: '备份书签', url: 'https://example.com/' }
-        ] }] }],
+      const backup = createV4Backup({
+        roots: [backupRoot('bar', '书签栏', [
+          backupBookmark('备份书签', 'https://example.com/', ['项目A'], true)
+        ])],
         fixedTags: ['AI', '工具', '项目A', '其他'],
-        tags: { 'backup-bookmark': ['项目A'] },
-        hiddenIds: ['backup-bookmark']
+        tagRules: { domain: {}, keyword: {} }
       });
 
       await expect(globalThis.BM.importBookmarksJSON(backup, { dryRun: true }))
@@ -162,13 +212,11 @@ describe('备份恢复创建保护', () => {
 
     try {
       new Function(libCode)();
-      const backup = JSON.stringify({
-        app: 'bookmark-manager',
-        bookmarks: [{ title: '', children: [{ title: '书签栏', children: [
-          { id: 'first', title: '第一个', url: 'https://example.com/' },
-          { id: 'second', title: '第二个', url: 'https://example.com/' }
-        ] }] }],
-        tags: { first: ['AI'], second: ['前端'] }
+      const backup = createV4Backup({
+        roots: [backupRoot('bar', '书签栏', [
+          backupBookmark('第一个', 'https://example.com/', ['AI']),
+          backupBookmark('第二个', 'https://example.com/', ['前端'])
+        ])]
       });
 
       await expect(globalThis.BM.importBookmarksJSON(backup, { dryRun: true }))
@@ -182,9 +230,9 @@ describe('备份恢复创建保护', () => {
     }
   });
 
-  it('仅含可合并书签的来源目录不会创建为空文件夹', async () => {
+  it('保留仅含可合并书签的来源目录', async () => {
     const previousChrome = globalThis.chrome;
-    const create = vi.fn();
+    const create = vi.fn().mockResolvedValue({ id: 'import-folder' });
     globalThis.chrome = {
       bookmarks: {
         getTree: vi.fn().mockResolvedValue([{
@@ -201,20 +249,19 @@ describe('备份恢复创建保护', () => {
 
     try {
       new Function(libCode)();
-      const backup = JSON.stringify({
-        app: 'bookmark-manager',
-        bookmarks: [{ title: '', children: [{ title: '书签栏', children: [{
-          id: 'import-folder', title: '导入目录', children: [
-            { id: 'backup-bookmark', title: '备份书签', url: 'https://example.com/' }
-          ]
-        }] }] }]
+      const backup = createV4Backup({
+        roots: [backupRoot('bar', '书签栏', [
+          backupFolder('source-folder', '导入目录', [
+            backupBookmark('备份书签', 'https://example.com/')
+          ])
+        ])]
       });
 
       await expect(globalThis.BM.importBookmarksJSON(backup, { dryRun: true }))
-        .resolves.toMatchObject({ folders: 0, bookmarks: 0, merged: 1 });
+        .resolves.toMatchObject({ folders: 1, bookmarks: 0, merged: 1 });
       await expect(globalThis.BM.importBookmarksJSON(backup))
-        .resolves.toMatchObject({ folders: 0, bookmarks: 0, merged: 1 });
-      expect(create).not.toHaveBeenCalled();
+        .resolves.toMatchObject({ folders: 1, bookmarks: 0, merged: 1 });
+      expect(create).toHaveBeenCalledWith({ parentId: 'bar', title: '导入目录' });
     } finally {
       restoreChrome(previousChrome);
     }
@@ -238,19 +285,10 @@ describe('备份恢复创建保护', () => {
 
     try {
       new Function(libCode)();
-      const backup = JSON.stringify({
-        app: 'bookmark-manager',
-        bookmarks: [
-          {
-            title: '',
-            children: [
-              {
-                title: '书签栏',
-                children: [{ id: 'old-bookmark', title: '示例', url: 'https://example.com/' }]
-              }
-            ]
-          }
-        ]
+      const backup = createV4Backup({
+        roots: [backupRoot('bar', '书签栏', [
+          backupBookmark('示例', 'https://example.com/')
+        ])]
       });
 
       const stats = await globalThis.BM.importBookmarksJSON(backup);
@@ -325,25 +363,12 @@ describe('备份恢复创建保护', () => {
 
     try {
       new Function(libCode)();
-      const backup = JSON.stringify({
-        app: 'bookmark-manager',
-        bookmarks: [
-          {
-            title: '',
-            children: [
-              {
-                title: '书签栏',
-                children: [
-                  {
-                    id: 'old-work',
-                    title: '工作',
-                    children: [{ id: 'old-bookmark', title: '示例', url: 'https://example.com/' }]
-                  }
-                ]
-              }
-            ]
-          }
-        ]
+      const backup = createV4Backup({
+        roots: [backupRoot('bar', '书签栏', [
+          backupFolder('old-work', '工作', [
+            backupBookmark('示例', 'https://example.com/')
+          ])
+        ])]
       });
 
       const stats = await globalThis.BM.importBookmarksJSON(backup);
@@ -374,18 +399,11 @@ describe('备份恢复创建保护', () => {
 
     try {
       new Function(libCode)();
-      const backup = JSON.stringify({
-        app: 'bookmark-manager',
-        bookmarks: [{
-          title: '',
-          children: [{
-            title: '书签栏',
-            children: [
-              { title: '正常', url: 'https://example.com/' },
-              { title: '不安全', url: 'javascript:alert(1)' }
-            ]
-          }]
-        }]
+      const backup = createV4Backup({
+        roots: [backupRoot('bar', '书签栏', [
+          backupBookmark('正常', 'https://example.com/'),
+          backupBookmark('不安全', 'javascript:alert(1)')
+        ])]
       });
 
       await expect(globalThis.BM.importBookmarksJSON(backup, { dryRun: true }))
@@ -395,6 +413,154 @@ describe('备份恢复创建保护', () => {
       expect(create).toHaveBeenCalledWith({
         parentId: 'bar', title: '正常', url: 'https://example.com/'
       });
+    } finally {
+      restoreChrome(previousChrome);
+    }
+  });
+
+  it('恢复全部根目录、内联元数据与回收站原文件夹', async () => {
+    const previousChrome = globalThis.chrome;
+    const store = {};
+    const get = vi.fn(async keys => {
+      const result = {};
+      (Array.isArray(keys) ? keys : [keys]).forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(store, key)) result[key] = store[key];
+      });
+      return result;
+    });
+    const set = vi.fn(async values => Object.assign(store, values));
+    const ids = ['target-folder', 'target-bookmark', 'target-other-bookmark'];
+    const create = vi.fn(async () => ({ id: ids.shift() }));
+    globalThis.chrome = {
+      bookmarks: {
+        getTree: vi.fn().mockResolvedValue([{
+          children: [
+            { id: 'target-bar', title: '书签栏', children: [] },
+            { id: 'target-other', title: '其他书签', children: [] }
+          ]
+        }]),
+        create
+      },
+      storage: { local: { get, set } },
+      runtime: { sendMessage: vi.fn().mockResolvedValue(undefined) }
+    };
+
+    try {
+      new Function(libCode)();
+      const backup = createV4Backup({
+        roots: [
+          backupRoot('source-bar', '书签栏', [
+            backupFolder('source-folder', '项目', [
+              backupBookmark('项目主页', 'https://project.example/', ['项目'], true)
+            ])
+          ]),
+          backupRoot('source-other', '其他书签', [
+            backupBookmark('归档', 'https://archive.example/', ['归档'])
+          ])
+        ],
+        trash: [[
+          'source-trash', '已删除', 'https://deleted.example/', 'source-folder', 1600000000000, ['项目']
+        ]],
+        fixedTags: ['项目', '归档', '其他'],
+        tagRules: { domain: { project: ['项目'] }, keyword: {} }
+      });
+
+      await expect(globalThis.BM.importBookmarksJSON(backup)).resolves.toMatchObject({
+        folders: 1, bookmarks: 2, merged: 0, skipped: 0
+      });
+      expect(create).toHaveBeenNthCalledWith(1, { parentId: 'target-bar', title: '项目' });
+      expect(create).toHaveBeenNthCalledWith(2, {
+        parentId: 'target-folder', title: '项目主页', url: 'https://project.example/'
+      });
+      expect(create).toHaveBeenNthCalledWith(3, {
+        parentId: 'target-other', title: '归档', url: 'https://archive.example/'
+      });
+      expect(store.bmTags).toEqual({
+        'target-bookmark': ['项目'],
+        'target-other-bookmark': ['归档']
+      });
+      expect(store.bmHiddenIds).toEqual(['target-bookmark']);
+      expect(store.bmTrash).toEqual([{
+        id: 'backup:1700000000000:source-trash',
+        title: '已删除',
+        url: 'https://deleted.example/',
+        parentId: 'target-folder',
+        deletedAt: 1600000000000,
+        path: ['项目']
+      }]);
+    } finally {
+      restoreChrome(previousChrome);
+    }
+  });
+
+  it('回收站记录使用稳定 ID 去重，并跳过非 HTTP(S) URL', async () => {
+    const previousChrome = globalThis.chrome;
+    const store = {};
+    const get = vi.fn(async keys => {
+      const result = {};
+      (Array.isArray(keys) ? keys : [keys]).forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(store, key)) result[key] = store[key];
+      });
+      return result;
+    });
+    const set = vi.fn(async values => Object.assign(store, values));
+    globalThis.chrome = {
+      bookmarks: { getTree: vi.fn().mockResolvedValue([{ children: [{ id: 'bar', title: '书签栏', children: [] }] }]) },
+      storage: { local: { get, set } },
+      runtime: { sendMessage: vi.fn().mockResolvedValue(undefined) }
+    };
+
+    try {
+      new Function(libCode)();
+      const trash = [['backup:origin:deleted', '已删除', 'https://deleted.example/', '', 1600000000000, []]];
+      await globalThis.BM.importBookmarksJSON(createV4Backup({ exportedAt: 1, trash }));
+      await globalThis.BM.importBookmarksJSON(createV4Backup({ exportedAt: 2, trash }));
+      await globalThis.BM.importBookmarksJSON(createV4Backup({
+        exportedAt: 3,
+        trash: [['unsafe', '不安全', 'javascript:alert(1)', '', 1600000000000, []]]
+      }));
+
+      expect(store.bmTrash).toEqual([{
+        id: 'backup:origin:deleted',
+        title: '已删除',
+        url: 'https://deleted.example/',
+        parentId: '',
+        deletedAt: 1600000000000,
+        path: []
+      }]);
+    } finally {
+      restoreChrome(previousChrome);
+    }
+  });
+
+  it('回收站满时在创建书签前明确失败，不删除本地记录', async () => {
+    const previousChrome = globalThis.chrome;
+    const store = {
+      bmTrash: Array.from({ length: 5000 }, (_, index) => ({ id: 'current-' + index, url: 'https://current.example/' }))
+    };
+    const get = vi.fn(async keys => {
+      const result = {};
+      (Array.isArray(keys) ? keys : [keys]).forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(store, key)) result[key] = store[key];
+      });
+      return result;
+    });
+    const set = vi.fn(async values => Object.assign(store, values));
+    const getTree = vi.fn();
+    globalThis.chrome = {
+      bookmarks: { getTree },
+      storage: { local: { get, set } },
+      runtime: { sendMessage: vi.fn().mockResolvedValue(undefined) }
+    };
+
+    try {
+      new Function(libCode)();
+      await expect(globalThis.BM.importBookmarksJSON(createV4Backup({
+        trash: [['new-trash', '待恢复', 'https://new.example/', '', 1600000000000, []]]
+      }))).rejects.toThrow('回收站空间不足');
+      expect(getTree).not.toHaveBeenCalled();
+      expect(set).not.toHaveBeenCalled();
+      expect(store.bmTrash).toHaveLength(5000);
     } finally {
       restoreChrome(previousChrome);
     }

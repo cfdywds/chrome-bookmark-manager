@@ -34,6 +34,21 @@ function getStorageChangeListenerSource() {
 }
 
 describe('弹窗大列表渲染', () => {
+  it('不再提供 HTML 分析报告导出', () => {
+    expect(popupHtml).not.toContain('exportBtn');
+    expect(popupSource).not.toContain('buildReportHtml');
+    expect(popupSource).not.toContain('exportReport');
+    expect(popupSource).not.toContain('bookmark-report.html');
+  });
+
+  it('标签按钮悬浮态使用低透明度底色', () => {
+    const rule = popupCss.match(/\.tag-chip:hover,\s*\.tag-chip:focus-visible\s*\{([^}]*)\}/)?.[1] || '';
+    expect(rule).toContain('background: rgba(22, 163, 74, .12)');
+    expect(rule).toContain('color: var(--ok-strong)');
+    expect(popupCss).toContain('--ok-strong: #047857');
+    expect(popupCss).toContain('.tag-chip:focus-visible { outline: 2px solid var(--ok-strong)');
+  });
+
   it('待清理卡片仅保留动作名称，不重复展示说明', () => {
     expect(popupSource).not.toContain('class="act-desc"');
     expect(popupSource).not.toContain("desc: 'URL 完全相同'");

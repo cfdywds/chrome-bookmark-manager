@@ -1847,6 +1847,7 @@
 
   // ---- 书签备份 / 恢复（JSON 导出 / 导入） ----
   const BACKUP_APP = 'bookmark-manager';
+  const BACKUP_VERSION = 4;
   const BACKUP_IMPORT_MESSAGE = 'bmBackupImportBookmark';
 
   async function sendBackupImportMessage(action, parentId, url, bookmarkId) {
@@ -1872,7 +1873,86 @@
     return n;
   }
 
-  // 导出全部书签树 + 回收站记录为 JSON 字符串
+  // V4 节点：文件夹 [标题, 子节点, 原文件夹 ID]；书签 [标题, URL, 标签?, 已隐藏?]。
+  // 仅保留恢复所需字段，标签与隐藏状态直接跟随书签，避免保存原始 Chrome 节点和 ID 映射。
+  function encodeBackupNodes(nodes, tags, hiddenIds) {
+    return (nodes || []).flatMap(node => {
+      if (!node) return [];
+      if (node.url) {
+        const entry = [String(node.title || ''), String(node.url)];
+        const itemTags = Array.isArray(tags[node.id]) ? tags[node.id] : [];
+        if (itemTags.length || hiddenIds.has(node.id)) {
+          entry.push(itemTags);
+          if (hiddenIds.has(node.id)) entry.push(1);
+        }
+        return [entry];
+      }
+      if (!Array.isArray(node.children)) return [];
+      return [[
+        String(node.title || ''),
+        encodeBackupNodes(node.children, tags, hiddenIds),
+        String(node.id || '')
+      ]];
+    });
+  }
+
+  function encodeBackupRoots(tree, tags, hiddenIds) {
+    const root = tree && tree[0];
+    return ((root && root.children) || []).flatMap(node => {
+      if (!node || node.url || !Array.isArray(node.children)) return [];
+      return [[
+        String(node.id || ''),
+        String(node.title || ''),
+        encodeBackupNodes(node.children, tags, hiddenIds)
+      ]];
+    });
+  }
+
+  // 回收站的旧书签 ID 在另一台设备上无效。备份 ID 必须跨重新导出保持稳定，
+  // 才能让同一回收站记录在多次导入时去重。
+  function backupTrashId(sourceId, exportedAt) {
+    const id = String(sourceId || '');
+    return id.startsWith('backup:') ? id : `backup:${exportedAt}:${id}`;
+  }
+
+  function encodeBackupTrash(trash, exportedAt) {
+    return (trash || []).flatMap(item => {
+      if (!item || !item.id || !item.url) return [];
+      return [[
+        backupTrashId(item.id, exportedAt),
+        String(item.title || ''),
+        String(item.url),
+        String(item.parentId || ''),
+        Number(item.deletedAt) || 0,
+        Array.isArray(item.path) ? item.path : []
+      ]];
+    });
+  }
+
+  function decodeBackupTrashRecords(records, exportedAt) {
+    const result = [];
+    const ids = new Set();
+    (records || []).forEach(raw => {
+      if (!Array.isArray(raw) || raw.length < 5 || typeof raw[0] !== 'string' ||
+        typeof raw[2] !== 'string' || !raw[2]) return;
+      let url;
+      try { url = normalizeHttpUrl(raw[2]).href; } catch (e) { return; }
+      const id = backupTrashId(raw[0], exportedAt);
+      if (ids.has(id)) return;
+      ids.add(id);
+      result.push({
+        id,
+        title: typeof raw[1] === 'string' ? raw[1] : url,
+        url,
+        sourceParentId: typeof raw[3] === 'string' ? raw[3] : '',
+        deletedAt: Number(raw[4]) || 0,
+        path: Array.isArray(raw[5]) ? raw[5] : []
+      });
+    });
+    return result;
+  }
+
+  // 导出全部根目录、扩展数据和回收站为 JSON 字符串。
   async function exportBookmarksJSON() {
     const tree = await chrome.bookmarks.getTree();
     const trash = await getTrash();
@@ -1880,18 +1960,86 @@
     const hiddenIds = [...(await loadHiddenIds())];
     const fixedTags = (await loadFixedTags()).filter(t => t !== FALLBACK_TAG);
     const tagRules = (await loadTagRules()) || {};
+    const exportedAt = Date.now();
     const data = {
       app: BACKUP_APP,
-      version: 3,               // v3：增加统一域名与关键字标签规则
-      exportedAt: Date.now(),
-      bookmarks: tree,
-      trash,
-      tags,                     // { 旧bookmarkId: [标签] } —— 导入时按 id 映射恢复
-      hiddenIds,
+      version: BACKUP_VERSION,
+      exportedAt,
+      roots: encodeBackupRoots(tree, tags, new Set(hiddenIds)),
+      trash: encodeBackupTrash(trash, exportedAt),
       fixedTags,
       tagRules
     };
-    return { json: JSON.stringify(data, null, 2), count: countBookmarks(tree) };
+    return { json: JSON.stringify(data), count: countBookmarks(tree) };
+  }
+
+  function decodeBackupRoot(raw) {
+    if (!Array.isArray(raw) || raw.length !== 3 ||
+      typeof raw[0] !== 'string' || typeof raw[1] !== 'string' || !Array.isArray(raw[2])) return null;
+    return { sourceId: raw[0], title: raw[1], children: raw[2] };
+  }
+
+  function decodeBackupNode(raw) {
+    if (!Array.isArray(raw) || raw.length < 2 || typeof raw[0] !== 'string') return null;
+    if (Array.isArray(raw[1])) {
+      return {
+        type: 'folder',
+        title: raw[0],
+        children: raw[1],
+        sourceId: typeof raw[2] === 'string' ? raw[2] : ''
+      };
+    }
+    if (typeof raw[1] !== 'string') return null;
+    return {
+      type: 'bookmark',
+      title: raw[0],
+      url: raw[1],
+      tags: Array.isArray(raw[2]) ? raw[2] : [],
+      hidden: raw[3] === 1
+    };
+  }
+
+  function countBackupBookmarks(nodes) {
+    let count = 0;
+    (nodes || []).forEach(raw => {
+      const node = decodeBackupNode(raw);
+      if (!node) return;
+      if (node.type === 'bookmark') count++;
+      else count += countBackupBookmarks(node.children);
+    });
+    return count;
+  }
+
+  async function restoreBackupTrash(records, folderIdMap, exportedAt) {
+    if (!Array.isArray(records) || !records.length) return;
+    const current = await getTrash();
+    const ids = new Set(current.map(item => String(item.id)));
+    const imported = decodeBackupTrashRecords(records, exportedAt)
+      .filter(item => !ids.has(item.id))
+      .map(item => ({
+        id: item.id,
+        title: item.title,
+        url: item.url,
+        parentId: folderIdMap.get(item.sourceParentId) || '',
+        deletedAt: item.deletedAt,
+        path: item.path
+      }));
+    if (imported.length) {
+      if (current.length + imported.length > TRASH_MAX) {
+        throw new Error('回收站空间不足，请先清理现有回收站记录后再恢复备份');
+      }
+      await chrome.storage.local.set({ [TRASH_KEY]: current.concat(imported) });
+    }
+  }
+
+  async function ensureBackupTrashCapacity(records, exportedAt) {
+    const current = await getTrash();
+    const ids = new Set(current.map(item => String(item.id)));
+    const required = decodeBackupTrashRecords(records, exportedAt)
+      .filter(item => !ids.has(item.id)).length;
+    if (current.length + required > TRASH_MAX) {
+      throw new Error('回收站空间不足，请先清理现有回收站记录后再恢复备份');
+    }
   }
 
   // 导入书签备份：默认合并完整 URL 相同的书签；keepDuplicates=true 时保留副本。
@@ -1903,14 +2051,14 @@
     let data;
     try { data = JSON.parse(json); }
     catch (e) { throw new Error('JSON 解析失败：' + (e.message || e)); }
-    if (!data || data.app !== BACKUP_APP || !Array.isArray(data.bookmarks)) {
-      throw new Error('不是有效的书签管家备份文件（缺少 app / bookmarks 字段）');
+    if (!data || data.app !== BACKUP_APP || data.version !== BACKUP_VERSION || !Array.isArray(data.roots)) {
+      throw new Error('不是当前版本导出的有效书签管家备份文件');
     }
+    if (!dryRun) await ensureBackupTrashCapacity(data.trash, data.exportedAt);
     const stats = { folders: 0, bookmarks: 0, merged: 0, skipped: 0, reused: 0 };
     const tree = await chrome.bookmarks.getTree();
-    const bar = tree[0].children && tree[0].children[0];
-    if (!bar) throw new Error('未找到书签栏根目录');
-    const barTitle = bar.title || '';
+    const targetRoots = (tree[0] && tree[0].children) || [];
+    if (!targetRoots.length) throw new Error('未找到书签根目录');
     // 与手动新增一致，只按完整规范化 URL 合并；不同协议、查询参数或路由仍是不同书签。
     const bookmarksByUrl = new Map();
     function indexBookmarks(nodes) {
@@ -1925,38 +2073,43 @@
       });
     }
     indexBookmarks(tree);
-    function hasBookmarkToCreate(nodes) {
-      for (const node of nodes || []) {
-        if (node.url) {
-          try {
-            const url = normalizeHttpUrl(node.url).href;
-            if (keepDuplicates || !bookmarksByUrl.has(url)) return true;
-          } catch (e) { /* 无效 URL 不会创建书签 */ }
-        } else if (node.children && hasBookmarkToCreate(node.children)) {
-          return true;
-        }
-      }
-      return false;
+    const targetRootsById = new Map(targetRoots.map(root => [String(root.id), root]));
+    const targetRootsByTitle = new Map(targetRoots.map(root => [root.title || '', root]));
+    function indexTopLevelFolders(nodes) {
+      const folders = new Map();
+      (nodes || []).forEach(node => {
+        const title = node && !node.url ? node.title || '' : '';
+        if (node && !node.url && !folders.has(title)) folders.set(title, node);
+      });
+      return folders;
     }
-    // 顶级同名文件夹只需在书签栏已有节点中查询一次。逐个调用 bookmarks.search()
-    // 会在大备份中反复扫描整棵树，导入后会明显卡顿。
-    const topLevelFolders = new Map();
-    (bar.children || []).forEach(node => {
-      if (!node.url && !topLevelFolders.has(node.title || '')) {
-        topLevelFolders.set(node.title || '', node);
-      }
-    });
+    const topLevelFoldersByRoot = new Map(targetRoots.map(root => [
+      String(root.id),
+      indexTopLevelFolders(root.children)
+    ]));
+    const folderIdMap = new Map();
+    const restoredTags = {};
+    const restoredHiddenIds = new Set();
 
-    // 递归创建（顶级文件夹同名复用，深层总是新建）；记录 旧id → 新id 映射（恢复标签/隐藏用）
-    const idMap = {};   // { oldId: newId }
+    function restoreBookmarkMetadata(node, bookmarkId) {
+      if (node.tags.length) {
+        const tags = node.tags.filter(tag => typeof tag === 'string' && tag.trim());
+        if (tags.length) restoredTags[bookmarkId] = [...new Set([...(restoredTags[bookmarkId] || []), ...tags])];
+      }
+      if (node.hidden) restoredHiddenIds.add(bookmarkId);
+    }
+
+    // 递归创建（同根目录顶级同名文件夹复用，深层总是新建）。
     async function walk(nodes, parentId, depth) {
-      for (const node of nodes || []) {
-        if (node.url) {
+      for (const raw of nodes || []) {
+        const node = decodeBackupNode(raw);
+        if (!node) { stats.skipped++; continue; }
+        if (node.type === 'bookmark') {
           let url;
           try { url = normalizeHttpUrl(node.url).href; } catch (e) { stats.skipped++; continue; }
           const existing = !keepDuplicates && bookmarksByUrl.get(url);
           if (existing) {
-            if (node.id) idMap[node.id] = existing.id;
+            if (!dryRun) restoreBookmarkMetadata(node, existing.id);
             stats.merged++;
             continue;
           }
@@ -1970,9 +2123,9 @@
           await sendBackupImportMessage('reserve', createInfo.parentId, createInfo.url);
           try {
             const created = await chrome.bookmarks.create(createInfo);
-            if (node.id) idMap[node.id] = created.id;
             bookmarksByUrl.set(url, created);
             await sendBackupImportMessage('confirm', createInfo.parentId, createInfo.url, created.id);
+            restoreBookmarkMetadata(node, created.id);
             stats.bookmarks++;
           } catch (e) {
             await sendBackupImportMessage('cancel', createInfo.parentId, createInfo.url);
@@ -1980,96 +2133,64 @@
           }
           continue;
         }
-        if (!node.children || !node.children.length) continue;
-        // 所有后代都会合并时不创建空目录，但仍遍历以恢复标签和隐藏状态映射。
-        if (!hasBookmarkToCreate(node.children)) {
-          await walk(node.children, parentId, depth + 1);
-          continue;
-        }
         if (dryRun) { stats.folders++; await walk(node.children, parentId, depth + 1); continue; }
         let pid = parentId;
         if (depth === 0) {
-          // 顶级文件夹：同名校验栏下已有则复用，避免重复导入
+          // 顶级文件夹：同根目录同名则复用，避免重复导入。
           const folderTitle = node.title || '';
-          const dup = topLevelFolders.get(folderTitle);
-          if (dup) { pid = dup.id; if (node.id) idMap[node.id] = dup.id; stats.reused++; }
+          const folders = topLevelFoldersByRoot.get(String(parentId)) || new Map();
+          const dup = folders.get(folderTitle);
+          if (dup) { pid = dup.id; if (node.sourceId) folderIdMap.set(node.sourceId, pid); stats.reused++; }
           else {
             try {
               const f = await chrome.bookmarks.create({ parentId, title: node.title || '(未命名)' });
               pid = f.id;
-              topLevelFolders.set(folderTitle, f);
-              if (node.id) idMap[node.id] = f.id;
+              folders.set(folderTitle, f);
+              topLevelFoldersByRoot.set(String(parentId), folders);
+              if (node.sourceId) folderIdMap.set(node.sourceId, f.id);
               stats.folders++;
             } catch (e) { stats.skipped++; continue; }
           }
         } else {
           try {
             const f = await chrome.bookmarks.create({ parentId, title: node.title || '(未命名)' });
-            pid = f.id; if (node.id) idMap[node.id] = f.id; stats.folders++;
+            pid = f.id; if (node.sourceId) folderIdMap.set(node.sourceId, f.id); stats.folders++;
           } catch (e) { stats.skipped++; continue; }
         }
         await walk(node.children, pid, depth + 1);
       }
     }
-    // 只导入「书签栏」内容；「其他书签」「移动设备」等根目录跳过。
-    // 兼容两种结构：①导出的是 Chrome 根节点（tree[0]，children 里含书签栏）
-    //               ②导出的是书签栏节点本身（title = 书签栏）
-    for (const root of data.bookmarks) {
-      let barNode = null;
-      if (root.title === barTitle) barNode = root;
-      else if (!root.title && root.children) barNode = (root.children || []).find(n => n.title === barTitle);
-      if (barNode) await walk(barNode.children || [], bar.id, 0);
+    for (const rawRoot of data.roots) {
+      const root = decodeBackupRoot(rawRoot);
+      if (!root) { stats.skipped++; continue; }
+      const target = targetRootsById.get(root.sourceId) || targetRootsByTitle.get(root.title);
+      if (!target) { stats.skipped += countBackupBookmarks(root.children); continue; }
+      folderIdMap.set(root.sourceId, target.id);
+      await walk(root.children, target.id, 0);
     }
 
-    // ---- 恢复自定义数据（v2+ 备份）----
+    // ---- 恢复内联元数据和扩展配置 ----
     if (!dryRun) {
-      // 先恢复来源标签池，再归一化和写入来源标签，避免自定义标签退化为「其他」。
-      if (Array.isArray(data.fixedTags) && data.fixedTags.length) {
+      if (Array.isArray(data.fixedTags)) {
         try {
           await chrome.storage.local.set({ [FIXED_TAGS_KEY]: data.fixedTags });
           invalidateFixedTags();
         } catch (e) { /* ignore */ }
       }
-      // 标签：多个旧 id 可能合并到同一已有书签；由后台串行写入并集，避免覆盖自动打标。
-      if (data.tags && typeof data.tags === 'object') {
-        const newTags = {};
-        Object.keys(data.tags).forEach(oldId => {
-          const nid = idMap[oldId];
-          if (nid && Array.isArray(data.tags[oldId]) && data.tags[oldId].length) {
-            newTags[nid] = [...new Set([...(newTags[nid] || []), ...data.tags[oldId]])];
-          }
-        });
-        if (Object.keys(newTags).length) {
-          try {
-            await mergeTagsBatch(newTags);
-          } catch (e) { /* ignore */ }
-        }
+      if (Object.keys(restoredTags).length) {
+        try { await mergeTagsBatch(restoredTags); } catch (e) { /* ignore */ }
       }
-      // 隐藏书签：旧id → 新id
-      if (Array.isArray(data.hiddenIds) && data.hiddenIds.length) {
-        const newHidden = data.hiddenIds.map(id => idMap[id]).filter(Boolean);
-        if (newHidden.length) {
-          try {
-            const cur = new Set((await loadHiddenIds()));
-            newHidden.forEach(id => cur.add(id));
-            await chrome.storage.local.set({ [HIDDEN_KEY]: [...cur] });
-            invalidateHiddenIds();
-          } catch (e) { /* ignore */ }
-        }
-      }
-      // v3 的统一规则直接恢复；旧 v2 没有关键字规则，导入时保留当前关键字配置。
-      if ((data.tagRules && typeof data.tagRules === 'object') ||
-        (data.domainGroups && typeof data.domainGroups === 'object')) {
+      if (restoredHiddenIds.size) {
         try {
-          const hasUnifiedRules = data.tagRules && typeof data.tagRules === 'object' && !Array.isArray(data.tagRules);
-          let rules;
-          if (hasUnifiedRules) {
-            rules = normalizeTagRules(data.tagRules, data.domainGroups);
-          } else {
-            const current = await chrome.storage.local.get(TAG_RULES_KEY);
-            const currentRules = normalizeTagRules(current[TAG_RULES_KEY]);
-            rules = normalizeTagRules({ domain: data.domainGroups, keyword: currentRules.keyword });
-          }
+          const cur = new Set((await loadHiddenIds()));
+          restoredHiddenIds.forEach(id => cur.add(id));
+          await chrome.storage.local.set({ [HIDDEN_KEY]: [...cur] });
+          invalidateHiddenIds();
+        } catch (e) { /* ignore */ }
+      }
+      if (data.tagRules && typeof data.tagRules === 'object' && !Array.isArray(data.tagRules)) {
+        try {
+          const rules = normalizeTagRules(data.tagRules);
           await chrome.storage.local.set({
             [TAG_RULES_KEY]: rules,
             [LEGACY_DOMAIN_GROUPS_MIGRATED_KEY]: true
@@ -2077,6 +2198,7 @@
           invalidateTagRules();
         } catch (e) { /* ignore */ }
       }
+      await restoreBackupTrash(data.trash, folderIdMap, data.exportedAt);
     }
     return stats;
   }

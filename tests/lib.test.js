@@ -1018,6 +1018,90 @@ describe('exportBookmarksJSON（敏感配置排除）', () => {
       else globalThis.chrome = previousChrome;
     }
   });
+
+  it('导出 V4 紧凑结构，内联标签和隐藏状态并保留全部根目录与回收站', async () => {
+    const previousChrome = globalThis.chrome;
+    const tree = [{
+      id: '0',
+      children: [
+        {
+          id: 'bar', title: '书签栏', dateGroupModified: 1700000000000,
+          children: [{
+            id: 'folder', parentId: 'bar', index: 0, title: '项目', dateAdded: 1700000000000,
+            children: [{
+              id: 'bookmark', parentId: 'folder', index: 0, title: '项目主页',
+              url: 'https://project.example/', dateAdded: 1700000000000
+            }]
+          }]
+        },
+        {
+          id: 'other', title: '其他书签', dateGroupModified: 1700000000000,
+          children: [{
+            id: 'other-bookmark', parentId: 'other', index: 0, title: '归档',
+            url: 'https://archive.example/', dateAdded: 1700000000000
+          }]
+        }
+      ]
+    }];
+    const stored = {
+      bmTags: { bookmark: ['项目'], 'other-bookmark': ['归档'] },
+      bmHiddenIds: ['bookmark'],
+      bmFixedTags: ['项目', '归档', '其他'],
+      bmTagRules: { domain: { project: ['项目'] }, keyword: {} },
+      bmTrash: [{
+        id: 'deleted', title: '已删除', url: 'https://deleted.example/', parentId: 'folder',
+        path: ['项目'], deletedAt: 1600000000000
+      }]
+    };
+    globalThis.chrome = {
+      bookmarks: { getTree: vi.fn().mockResolvedValue(tree) },
+      storage: {
+        local: {
+          get: vi.fn(async keys => Object.fromEntries((Array.isArray(keys) ? keys : [keys])
+            .filter(key => Object.prototype.hasOwnProperty.call(stored, key))
+            .map(key => [key, stored[key]])))
+        }
+      }
+    };
+    BM.invalidateTags();
+    BM.invalidateHiddenIds();
+    BM.invalidateFixedTags();
+    BM.invalidateTagRules();
+
+    try {
+      const backup = await BM.exportBookmarksJSON();
+      const data = JSON.parse(backup.json);
+      const legacyJson = JSON.stringify({
+        app: 'bookmark-manager', version: 3, exportedAt: data.exportedAt,
+        bookmarks: tree, trash: stored.bmTrash, tags: stored.bmTags,
+        hiddenIds: stored.bmHiddenIds, fixedTags: stored.bmFixedTags, tagRules: stored.bmTagRules
+      }, null, 2);
+
+      expect(data).toMatchObject({
+        app: 'bookmark-manager', version: 4,
+        roots: [
+          ['bar', '书签栏', [['项目', [['项目主页', 'https://project.example/', ['项目'], 1]], 'folder']]],
+          ['other', '其他书签', [['归档', 'https://archive.example/', ['归档']]]]
+        ],
+        trash: [[
+          `backup:${data.exportedAt}:deleted`, '已删除', 'https://deleted.example/', 'folder', 1600000000000, ['项目']
+        ]]
+      });
+      expect(data.tags).toBeUndefined();
+      expect(data.hiddenIds).toBeUndefined();
+      expect(data.bookmarks).toBeUndefined();
+      expect(backup.count).toBe(2);
+      expect(backup.json).not.toContain('\n');
+      expect(backup.json.length).toBeLessThan(legacyJson.length * 0.65);
+    } finally {
+      BM.invalidateTags();
+      BM.invalidateHiddenIds();
+      BM.invalidateFixedTags();
+      BM.invalidateTagRules();
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
 });
 
 describe('getBookmarkMetadata（单次书签元数据解析）', () => {

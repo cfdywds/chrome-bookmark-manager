@@ -1406,37 +1406,6 @@ function updateBulk() {
   }
 }
 
-// ---------- 报告导出 ----------
-function buildReportHtml(d) {
-  const section = (title, rows) => {
-    if (!rows.length) return '';
-    return `<h2>${title}（${rows.length}）</h2><ul>${rows.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>`;
-  };
-  const exact = d.exactDuplicates.map(g => g.items.map(it => `${it.title} — ${it.url} [${it.path.join('/')}]`).join('；'));
-  const empty = d.emptyFolders.map(f => `${f.title} [${f.path.join('/')}]`);
-  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
-  <title>书签管家 · 分析报告</title><style>body{font-family:sans-serif;padding:24px;color:#1f2430;}
-  h1{color:#6d5ef5;} h2{margin-top:20px;border-left:4px solid #6d5ef5;padding-left:8px;}
-  li{margin:4px 0;font-size:13px;}</style></head><body>
-  <h1>书签管家 · 分析报告</h1>
-  <p>生成时间：${new Date().toLocaleString()} ｜ 书签总数：${d.total}</p>
-  ${section('精确重复', exact)}
-  ${section('空文件夹', empty)}
-  </body></html>`;
-}
-
-function exportReport() {
-  if (!DATA) { toast('暂无数据，请先扫描', 'warn'); return; }
-  const html = buildReportHtml(DATA);
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'bookmark-report.html';
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
-  toast('报告已导出 ✓', 'ok');
-}
-
 // ---------- 书签备份 / 恢复（JSON 导出 / 导入） ----------
 async function exportBackup() {
   if (!DATA) { toast('暂无数据，请先扫描', 'warn'); return; }
@@ -1950,7 +1919,6 @@ async function init() {
       }
     } catch (e) { /* 无 close 或失败 */ }
   });
-  $('#exportBtn').addEventListener('click', exportReport);
 
   // ---------- 键盘快捷键：/ 搜索、? 帮助、Esc 关抽屉/退方案、Ctrl+K 搜索、j/k 导航 ----------
   document.addEventListener('keydown', e => {

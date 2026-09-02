@@ -23,6 +23,14 @@ Bookmark titles and paths can still contain private information. AI privacy rule
 
 ## Change History
 
+### 2026-09-02 - Compact Backup V4
+
+**Changes**: Replaced the verbose Chrome bookmark-node backup with a minified V4 array encoding. Bookmark titles, URLs, tags, and hidden state are encoded together; folder source IDs remain only where needed to restore recycle-bin parent folders. All Chrome bookmark roots and recycle-bin records are restored, while browser-generated IDs, indexes, and timestamps are excluded.
+
+**Reason**: Raw Chrome bookmark nodes repeat parent IDs, indexes, and timestamp fields that recovery never consumes. A separate bookmark-ID tag map repeats the same IDs and creates unnecessary export size.
+
+**Impact**: New exports are substantially smaller while retaining all recoverable bookmark and extension data. Import accepts V4 only; users must export a new backup from the current extension before migration.
+
 ### 2026-08-28 - Local Custom Rule Application
 
 **Changes**: Added an explicit tag-page action that applies user-defined hostname and title/path rules to existing bookmarks without an LLM. It offers untagged-only, append, and replace modes, and applies a shared tag result to same-URL bookmark siblings.
@@ -37,7 +45,7 @@ Bookmark titles and paths can still contain private information. AI privacy rule
 
 **Reason**: Hostnames often provide stronger evidence than titles or generic path words. Deterministic rules make known services predictable, reduce LLM cost, and keep background network disclosure under explicit user control.
 
-**Impact**: Default tags now include the generic `代码` and `论坛` categories and remove site-specific defaults; storage V3 upgrades an exact legacy default pool and migrates `bmDomainGroups` into `bmTagRules.domain` without deleting the legacy value. `bmTagRules` stores separate `domain` and `keyword` mappings; rule outputs outside `bmFixedTags` are ignored. Keyword matching excludes query and fragment data. Backups use V3 and include unified tag rules; V2 backups remain import-compatible. Background LLM requests exclude native imports and protected URLs, strip query/fragment data, write local tags before the request, and merge a response only while that baseline is unchanged. Switching an active LLM profile revalidates optional host permission while background AI is enabled.
+**Impact**: Default tags now include the generic `代码` and `论坛` categories and remove site-specific defaults; storage V3 upgrades an exact legacy default pool and migrates `bmDomainGroups` into `bmTagRules.domain` without deleting the legacy value. `bmTagRules` stores separate `domain` and `keyword` mappings; rule outputs outside `bmFixedTags` are ignored. Keyword matching excludes query and fragment data. Backups now use the compact V4 format and include unified tag rules. Background LLM requests exclude native imports and protected URLs, strip query/fragment data, write local tags before the request, and merge a response only while that baseline is unchanged. Switching an active LLM profile revalidates optional host permission while background AI is enabled.
 
 ### 2026-08-27 - Public Release Baseline
 
