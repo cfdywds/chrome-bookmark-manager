@@ -2,6 +2,7 @@
 node_modules/
 dist/
 build/
+# 旧版本本地构建目录：仅供迁移，不能提交。
 local-sync-build/
 *.zip
 

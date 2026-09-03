@@ -96,6 +96,12 @@ describe('扩展内更新', () => {
   });
 });
 
+describe('书签地址编辑', () => {
+  it('侧边栏编辑 URL 后显式迁移标签同步记录', () => {
+    expect(popupSource).toContain('await BM.migrateTagSyncUrl(EDITING.id, previousUrl, u.href);');
+  });
+});
+
 describe('隐藏书签视图', () => {
   it('只渲染隐藏书签，并复用书签行操作', () => {
     const panel = { innerHTML: '' };

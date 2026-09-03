@@ -15,6 +15,10 @@ function getFunctionSource(name) {
 }
 
 describe('新标签页搜索', () => {
+  it('编辑 URL 后显式迁移标签同步记录', () => {
+    expect(newtabSource).toContain('await window.BM.migrateTagSyncUrl(it.id, it.url, normalizedUrl);');
+  });
+
   it('初始化时主动拉取已有的云端标签', () => {
     expect(newtabSource).toContain('await window.BM.pullTagsFromCloud()');
     expect(newtabSource).toContain('await window.BM.initializeSyncedTagConfiguration()');

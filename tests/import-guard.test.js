@@ -42,6 +42,41 @@ function backupBookmark(title, url, tags, hidden) {
 }
 
 describe('备份恢复创建保护', () => {
+  it('忽略误含内部同步目录的备份节点', async () => {
+    const previousChrome = globalThis.chrome;
+    const store = {};
+    const create = vi.fn();
+    globalThis.chrome = {
+      bookmarks: {
+        getTree: vi.fn().mockResolvedValue([{ children: [{ id: 'bar', title: '书签栏', children: [] }] }]),
+        create
+      },
+      storage: {
+        local: {
+          get: vi.fn(async keys => Object.fromEntries((Array.isArray(keys) ? keys : [keys])
+            .filter(key => Object.prototype.hasOwnProperty.call(store, key)).map(key => [key, store[key]]))),
+          set: vi.fn(async values => Object.assign(store, values))
+        }
+      },
+      runtime: { sendMessage: vi.fn().mockResolvedValue(undefined) }
+    };
+
+    try {
+      new Function(libCode)();
+      const backup = createV4Backup({
+        roots: [backupRoot('bar', '书签栏', [backupFolder('sync', '书签管家同步数据（请勿修改）', [
+          backupBookmark('内部数据', 'https://example.com/internal', ['AI'])
+        ])])]
+      });
+      await expect(globalThis.BM.importBookmarksJSON(backup, { dryRun: true }))
+        .resolves.toMatchObject({ folders: 0, bookmarks: 0, skipped: 1 });
+      await expect(globalThis.BM.importBookmarksJSON(backup)).resolves.toMatchObject({ skipped: 1 });
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      restoreChrome(previousChrome);
+    }
+  });
+
   it('仅接受 V4 紧凑备份', async () => {
     const previousChrome = globalThis.chrome;
     const store = {

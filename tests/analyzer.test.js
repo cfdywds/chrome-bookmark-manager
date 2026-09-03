@@ -126,6 +126,84 @@ describe('分析引擎', () => {
     }
   });
 
+  it('跳过内部同步目录，既不展示也不纳入空文件夹清理', async () => {
+    const previousWindow = globalThis.window;
+    const previousChrome = globalThis.chrome;
+    const previousBM = globalThis.BM;
+    const previousAnalyzer = globalThis.BMAnalyzer;
+    globalThis.window = globalThis;
+    globalThis.chrome = {
+      bookmarks: { getTree: vi.fn().mockResolvedValue([{ id: 'root', children: [{
+        id: 'other', title: '其他书签', children: [{
+          id: 'native-root', title: '书签管家同步数据（请勿修改）', children: [{
+            id: 'device', title: 'BMN1|D|device-a', children: []
+          }]
+        }, {
+          id: 'visible', title: '可见', url: 'https://example.com/'
+        }]
+      }] }]) }
+    };
+    globalThis.BM = {
+      loadDomainGroups: vi.fn(), loadTags: vi.fn(), loadFixedTags: vi.fn(),
+      loadTagRules: vi.fn(), loadHiddenIds: vi.fn(), getRegisteredDomain: host => host,
+      urlKey: url => url, categorize: () => '未分类', detectSensitive: () => [],
+      getTags: () => ({}), isHidden: () => false, routeKeyOf: () => '(首页)',
+      FALLBACK_TAG: '其他',
+      isNativeSyncRoot: node => !!node && !node.url && node.title === '书签管家同步数据（请勿修改）'
+    };
+
+    try {
+      new Function(analyzerCode)();
+      const result = await globalThis.BMAnalyzer.analyze();
+      expect(result.items.map(item => item.id)).toEqual(['visible']);
+      expect(result.emptyFolders).toEqual([]);
+      expect(globalThis.BMAnalyzer.flatten(await globalThis.chrome.bookmarks.getTree()))
+        .toEqual([expect.objectContaining({ id: 'visible' })]);
+    } finally {
+      restoreGlobal('window', previousWindow);
+      restoreGlobal('chrome', previousChrome);
+      restoreGlobal('BM', previousBM);
+      restoreGlobal('BMAnalyzer', previousAnalyzer);
+    }
+  });
+
+  it('内部同步目录被移动到普通文件夹时，会保护其父目录不被清理', async () => {
+    const previousWindow = globalThis.window;
+    const previousChrome = globalThis.chrome;
+    const previousBM = globalThis.BM;
+    const previousAnalyzer = globalThis.BMAnalyzer;
+    globalThis.window = globalThis;
+    globalThis.chrome = {
+      bookmarks: { getTree: vi.fn().mockResolvedValue([{ id: 'root', children: [{
+        id: 'other', title: '其他书签', children: [{
+          id: 'wrapper', title: '同步目录外层', children: [{
+            id: 'native-root', title: '书签管家同步数据（请勿修改）', children: []
+          }]
+        }]
+      }] }]) }
+    };
+    globalThis.BM = {
+      loadDomainGroups: vi.fn(), loadTags: vi.fn(), loadFixedTags: vi.fn(),
+      loadTagRules: vi.fn(), loadHiddenIds: vi.fn(), getRegisteredDomain: host => host,
+      urlKey: url => url, categorize: () => '未分类', detectSensitive: () => [],
+      getTags: () => ({}), isHidden: () => false, routeKeyOf: () => '(首页)',
+      FALLBACK_TAG: '其他',
+      isNativeSyncRoot: node => !!node && !node.url && node.title === '书签管家同步数据（请勿修改）'
+    };
+
+    try {
+      new Function(analyzerCode)();
+      const result = await globalThis.BMAnalyzer.analyze();
+      expect(result.emptyFolders.map(folder => folder.id)).not.toContain('wrapper');
+      expect(result.emptyFolders).toEqual([]);
+    } finally {
+      restoreGlobal('window', previousWindow);
+      restoreGlobal('chrome', previousChrome);
+      restoreGlobal('BM', previousBM);
+      restoreGlobal('BMAnalyzer', previousAnalyzer);
+    }
+  });
+
   it('并行加载配置并在单轮聚合中保持各类统计结果', async () => {
     const previousWindow = globalThis.window;
     const previousChrome = globalThis.chrome;

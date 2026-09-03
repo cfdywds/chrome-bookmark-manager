@@ -332,7 +332,9 @@
       try {
         if (newTitle && newTitle !== it.title) await chrome.bookmarks.update(it.id, { title: newTitle });
         if (newUrl && newUrl !== it.url) {
-          await chrome.bookmarks.update(it.id, { url: window.BM.normalizeHttpUrl(newUrl).href });
+          const normalizedUrl = window.BM.normalizeHttpUrl(newUrl).href;
+          await chrome.bookmarks.update(it.id, { url: normalizedUrl });
+          await window.BM.migrateTagSyncUrl(it.id, it.url, normalizedUrl);
         }
         await window.BM.setTags(it.id, newTags);
         DATA = await window.BMAnalyzer.analyze();

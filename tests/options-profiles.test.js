@@ -83,16 +83,15 @@ describe('LLM 多配置', () => {
     expect(readme).toContain('固定标签池和自定义标签规则');
   });
 
-  it('设置页展示扩展 ID，并明确排除 API Key', () => {
-    const elements = { '#tagSyncExtensionId': { textContent: '' } };
+  it('设置页说明原生书签同步，并明确排除 API Key', () => {
+    const elements = { '#tagSyncSummary': { textContent: '' } };
     const $ = selector => elements[selector];
-    const chrome = { runtime: { id: 'stable-extension-id' } };
     const renderTagSyncDiagnostics = eval(`(${getFunctionSource('renderTagSyncDiagnostics')})`);
 
     renderTagSyncDiagnostics();
 
-    expect(optionsHtml).toContain('id="tagSyncExtensionId"');
-    expect(elements['#tagSyncExtensionId'].textContent).toBe('扩展 ID：stable-extension-id');
+    expect(optionsHtml).toContain('id="tagSyncSummary"');
+    expect(elements['#tagSyncSummary'].textContent).toBe('使用 Chrome 书签同步；无需相同扩展 ID');
     expect(readme).toContain('不包含 API Key');
   });
 

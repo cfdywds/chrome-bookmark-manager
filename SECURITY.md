@@ -15,9 +15,10 @@ Only the latest release is supported with security fixes.
 - LLM requests require a user-granted, origin-specific optional host permission. Remote HTTP endpoints are rejected; HTTP is limited to local Ollama endpoints.
 - LLM requests are locally blocked only for parsed login endpoints, non-empty credential parameters in URL queries/fragments, and financial/wallet service signals. Remaining requests strip URL queries and fragments.
 - Backups do not contain API keys or LLM configuration.
-- 标签云同步只包含规范化 URL 键的标签、固定标签池和自定义标签规则。标签和规则文字可能反映浏览偏好；LLM profile、API Key、端点、模型、可选主机权限和自动 AI 设置绝不进入同步 payload。
-- Chrome Sync 按扩展 ID 隔离。个人本地同步必须使用同一私钥生成的固定扩展 ID；Chrome Web Store 生产设备必须安装同一个商店条目。
-- 本地同步公钥只写入生成目录的 manifest；扩展私钥、API Key 和个人备份不得提交到 Git、共享同步盘或其他设备。
+- 标签原生同步只包含规范化 URL 键的标签、固定标签池和自定义标签规则。标签和规则文字可能反映浏览偏好；LLM profile、API Key、端点、模型、可选主机权限、自动 AI 设置、隐藏状态和回收站绝不进入同步数据。
+- 同步数据以文件夹和分片标题写入 Chrome 书签的内部目录，并依赖同一 Google 账号的「书签」同步。数据不依赖扩展 ID；不同本地解压安装可以读取同一目录。
+- 内部目录 `书签管家同步数据（请勿修改）` 是协议保留名称。插件会忽略它，用户不应在书签管理器或移动端修改、移动或删除它；手动操作可能造成同步数据丢失或延迟。
+- 本地解压扩展不会随 Chrome 自动安装或更新。Chrome Web Store 发布可以提供扩展安装与更新分发，但不改变标签数据的同步边界。
 
 ## Known Limitations
 

@@ -10,8 +10,10 @@
 
   function flatten(tree) {
     const items = [];
-    function walk(nodes, path) {
+    function walk(nodes, path, inInternalTree) {
       for (const n of nodes) {
+        const internal = inInternalTree || !!(BM.isNativeSyncRoot && BM.isNativeSyncRoot(n));
+        if (internal) continue;
         if (n.url) {
           items.push({
             id: n.id,
@@ -24,20 +26,26 @@
         }
         if (n.children) {
           const np = n.title ? path.concat(n.title) : path;
-          walk(n.children, np);
+          walk(n.children, np, internal);
         }
       }
     }
-    walk(tree, []);
+    walk(tree, [], false);
     return items;
   }
 
   function collectItemsAndEmptyFolders(tree) {
     const items = [];
     const emptyFolders = [];
-    function walk(nodes, path, depth) {
+    function walk(nodes, path, depth, inInternalTree) {
       let hasBookmark = false;
       for (const n of nodes) {
+        const internal = inInternalTree || !!(BM.isNativeSyncRoot && BM.isNativeSyncRoot(n));
+        // 同步目录本身不展示，但其父目录必须被视为非空，防止清理空文件夹时递归删除它。
+        if (internal) {
+          hasBookmark = true;
+          continue;
+        }
         if (n.url) {
           items.push({
             id: n.id,
@@ -51,7 +59,7 @@
         }
         if (n.children) {
           const nextPath = n.title ? path.concat(n.title) : path;
-          const childrenHaveBookmark = walk(n.children, nextPath, depth + 1);
+          const childrenHaveBookmark = walk(n.children, nextPath, depth + 1, internal);
           // 根节点及其直属的书签栏/其他书签/移动设备是 Chrome 系统容器，不能删除。
           if (!n.url && !childrenHaveBookmark && depth > 1) {
             emptyFolders.push({ id: n.id, title: n.title || '(未命名)', path: nextPath });
@@ -61,7 +69,7 @@
       }
       return hasBookmark;
     }
-    walk(tree, [], 0);
+    walk(tree, [], 0, false);
     return { items, emptyFolders };
   }
 

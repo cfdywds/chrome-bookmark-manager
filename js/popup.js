@@ -2009,7 +2009,7 @@ async function init() {
 
   await Promise.all([settingsReady, refresh(true)]);
 
-  // 标签云同步（开启时）：启动拉取云端标签合并 + 监听跨端变更实时刷新
+  // 标签原生同步开启时：启动目录拉取，并在后台合并后实时刷新。
   if (!tagConfigurationSyncFailed) {
     try {
       const changed = await BM.pullTagsFromCloud();
@@ -2268,7 +2268,9 @@ async function saveAdd() {
         refresh();
         return;
       }
+      const previousUrl = EDITING.url;
       await chrome.bookmarks.update(EDITING.id, { title, url: u.href });
+      if (previousUrl !== u.href) await BM.migrateTagSyncUrl(EDITING.id, previousUrl, u.href);
       if (!await BM.setTags(EDITING.id, tags)) throw new Error('标签保存失败，请重试');
       if (!await unifySameUrlTags({ id: EDITING.id, url: u.href }, tags)) throw new Error('同址标签同步失败，请重试');
       toast('已保存修改 ✓' + (tags.length ? '（标签 ' + tags.length + ' 个）' : ''), 'ok');

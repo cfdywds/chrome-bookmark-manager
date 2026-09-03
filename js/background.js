@@ -30,6 +30,17 @@ const SYNC_CONFIG_PREFIX = 'bmSyncConfig_p';
 const SYNC_CONFIG_CNT = 'bmSyncConfig_cnt';
 const SYNC_CONFIG_REVISION_KEY = 'bmSyncConfigRevision';
 const SYNC_CONFIG_VERSION = 1;
+const NATIVE_SYNC_ENABLED_KEY = 'bmNativeTagSyncEnabled';
+const NATIVE_SYNC_STATE_KEY = 'bmNativeTagSyncState';
+const NATIVE_SYNC_RECORDS_KEY = 'bmNativeTagSyncRecords';
+const NATIVE_SYNC_CONFIG_KEY = 'bmNativeTagSyncConfig';
+const NATIVE_SYNC_URLS_KEY = 'bmNativeTagSyncUrls';
+const NATIVE_SYNC_ROOT_TITLE = '书签管家同步数据（请勿修改）';
+const NATIVE_SYNC_PROTOCOL = 'BMN1';
+const NATIVE_SYNC_BUCKETS = 32;
+const NATIVE_SYNC_CHUNK_CHARS = 900;
+const NATIVE_SYNC_MESSAGE = 'bmNativeTagSync';
+const NATIVE_SYNC_DELAY_MS = 800;
 let backgroundConfigHydration = Promise.resolve();
 const LEGACY_DEFAULT_FIXED_TAGS = [
   'AI', '前端', '后端', '移动端', 'JAVA', 'Python', '数据库', '运维', '安全', '设计',
@@ -75,6 +86,14 @@ const BACKGROUND_TAG_HINTS = [
 let tagMutationQueue = Promise.resolve();
 let autoTagFlushTimer = null;
 let tagSyncTimer = null;
+let nativeSyncQueue = Promise.resolve();
+let nativeSyncTimer = null;
+let nativeSyncApplying = false;
+let nativeSyncGeneration = 0;
+// storage.onChanged 在 Service Worker 队列执行时，apply 期间的布尔标志已经会复位。
+// 用实际写入值消费一次事件，避免接收端把远端内容重新写成自己的新版本。
+const nativeSyncIgnoredTagValues = new Set();
+const nativeSyncIgnoredConfigValues = new Set();
 let nativeBookmarkImportInProgress = false;
 let nativeBookmarkImportEnded = false;
 let nativeImportCreatedInFlight = 0;
@@ -144,6 +163,779 @@ function serializeBackgroundSyncTags(tags) {
   }
   out[SYNC_TAG_CNT] = count;
   return out;
+}
+
+// ---- 原生书签标签同步 -------------------------------------------------------
+// Chrome 不提供书签自定义字段。此处用一个保留文件夹承载按设备分片的元数据，
+// 每台设备只写自己的分片，读取时按 URL 修订号合并，避免并发覆盖整份数据。
+function nativeBase64UrlEncode(bytes) {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function nativeBase64UrlDecode(value) {
+  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+async function nativeCompress(bytes) {
+  if (typeof CompressionStream !== 'function') return null;
+  const stream = new CompressionStream('gzip');
+  const writer = stream.writable.getWriter();
+  await writer.write(bytes);
+  await writer.close();
+  return new Uint8Array(await new Response(stream.readable).arrayBuffer());
+}
+
+async function nativeDecompress(bytes) {
+  if (typeof DecompressionStream !== 'function') return null;
+  const stream = new DecompressionStream('gzip');
+  const writer = stream.writable.getWriter();
+  await writer.write(bytes);
+  await writer.close();
+  return new Uint8Array(await new Response(stream.readable).arrayBuffer());
+}
+
+async function encodeNativePayload(value) {
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  const compressed = await nativeCompress(bytes);
+  return (compressed ? 'z' : 'j') + nativeBase64UrlEncode(compressed || bytes);
+}
+
+async function decodeNativePayload(value) {
+  const encoded = String(value || '');
+  if (encoded.length < 2 || !/^[jz]$/.test(encoded[0])) return null;
+  try {
+    let bytes = nativeBase64UrlDecode(encoded.slice(1));
+    if (encoded[0] === 'z') {
+      bytes = await nativeDecompress(bytes);
+      if (!bytes) return null;
+    }
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch (e) {
+    return null;
+  }
+}
+
+function nativeChecksum(value) {
+  let hash = 2166136261;
+  const text = String(value || '');
+  for (let index = 0; index < text.length; index++) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36) + '-' + text.length.toString(36);
+}
+
+function nativeTitleParts(title) {
+  const parts = String(title || '').split('|');
+  return parts[0] === NATIVE_SYNC_PROTOCOL ? parts : null;
+}
+
+function nativeDeviceFolderId(node) {
+  const parts = nativeTitleParts(node && node.title);
+  return parts && parts.length === 3 && parts[1] === 'D' && parts[2] ? parts[2] : '';
+}
+
+function nativeHeadInfo(node) {
+  const parts = nativeTitleParts(node && node.title);
+  if (!parts || parts.length !== 6 || parts[1] !== 'H') return null;
+  const count = Number(parts[4]);
+  if (!parts[2] || !parts[3] || !Number.isInteger(count) || count < 1 || !parts[5]) return null;
+  return { node, bucket: parts[2], generation: parts[3], count, checksum: parts[5] };
+}
+
+function nativeChunkInfo(node) {
+  const parts = nativeTitleParts(node && node.title);
+  if (!parts || parts.length !== 7 || parts[1] !== 'S') return null;
+  const index = Number(parts[4]);
+  const count = Number(parts[5]);
+  if (!parts[2] || !parts[3] || !Number.isInteger(index) || index < 0 ||
+    !Number.isInteger(count) || count < 1 || !parts[6]) return null;
+  return { node, bucket: parts[2], generation: parts[3], index, count, payload: parts[6] };
+}
+
+function isNativeSyncRoot(node) {
+  return !!node && !node.url && node.title === NATIVE_SYNC_ROOT_TITLE;
+}
+
+function findNativeSyncRoot(nodes) {
+  for (const node of nodes || []) {
+    if (isNativeSyncRoot(node)) return node;
+    const nested = findNativeSyncRoot(node && node.children);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+function collectNativeUserBookmarks(nodes, out, inInternalTree) {
+  for (const node of nodes || []) {
+    if (!node) continue;
+    const internal = inInternalTree || isNativeSyncRoot(node);
+    if (!internal && node.url) out.push(node);
+    if (node.children) collectNativeUserBookmarks(node.children, out, internal);
+  }
+  return out;
+}
+
+function nativeBookmarkUrlMap(bookmarks) {
+  const result = {};
+  (bookmarks || []).forEach(bookmark => {
+    const id = String(bookmark && bookmark.id || '');
+    const key = syncUrlKey(bookmark && bookmark.url);
+    if (id && key) result[id] = key;
+  });
+  return result;
+}
+
+function nativeRecordTagsForUrl(bookmarks, tags, key) {
+  const values = [];
+  (bookmarks || []).forEach(bookmark => {
+    if (syncUrlKey(bookmark.url) !== key) return;
+    values.push(...normalizeNativeTags(tags && tags[bookmark.id]));
+  });
+  return normalizeNativeTags(values);
+}
+
+function updateNativeRecordsForUrls(records, state, bookmarks, tags, keys) {
+  [...new Set(keys || [])].filter(Boolean).sort().forEach(key => {
+    records[key] = {
+      tags: nativeRecordTagsForUrl(bookmarks, tags, key),
+      revision: nativeNextRevision(state)
+    };
+  });
+}
+
+function nativeBucketForUrl(key) {
+  let hash = 2166136261;
+  const text = String(key || '');
+  for (let index = 0; index < text.length; index++) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return String((hash >>> 0) % NATIVE_SYNC_BUCKETS).padStart(2, '0');
+}
+
+function nativeCreateDeviceId() {
+  if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  return 'device-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+}
+
+function nativeRevision(value) {
+  if (!Array.isArray(value) || value.length !== 3) return [0, 0, ''];
+  return [
+    Math.max(0, Math.floor(Number(value[0]) || 0)),
+    Math.max(0, Math.floor(Number(value[1]) || 0)),
+    String(value[2] || '')
+  ];
+}
+
+function compareNativeRevision(left, right) {
+  const a = nativeRevision(left);
+  const b = nativeRevision(right);
+  if (a[0] !== b[0]) return a[0] - b[0];
+  if (a[1] !== b[1]) return a[1] - b[1];
+  return a[2].localeCompare(b[2]);
+}
+
+function nativeNextRevision(state, observed) {
+  const current = nativeRevision([state.clock, state.sequence, state.deviceId]);
+  const remote = nativeRevision(observed);
+  const nextClock = Math.max(Date.now(), current[0], remote[0]);
+  state.sequence = nextClock === current[0] ? current[1] + 1 : 0;
+  state.clock = nextClock;
+  return [state.clock, state.sequence, state.deviceId];
+}
+
+function normalizeNativeTags(tags) {
+  return [...new Set((tags || []).map(tag => String(tag || '').trim()).filter(tag => tag && tag !== FALLBACK_TAG))].slice(0, 6);
+}
+
+function normalizeNativeRecord(value) {
+  if (!value || typeof value !== 'object' || !Array.isArray(value.tags)) return null;
+  const revision = nativeRevision(value.revision);
+  if (!revision[0] || !revision[2]) return null;
+  return { tags: normalizeNativeTags(value.tags), revision };
+}
+
+function normalizeNativeConfig(value) {
+  if (!value || typeof value !== 'object' || !Array.isArray(value.fixedTags)) return null;
+  const revision = nativeRevision(value.revision);
+  if (!revision[0] || !revision[2]) return null;
+  return {
+    revision,
+    fixedTags: [...new Set(value.fixedTags.map(tag => String(tag || '').trim()).filter(Boolean))]
+      .filter(tag => tag !== FALLBACK_TAG).slice(0, MAX_FIXED_TAGS),
+    tagRules: normalizeBackgroundTagRules(value.tagRules)
+  };
+}
+
+function nativeConfigValues(fixedTags, tagRules) {
+  return {
+    fixedTags: backgroundFixedTagPool(fixedTags).filter(tag => tag !== FALLBACK_TAG),
+    tagRules: normalizeBackgroundTagRules(tagRules)
+  };
+}
+
+function nativeStableJson(value) {
+  if (Array.isArray(value)) return '[' + value.map(nativeStableJson).join(',') + ']';
+  if (!value || typeof value !== 'object') return JSON.stringify(value);
+  return '{' + Object.keys(value).sort().map(key =>
+    JSON.stringify(key) + ':' + nativeStableJson(value[key])
+  ).join(',') + '}';
+}
+
+function sameNativeConfigValues(left, right) {
+  return !!left && !!right &&
+    sameTags(left.fixedTags || [], right.fixedTags || []) &&
+    nativeStableJson(left.tagRules || {}) === nativeStableJson(right.tagRules || {});
+}
+
+function ignoreNativeTagChange(value) {
+  nativeSyncIgnoredTagValues.add(nativeStableJson(value || {}));
+}
+
+function consumeIgnoredNativeTagChange(value) {
+  const signature = nativeStableJson(value || {});
+  if (!nativeSyncIgnoredTagValues.has(signature)) return false;
+  nativeSyncIgnoredTagValues.delete(signature);
+  return true;
+}
+
+function ignoreNativeConfigChange(value) {
+  nativeSyncIgnoredConfigValues.add(nativeStableJson(value));
+}
+
+function consumeIgnoredNativeConfigChange(changes) {
+  if (!changes[FIXED_TAGS_KEY] || !changes[TAG_RULES_KEY]) return false;
+  const signature = nativeStableJson({
+    fixedTags: changes[FIXED_TAGS_KEY].newValue,
+    tagRules: changes[TAG_RULES_KEY].newValue
+  });
+  if (!nativeSyncIgnoredConfigValues.has(signature)) return false;
+  nativeSyncIgnoredConfigValues.delete(signature);
+  return true;
+}
+
+async function loadNativeSyncState(api) {
+  const stored = await api.storage.local.get([NATIVE_SYNC_ENABLED_KEY, NATIVE_SYNC_STATE_KEY]);
+  const raw = stored[NATIVE_SYNC_STATE_KEY] && typeof stored[NATIVE_SYNC_STATE_KEY] === 'object'
+    ? stored[NATIVE_SYNC_STATE_KEY] : {};
+  const state = {
+    enabled: stored[NATIVE_SYNC_ENABLED_KEY] === true,
+    deviceId: String(raw.deviceId || '').trim() || nativeCreateDeviceId(),
+    clock: Math.max(0, Math.floor(Number(raw.clock) || 0)),
+    sequence: Math.max(0, Math.floor(Number(raw.sequence) || 0)),
+    seeded: raw.seeded === true
+  };
+  return state;
+}
+
+async function saveNativeSyncState(api, state) {
+  await api.storage.local.set({
+    [NATIVE_SYNC_ENABLED_KEY]: !!state.enabled,
+    [NATIVE_SYNC_STATE_KEY]: {
+      deviceId: state.deviceId,
+      clock: state.clock,
+      sequence: state.sequence,
+      seeded: !!state.seeded
+    }
+  });
+}
+
+async function loadNativeSyncRecords(api) {
+  const stored = await api.storage.local.get(NATIVE_SYNC_RECORDS_KEY);
+  return stored[NATIVE_SYNC_RECORDS_KEY] && typeof stored[NATIVE_SYNC_RECORDS_KEY] === 'object'
+    ? { ...stored[NATIVE_SYNC_RECORDS_KEY] } : {};
+}
+
+async function loadNativeSyncUrls(api) {
+  const stored = await api.storage.local.get(NATIVE_SYNC_URLS_KEY);
+  const raw = stored[NATIVE_SYNC_URLS_KEY];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return Object.fromEntries(Object.entries(raw)
+    .filter(([id, key]) => String(id || '') && String(key || ''))
+    .map(([id, key]) => [String(id), String(key)]));
+}
+
+async function loadNativeSyncConfig(api) {
+  const stored = await api.storage.local.get(NATIVE_SYNC_CONFIG_KEY);
+  return normalizeNativeConfig(stored[NATIVE_SYNC_CONFIG_KEY]);
+}
+
+function findNativeParent(tree) {
+  const roots = tree && tree[0] && tree[0].children || [];
+  return roots.find(node => String(node.id) === '2') || roots[1] || roots[0] || null;
+}
+
+async function ensureNativeSyncRoot(api, tree) {
+  const existing = findNativeSyncRoot(tree);
+  if (existing) return existing;
+  const parent = findNativeParent(tree);
+  if (!parent || !parent.id) throw new Error('未找到可创建同步数据目录的书签根目录');
+  return api.bookmarks.create({ parentId: parent.id, title: NATIVE_SYNC_ROOT_TITLE });
+}
+
+async function ensureNativeDeviceFolder(api, root, deviceId) {
+  const existing = (root.children || []).find(node => nativeDeviceFolderId(node) === deviceId);
+  if (existing) return existing;
+  return api.bookmarks.create({ parentId: root.id, title: `${NATIVE_SYNC_PROTOCOL}|D|${deviceId}` });
+}
+
+function findNativeHead(children, bucket) {
+  return (children || []).map(nativeHeadInfo).find(info => info && info.bucket === bucket) || null;
+}
+
+async function readNativeHeadPayload(children, head) {
+  const chunks = (children || []).map(nativeChunkInfo)
+    .filter(chunk => chunk && chunk.bucket === head.bucket && chunk.generation === head.generation && chunk.count === head.count)
+    .sort((left, right) => left.index - right.index);
+  if (chunks.length !== head.count || chunks.some((chunk, index) => chunk.index !== index)) {
+    return { payload: null, error: '分片缺失或序号不连续' };
+  }
+  const encoded = chunks.map(chunk => chunk.payload).join('');
+  if (nativeChecksum(encoded) !== head.checksum) return { payload: null, error: '分片校验和不匹配' };
+  const payload = await decodeNativePayload(encoded);
+  return payload ? { payload, error: '' } : { payload: null, error: '分片内容无法解码' };
+}
+
+async function writeNativeBucket(api, deviceFolder, bucket, payload) {
+  const encoded = await encodeNativePayload(payload);
+  const chunks = [];
+  for (let index = 0; index < encoded.length; index += NATIVE_SYNC_CHUNK_CHARS) {
+    chunks.push(encoded.slice(index, index + NATIVE_SYNC_CHUNK_CHARS));
+  }
+  const generation = Date.now().toString(36) + '-' + (++nativeSyncGeneration).toString(36);
+  const checksum = nativeChecksum(encoded);
+  for (let index = 0; index < chunks.length; index++) {
+    await api.bookmarks.create({
+      parentId: deviceFolder.id,
+      title: `${NATIVE_SYNC_PROTOCOL}|S|${bucket}|${generation}|${index}|${chunks.length}|${chunks[index]}`
+    });
+  }
+  const current = await api.bookmarks.getChildren(deviceFolder.id);
+  const oldHead = findNativeHead(current, bucket);
+  const headTitle = `${NATIVE_SYNC_PROTOCOL}|H|${bucket}|${generation}|${chunks.length}|${checksum}`;
+  if (oldHead) await api.bookmarks.update(oldHead.node.id, { title: headTitle });
+  else await api.bookmarks.create({ parentId: deviceFolder.id, title: headTitle });
+
+  const after = await api.bookmarks.getChildren(deviceFolder.id);
+  const staleChunks = after.map(nativeChunkInfo).filter(chunk =>
+    chunk && chunk.bucket === bucket && chunk.generation !== generation
+  );
+  for (const chunk of staleChunks) {
+    try { await api.bookmarks.remove(chunk.node.id); } catch (e) { /* 同步乱序时保留旧分片 */ }
+  }
+}
+
+function nativeRecordsForBucket(records, bucket) {
+  const result = {};
+  Object.entries(records || {}).forEach(([key, raw]) => {
+    if (nativeBucketForUrl(key) !== bucket) return;
+    const record = normalizeNativeRecord(raw);
+    if (record) result[key] = record;
+  });
+  return result;
+}
+
+function nativeBucketsForRecords(records) {
+  const buckets = new Set();
+  Object.keys(records || {}).forEach(key => buckets.add(nativeBucketForUrl(key)));
+  return buckets;
+}
+
+function nativeQueue(task) {
+  const result = nativeSyncQueue.then(task, task);
+  nativeSyncQueue = result.catch(() => {});
+  return result;
+}
+
+async function publishNativeSync(api, buckets, includeConfig) {
+  const state = await loadNativeSyncState(api);
+  if (!state.enabled) return false;
+  const tree = await api.bookmarks.getTree();
+  const root = findNativeSyncRoot(tree);
+  if (!root) throw new Error('未找到书签管家同步数据目录，请重新启用同步');
+  const deviceFolder = await ensureNativeDeviceFolder(api, root, state.deviceId);
+  const records = await loadNativeSyncRecords(api);
+  // null 表示完整发布；空集合仅用于配置变更，不能意外重写所有标签分桶。
+  const requested = buckets === null || buckets === undefined ? nativeBucketsForRecords(records) : buckets;
+  for (const bucket of requested) {
+    await writeNativeBucket(api, deviceFolder, bucket, {
+      version: 1,
+      type: 'records',
+      deviceId: state.deviceId,
+      records: nativeRecordsForBucket(records, bucket)
+    });
+  }
+  if (includeConfig) {
+    const config = await loadNativeSyncConfig(api);
+    if (config) {
+      await writeNativeBucket(api, deviceFolder, 'config', {
+        version: 1,
+        type: 'config',
+        deviceId: state.deviceId,
+        config
+      });
+    }
+  }
+  return true;
+}
+
+function mergeNativeRecord(target, key, raw) {
+  const record = normalizeNativeRecord(raw);
+  if (!record) return;
+  const current = target[key];
+  if (!current || compareNativeRevision(record.revision, current.revision) > 0) target[key] = record;
+}
+
+async function readNativeSyncData(tree) {
+  const root = findNativeSyncRoot(tree);
+  if (!root) return null;
+  const records = {};
+  let config = null;
+  let maxRevision = [0, 0, ''];
+  const errors = [];
+  for (const deviceFolder of root.children || []) {
+    const deviceId = nativeDeviceFolderId(deviceFolder);
+    if (!deviceId) continue;
+    const children = deviceFolder.children || [];
+    const heads = children.map(nativeHeadInfo).filter(Boolean);
+    for (const head of heads) {
+      const result = await readNativeHeadPayload(children, head);
+      if (result.error) {
+        errors.push(`${deviceId}/${head.bucket}: ${result.error}`);
+        continue;
+      }
+      const payload = result.payload;
+      if (!payload || payload.version !== 1 || payload.deviceId !== deviceId) {
+        errors.push(`${deviceId}/${head.bucket}: 分片协议内容无效`);
+        continue;
+      }
+      if (payload.type === 'records' && payload.records && typeof payload.records === 'object' && !Array.isArray(payload.records)) {
+        Object.entries(payload.records).forEach(([key, record]) => {
+          const normalized = normalizeNativeRecord(record);
+          if (!normalized) {
+            errors.push(`${deviceId}/${head.bucket}: 标签记录内容无效`);
+            return;
+          }
+          mergeNativeRecord(records, key, normalized);
+          if (compareNativeRevision(normalized.revision, maxRevision) > 0) maxRevision = normalized.revision;
+        });
+      } else if (payload.type === 'config') {
+        const normalized = normalizeNativeConfig(payload.config);
+        if (!normalized) {
+          errors.push(`${deviceId}/${head.bucket}: 配置分片内容无效`);
+          continue;
+        }
+        if (!config || compareNativeRevision(normalized.revision, config.revision) > 0) config = normalized;
+        if (compareNativeRevision(normalized.revision, maxRevision) > 0) maxRevision = normalized.revision;
+      } else {
+        errors.push(`${deviceId}/${head.bucket}: 分片类型无效`);
+      }
+    }
+  }
+  return { root, records, config, maxRevision, errors };
+}
+
+async function applyNativeSyncData(api, source) {
+  const data = await readNativeSyncData(source);
+  if (!data) return false;
+  // 任一分片尚未到达时，不能用其他设备的旧值覆盖本机或抢先写出新修订号。
+  // Chrome 书签同步的节点到达顺序不保证，等待下次 hydrate 才是可恢复的选择。
+  if (data.errors.length) {
+    await setBackgroundTagSyncStatus(api, '同步数据不完整或损坏：' + data.errors[0]);
+    return false;
+  }
+  const stored = await api.storage.local.get([
+    TAGS_KEY, FIXED_TAGS_KEY, TAG_RULES_KEY, NATIVE_SYNC_URLS_KEY
+  ]);
+  const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? { ...stored[TAGS_KEY] } : {};
+  const nextTags = { ...tags };
+  let tagsChanged = false;
+  const bookmarks = collectNativeUserBookmarks(source, []);
+  bookmarks.forEach(bookmark => {
+    const record = data.records[syncUrlKey(bookmark.url)];
+    if (!record) return;
+    const next = record.tags;
+    if (next.length) {
+      if (!sameTags(nextTags[bookmark.id] || [], next)) {
+        nextTags[bookmark.id] = next;
+        tagsChanged = true;
+      }
+    } else if (Object.prototype.hasOwnProperty.call(nextTags, bookmark.id)) {
+      delete nextTags[bookmark.id];
+      tagsChanged = true;
+    }
+  });
+  const updates = {};
+  if (tagsChanged) updates[TAGS_KEY] = nextTags;
+  let configChanged = false;
+  if (data.config) {
+    const currentConfig = nativeConfigValues(stored[FIXED_TAGS_KEY], stored[TAG_RULES_KEY]);
+    if (!sameNativeConfigValues(currentConfig, data.config)) {
+      updates[FIXED_TAGS_KEY] = data.config.fixedTags;
+      updates[TAG_RULES_KEY] = data.config.tagRules;
+      configChanged = true;
+    }
+    updates[NATIVE_SYNC_CONFIG_KEY] = data.config;
+  }
+  const state = await loadNativeSyncState(api);
+  if (compareNativeRevision(data.maxRevision, [state.clock, state.sequence, state.deviceId]) > 0) {
+    state.clock = data.maxRevision[0];
+    state.sequence = data.maxRevision[1];
+    updates[NATIVE_SYNC_STATE_KEY] = {
+      deviceId: state.deviceId,
+      clock: state.clock,
+      sequence: state.sequence,
+      seeded: state.seeded
+    };
+  }
+  const currentUrls = nativeBookmarkUrlMap(bookmarks);
+  const nextUrls = stored[NATIVE_SYNC_URLS_KEY] && typeof stored[NATIVE_SYNC_URLS_KEY] === 'object'
+    ? { ...stored[NATIVE_SYNC_URLS_KEY] } : {};
+  // URL 变更事件无法区分本机编辑和远端书签先到。保留首次记录的旧 URL，
+  // 只有用户明确修改标签时才同时写旧、新 URL，避免远端到达乱序写出空墓碑。
+  Object.entries(currentUrls).forEach(([id, key]) => {
+    if (!nextUrls[id]) nextUrls[id] = key;
+  });
+  if (nativeStableJson(stored[NATIVE_SYNC_URLS_KEY] || {}) !== nativeStableJson(nextUrls)) {
+    updates[NATIVE_SYNC_URLS_KEY] = nextUrls;
+  }
+  if (Object.keys(updates).length) {
+    if (tagsChanged) ignoreNativeTagChange(nextTags);
+    if (configChanged) ignoreNativeConfigChange({
+      fixedTags: data.config.fixedTags,
+      tagRules: data.config.tagRules
+    });
+    nativeSyncApplying = true;
+    try { await api.storage.local.set(updates); }
+    finally { nativeSyncApplying = false; }
+  }
+  await setBackgroundTagSyncStatus(api, '');
+  return tagsChanged || configChanged;
+}
+
+async function hydrateNativeSync(api) {
+  const state = await loadNativeSyncState(api);
+  const tree = await api.bookmarks.getTree();
+  const root = findNativeSyncRoot(tree);
+  if (!root) {
+    if (state.enabled) await setBackgroundTagSyncStatus(api, '未找到书签管家同步数据目录');
+    return false;
+  }
+  if (!state.enabled) {
+    state.enabled = true;
+    await saveNativeSyncState(api, state);
+  }
+  return applyNativeSyncData(api, tree);
+}
+
+async function seedNativeSyncFromLocal(api, state, tree, replaceRecords) {
+  const stored = await api.storage.local.get([TAGS_KEY, FIXED_TAGS_KEY, TAG_RULES_KEY]);
+  const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
+  const records = replaceRecords ? {} : await loadNativeSyncRecords(api);
+  const bookmarks = collectNativeUserBookmarks(tree, []);
+  const byKey = {};
+  bookmarks.forEach(bookmark => {
+    const key = syncUrlKey(bookmark.url);
+    const values = normalizeNativeTags(tags[bookmark.id]);
+    if (!key || !values.length) return;
+    byKey[key] = normalizeNativeTags([...(byKey[key] || []), ...values]);
+  });
+  Object.entries(byKey).forEach(([key, values]) => {
+    records[key] = { tags: values, revision: nativeNextRevision(state) };
+  });
+  const config = {
+    revision: nativeNextRevision(state),
+    ...nativeConfigValues(stored[FIXED_TAGS_KEY], stored[TAG_RULES_KEY])
+  };
+  state.seeded = true;
+  await api.storage.local.set({
+    [NATIVE_SYNC_RECORDS_KEY]: records,
+    [NATIVE_SYNC_CONFIG_KEY]: config,
+    [NATIVE_SYNC_URLS_KEY]: nativeBookmarkUrlMap(bookmarks),
+    [NATIVE_SYNC_STATE_KEY]: {
+      deviceId: state.deviceId,
+      clock: state.clock,
+      sequence: state.sequence,
+      seeded: true
+    }
+  });
+  return { records, config };
+}
+
+async function setNativeSyncEnabled(api, enabled) {
+  const state = await loadNativeSyncState(api);
+  if (!enabled) {
+    state.enabled = false;
+    await saveNativeSyncState(api, state);
+    await setBackgroundTagSyncStatus(api, '');
+    return false;
+  }
+  const tree = await api.bookmarks.getTree();
+  const existingRoot = findNativeSyncRoot(tree);
+  await ensureNativeSyncRoot(api, tree);
+  state.enabled = true;
+  await saveNativeSyncState(api, state);
+  if (!existingRoot) {
+    // 根目录被误删或首次启用时，以本机当前标签重建一份完整的起始数据。
+    await seedNativeSyncFromLocal(api, state, tree, true);
+    const records = await loadNativeSyncRecords(api);
+    await publishNativeSync(api, nativeBucketsForRecords(records), true);
+    await setBackgroundTagSyncStatus(api, '');
+  } else {
+    await hydrateNativeSync(api);
+  }
+  return true;
+}
+
+async function recordNativeTagChanges(api, change) {
+  if (nativeSyncApplying) return;
+  const state = await loadNativeSyncState(api);
+  if (!state.enabled) return;
+  const before = change && change.oldValue && typeof change.oldValue === 'object' ? change.oldValue : {};
+  const after = change && change.newValue && typeof change.newValue === 'object' ? change.newValue : {};
+  const ids = new Set([...Object.keys(before), ...Object.keys(after)]);
+  if (!ids.size) return;
+  const tree = await api.bookmarks.getTree();
+  const bookmarks = collectNativeUserBookmarks(tree, []);
+  const byId = new Map(bookmarks.map(bookmark => [String(bookmark.id), bookmark]));
+  const previousUrls = await loadNativeSyncUrls(api);
+  const currentUrls = nativeBookmarkUrlMap(bookmarks);
+  const affectedKeys = new Set();
+  ids.forEach(id => {
+    const bookmark = byId.get(String(id));
+    if (bookmark) affectedKeys.add(syncUrlKey(bookmark.url));
+    if (previousUrls[String(id)]) affectedKeys.add(previousUrls[String(id)]);
+  });
+  if (!affectedKeys.size) {
+    if (nativeStableJson(previousUrls) !== nativeStableJson(currentUrls)) {
+      await api.storage.local.set({ [NATIVE_SYNC_URLS_KEY]: currentUrls });
+    }
+    return;
+  }
+  const records = await loadNativeSyncRecords(api);
+  updateNativeRecordsForUrls(records, state, bookmarks, after, affectedKeys);
+  await api.storage.local.set({
+    [NATIVE_SYNC_RECORDS_KEY]: records,
+    [NATIVE_SYNC_URLS_KEY]: currentUrls,
+    [NATIVE_SYNC_STATE_KEY]: {
+      deviceId: state.deviceId,
+      clock: state.clock,
+      sequence: state.sequence,
+      seeded: state.seeded
+    }
+  });
+  await publishNativeSync(api, new Set([...affectedKeys].map(nativeBucketForUrl)), false);
+}
+
+async function recordNativeConfigChange(api) {
+  if (nativeSyncApplying) return;
+  const state = await loadNativeSyncState(api);
+  if (!state.enabled) return;
+  const stored = await api.storage.local.get([FIXED_TAGS_KEY, TAG_RULES_KEY]);
+  const config = {
+    revision: nativeNextRevision(state),
+    ...nativeConfigValues(stored[FIXED_TAGS_KEY], stored[TAG_RULES_KEY])
+  };
+  await api.storage.local.set({
+    [NATIVE_SYNC_CONFIG_KEY]: config,
+    [NATIVE_SYNC_STATE_KEY]: {
+      deviceId: state.deviceId,
+      clock: state.clock,
+      sequence: state.sequence,
+      seeded: state.seeded
+    }
+  });
+  await publishNativeSync(api, new Set(), true);
+}
+
+async function recordNativeBookmarkRemoval(api, node) {
+  if (!node || nativeSyncApplying) return;
+  const state = await loadNativeSyncState(api);
+  if (!state.enabled) return;
+  const removedBookmarks = collectNativeUserBookmarks([node], []);
+  if (!removedBookmarks.length) return;
+  const tree = await api.bookmarks.getTree();
+  const bookmarks = collectNativeUserBookmarks(tree, []);
+  const stored = await api.storage.local.get([TAGS_KEY, NATIVE_SYNC_URLS_KEY]);
+  const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
+  const previousUrls = stored[NATIVE_SYNC_URLS_KEY] && typeof stored[NATIVE_SYNC_URLS_KEY] === 'object'
+    ? stored[NATIVE_SYNC_URLS_KEY] : {};
+  const affectedKeys = new Set();
+  removedBookmarks.forEach(bookmark => {
+    const id = String(bookmark.id || '');
+    const key = syncUrlKey(bookmark.url);
+    if (key) affectedKeys.add(key);
+    if (previousUrls[id]) affectedKeys.add(previousUrls[id]);
+  });
+  if (!affectedKeys.size) return;
+  const records = await loadNativeSyncRecords(api);
+  updateNativeRecordsForUrls(records, state, bookmarks, tags, affectedKeys);
+  await api.storage.local.set({
+    [NATIVE_SYNC_RECORDS_KEY]: records,
+    [NATIVE_SYNC_URLS_KEY]: nativeBookmarkUrlMap(bookmarks),
+    [NATIVE_SYNC_STATE_KEY]: {
+      deviceId: state.deviceId,
+      clock: state.clock,
+      sequence: state.sequence,
+      seeded: state.seeded
+    }
+  });
+  await publishNativeSync(api, new Set([...affectedKeys].map(nativeBucketForUrl)), false);
+}
+
+// 仅由扩展页面在 chrome.bookmarks.update 成功后发起。原生 onChanged 不携带来源，
+// 不能据此发布 URL 迁移，否则远端书签先到会生成空墓碑覆盖正确标签。
+async function recordNativeBookmarkUrlMigration(api, id, oldUrl, newUrl) {
+  const state = await loadNativeSyncState(api);
+  if (!state.enabled) return false;
+  const oldKey = syncUrlKey(oldUrl);
+  const newKey = syncUrlKey(newUrl);
+  if (!oldKey || !newKey || oldKey === newKey) return false;
+  const tree = await api.bookmarks.getTree();
+  const bookmarks = collectNativeUserBookmarks(tree, []);
+  const bookmark = bookmarks.find(node => String(node.id) === String(id));
+  if (!bookmark || syncUrlKey(bookmark.url) !== newKey) {
+    throw new Error('书签地址尚未更新，无法迁移标签');
+  }
+  const stored = await api.storage.local.get(TAGS_KEY);
+  const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
+  const records = await loadNativeSyncRecords(api);
+  const affectedKeys = new Set([oldKey, newKey]);
+  updateNativeRecordsForUrls(records, state, bookmarks, tags, affectedKeys);
+  await api.storage.local.set({
+    [NATIVE_SYNC_RECORDS_KEY]: records,
+    [NATIVE_SYNC_URLS_KEY]: nativeBookmarkUrlMap(bookmarks),
+    [NATIVE_SYNC_STATE_KEY]: {
+      deviceId: state.deviceId,
+      clock: state.clock,
+      sequence: state.sequence,
+      seeded: state.seeded
+    }
+  });
+  await publishNativeSync(api, new Set([...affectedKeys].map(nativeBucketForUrl)), false);
+  return true;
+}
+
+function scheduleNativeHydration() {
+  if (nativeSyncTimer) clearTimeout(nativeSyncTimer);
+  nativeSyncTimer = setTimeout(() => {
+    nativeSyncTimer = null;
+    nativeQueue(() => hydrateNativeSync(chrome))
+      .catch(error => console.warn('[书签管家] 原生标签同步读取失败', error));
+  }, NATIVE_SYNC_DELAY_MS);
 }
 
 
@@ -290,21 +1082,25 @@ function scheduleBackgroundTagSync() {
 
 if (chrome.storage && chrome.storage.onChanged) {
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes[TAGS_KEY]) scheduleBackgroundTagSync();
+    if (area !== 'local') return;
+    if (changes[TAGS_KEY] && !consumeIgnoredNativeTagChange(changes[TAGS_KEY].newValue)) {
+      nativeQueue(() => recordNativeTagChanges(chrome, changes[TAGS_KEY]))
+        .catch(async error => {
+          await setBackgroundTagSyncStatus(chrome, error && error.message || error);
+          console.warn('[书签管家] 原生标签同步写入失败', error);
+        });
+    }
+    if ((changes[FIXED_TAGS_KEY] || changes[TAG_RULES_KEY]) && !consumeIgnoredNativeConfigChange(changes)) {
+      nativeQueue(() => recordNativeConfigChange(chrome))
+        .catch(async error => {
+          await setBackgroundTagSyncStatus(chrome, error && error.message || error);
+          console.warn('[书签管家] 原生标签配置同步失败', error);
+        });
+    }
   });
 }
 
-if (chrome.storage && chrome.storage.onChanged) {
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'sync') return;
-    if (!Object.keys(changes).some(key =>
-      key === SYNC_ENABLED_KEY || key === SYNC_CONFIG_CNT || key.startsWith(SYNC_CONFIG_PREFIX)
-    )) return;
-    refreshBackgroundSyncConfig(chrome);
-  });
-}
-
-refreshBackgroundSyncConfig(chrome);
+backgroundConfigHydration = Promise.resolve(false);
 
 function poolTag(pool, name) {
   const normalized = String(name || '').trim().toLowerCase();
@@ -772,6 +1568,23 @@ function consumeSelfCreationToken(parentId, url, bookmarkId) {
 // 恢复页和插件手动新增都会在创建前登记精确令牌；onCreated 仅跳过确认的那一项。
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message) return;
+  if (message.type === NATIVE_SYNC_MESSAGE) {
+    const action = message.action;
+    let task;
+    if (action === 'setEnabled') task = nativeQueue(() => setNativeSyncEnabled(chrome, !!message.enabled));
+    else if (action === 'hydrate') task = nativeQueue(() => hydrateNativeSync(chrome));
+    else if (action === 'publish') task = nativeQueue(() => publishNativeSync(chrome, null, !!message.includeConfig));
+    else if (action === 'migrateUrl') {
+      task = nativeQueue(() => recordNativeBookmarkUrlMigration(chrome, message.id, message.oldUrl, message.newUrl));
+    }
+    else task = nativeQueue(() => hydrateNativeSync(chrome));
+    task.then(changed => sendResponse({ ok: true, changed: !!changed }))
+      .catch(async error => {
+        await setBackgroundTagSyncStatus(chrome, error && error.message || error);
+        sendResponse({ ok: false, error: error.message || String(error) });
+      });
+    return true;
+  }
   if (message.type === TAG_MUTATION_MESSAGE) {
     commitTagChanges(message.changes, message.mode)
       .then(result => sendResponse({ ok: true, changed: result.changed }))
@@ -804,7 +1617,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
   // 1. 跳过文件夹（folder 没有 url）
-  if (!bookmark || !bookmark.url) return;
+  if (!bookmark || !bookmark.url) {
+    scheduleNativeHydration();
+    return;
+  }
   const fromNativeImport = nativeBookmarkImportInProgress;
   let autoTagTask = null;
   if (fromNativeImport) nativeImportCreatedInFlight++;
@@ -821,6 +1637,9 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
     // 5. 浏览器已完成创建：后台批量写默认标签，不唤起或预填插件界面。
     autoTagTask = queueBrowserBookmarkAutoTag(id, bookmark, fromNativeImport, !fromNativeImport);
   } finally {
+    // 远端书签和内部同步目录到达没有固定先后顺序。延迟拉取能让稍后到达的
+    // URL 记录应用到新书签；本地收藏仍照常走下面的默认打标。
+    scheduleNativeHydration();
     if (fromNativeImport) {
       nativeImportCreatedInFlight--;
       flushNativeImportAutoTagsIfReady();
@@ -847,10 +1666,26 @@ if (chrome.bookmarks.onImportBegan && chrome.bookmarks.onImportEnded) {
   });
 }
 
-// 用户在浏览器原生管理器编辑/删除书签时，popup 打开时检测 + 提示重新扫描
-chrome.bookmarks.onChanged.addListener(() => { /* popup 内 refresh() 会感知 */ });
-chrome.bookmarks.onRemoved.addListener(() => { /* 同上 */ });
-chrome.bookmarks.onMoved.addListener(() => { /* 同上 */ });
+// 书签原生同步会以普通书签事件抵达。延迟合并可同时处理多分片到达和事件乱序。
+chrome.bookmarks.onChanged.addListener(() => {
+  scheduleNativeHydration();
+});
+chrome.bookmarks.onRemoved.addListener((_id, removeInfo) => {
+  scheduleNativeHydration();
+  nativeQueue(() => recordNativeBookmarkRemoval(chrome, removeInfo && removeInfo.node))
+    .catch(async error => {
+      await setBackgroundTagSyncStatus(chrome, error && error.message || error);
+      console.warn('[书签管家] 原生标签删除同步失败', error);
+    });
+});
+chrome.bookmarks.onMoved.addListener(() => { scheduleNativeHydration(); });
+
+if (chrome.runtime && chrome.runtime.onInstalled) {
+  chrome.runtime.onInstalled.addListener(() => { scheduleNativeHydration(); });
+}
+if (chrome.runtime && chrome.runtime.onStartup) {
+  chrome.runtime.onStartup.addListener(() => { scheduleNativeHydration(); });
+}
 
 // ---- 回收站：每天清理超过 30 天的已删除书签记录（真正永久删除）----
 // 注意：MV3 Service Worker 不支持 importScripts()（Chrome 121+ 已移除），

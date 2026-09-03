@@ -309,7 +309,7 @@ describe('发布版本校验', () => {
 });
 
 describe('跨设备分发文档', () => {
-  it('提供商店身份记录并禁止将开发密钥写入生产 manifest', () => {
+  it('说明书签同步边界，并禁止将开发密钥写入生产 manifest', () => {
     const root = join(__dirname, '..');
     const runbook = readFileSync(join(root, 'docs', 'release', 'chrome-web-store.md'), 'utf8');
     const readme = readFileSync(join(root, 'README.md'), 'utf8');
@@ -318,9 +318,10 @@ describe('跨设备分发文档', () => {
 
     expect(runbook).toContain('Chrome Web Store 条目 URL：');
     expect(runbook).toContain('生产扩展 ID：');
-    expect(runbook).toContain('extension-private.pem');
+    expect(runbook).toContain('标签原生同步');
+    expect(runbook).toContain('无需比较扩展 ID');
     expect(readme).toContain('Chrome Web Store');
-    expect(security).toContain('扩展私钥');
+    expect(security).toContain('不同本地解压安装可以读取同一目录');
     expect(manifest).not.toHaveProperty('key');
   });
 });

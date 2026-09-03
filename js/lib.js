@@ -750,7 +750,7 @@
     const clean = [...new Set((tags || []).map(t => normalizeToPool(t)).filter(Boolean))].slice(0, MAX_TAGS_PER_BOOKMARK);
     const result = await persistTagChanges({ [id]: clean.length ? clean : null });
     if (!result.ok) return false;
-    // 标签云同步（开启时）→ 防抖写入 storage.sync
+    // 标签原生同步开启时，由后台防抖写入内部书签目录。
     scheduleSyncTags();
     return true;
   }
@@ -781,10 +781,8 @@
     return setTagsBatch(changes, 'merge');
   }
 
-  // ================= 标签云同步（chrome.storage.sync，跨设备自动同步） =================
-  // 数据量可能超过单项 sync 限额（8KB），因此按 2500 字符分片存储。
-  // V2 使用规范化 URL 而非设备本地 bookmark id 作为跨设备主键。
-  // 隐私：仅同步规范化 URL 键和标签名，不含标题或页面内容；需用户主动开启（bmSyncEnabled）。
+  // ================= 标签原生同步（由 background 写入内部书签目录） =================
+  // UI 仅通过消息请求后台同步，避免依赖按扩展 ID 隔离且有配额的 storage.sync。
   const SYNC_ENABLED_KEY = 'bmSyncEnabled';
   const SYNC_TAG_PREFIX = 'bmSyncTag_p';
   const SYNC_TAG_CNT = 'bmSyncTag_cnt';
@@ -796,7 +794,25 @@
   const SYNC_CONFIG_DEVICE_ID_KEY = 'bmSyncConfigDeviceId';
   const SYNC_CONFIG_INITIALIZED_KEY = 'bmSyncConfigInitialized';
   const SYNC_CONFIG_VERSION = 1;
+  const NATIVE_SYNC_ENABLED_KEY = 'bmNativeTagSyncEnabled';
+  const NATIVE_SYNC_MESSAGE = 'bmNativeTagSync';
+  const NATIVE_SYNC_ROOT_TITLE = '书签管家同步数据（请勿修改）';
   let configSyncQueue = Promise.resolve();
+
+  function isNativeSyncRoot(node) {
+    return !!node && !node.url && node.title === NATIVE_SYNC_ROOT_TITLE;
+  }
+
+  async function requestNativeTagSync(action, payload) {
+    if (!chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') return { ok: false, changed: false };
+    const result = await chrome.runtime.sendMessage({
+      type: NATIVE_SYNC_MESSAGE,
+      action,
+      ...(payload || {})
+    });
+    if (!result || !result.ok) throw new Error(result && result.error || '原生标签同步失败');
+    return result;
+  }
 
   function configRevision(value) {
     const updatedAt = Math.max(0, Math.floor(Number(value && value.updatedAt) || 0));
@@ -956,92 +972,24 @@
   }
 
   async function saveSyncedTagConfiguration(fixedTags, tagRules) {
-    return queueConfigSync(async () => {
-      let syncEnabled = false;
-      try {
-        syncEnabled = await getTagSyncEnabled();
-        const cloud = syncEnabled ? await parseSyncConfig() : null;
-        if (cloud) await applySyncedTagConfiguration(cloud);
-
-        const current = await chrome.storage.local.get([
-          SYNC_CONFIG_REVISION_KEY, SYNC_CONFIG_DEVICE_ID_KEY
-        ]);
-        const config = createNextSyncConfig(
-          fixedTags,
-          tagRules,
-          current[SYNC_CONFIG_REVISION_KEY],
-          cloud && cloud.revision,
-          current[SYNC_CONFIG_DEVICE_ID_KEY]
-        );
-        await chrome.storage.local.set({
-          [FIXED_TAGS_KEY]: config.fixedTags,
-          [TAG_RULES_KEY]: config.tagRules,
-          [SYNC_CONFIG_REVISION_KEY]: config.revision,
-          [SYNC_CONFIG_DEVICE_ID_KEY]: config.revision.deviceId
-        });
-        invalidateFixedTags();
-        invalidateTagRules();
-        if (!syncEnabled) return true;
-        await writeConfigToCloud(config);
-        await setTagSyncStatus('');
-        return true;
-      } catch (e) {
-        if (syncEnabled) await setTagSyncStatus((e && e.message) || e);
-        throw e;
-      }
+    const normalized = normalizeConfigFixedTags(fixedTags);
+    if (!normalized) throw new Error('固定标签格式无效');
+    await chrome.storage.local.set({
+      [FIXED_TAGS_KEY]: normalized,
+      [TAG_RULES_KEY]: normalizeTagRules(tagRules)
     });
+    invalidateFixedTags();
+    invalidateTagRules();
+    return true;
   }
 
   async function initializeSyncedTagConfiguration() {
-    return queueConfigSync(async () => {
-      try {
-        if (!await getTagSyncEnabled()) return false;
-        const cloud = await parseSyncConfig();
-        if (cloud) {
-          const initialized = await chrome.storage.local.get(SYNC_CONFIG_INITIALIZED_KEY);
-          const applied = initialized[SYNC_CONFIG_INITIALIZED_KEY]
-            ? await applySyncedTagConfiguration(cloud)
-            : await replaceSyncedTagConfiguration(cloud);
-          await chrome.storage.local.set({ [SYNC_CONFIG_INITIALIZED_KEY]: true });
-          if (applied) await setTagSyncStatus('');
-          return applied;
-        }
-
-        const stored = await chrome.storage.local.get([
-          FIXED_TAGS_KEY, TAG_RULES_KEY, SYNC_CONFIG_REVISION_KEY, SYNC_CONFIG_DEVICE_ID_KEY
-        ]);
-        let config = normalizeSyncConfig({
-          version: SYNC_CONFIG_VERSION,
-          revision: stored[SYNC_CONFIG_REVISION_KEY],
-          fixedTags: storedConfigFixedTags(stored[FIXED_TAGS_KEY]),
-          tagRules: stored[TAG_RULES_KEY]
-        });
-        if (!config) {
-          config = createNextSyncConfig(
-            storedConfigFixedTags(stored[FIXED_TAGS_KEY]),
-            stored[TAG_RULES_KEY],
-            stored[SYNC_CONFIG_REVISION_KEY],
-            null,
-            stored[SYNC_CONFIG_DEVICE_ID_KEY]
-          );
-          await chrome.storage.local.set({
-            [FIXED_TAGS_KEY]: config.fixedTags,
-            [TAG_RULES_KEY]: config.tagRules,
-            [SYNC_CONFIG_REVISION_KEY]: config.revision,
-            [SYNC_CONFIG_DEVICE_ID_KEY]: config.revision.deviceId
-          });
-          invalidateFixedTags();
-          invalidateTagRules();
-        }
-        await writeConfigToCloud(config);
-        await chrome.storage.local.set({ [SYNC_CONFIG_INITIALIZED_KEY]: true });
-        await setTagSyncStatus('');
-        return true;
-      } catch (e) {
-        await setTagSyncStatus((e && e.message) || e);
-        throw e;
-      }
-    });
+    const result = await requestNativeTagSync('hydrate');
+    if (result.changed) {
+      invalidateFixedTags();
+      invalidateTagRules();
+    }
+    return !!result.changed;
   }
 
   async function pullConfigFromCloud() {
@@ -1061,14 +1009,11 @@
   }
 
   function watchTagConfiguration(onChange) {
-    const onChanged = chrome.storage && chrome.storage.sync && chrome.storage.sync.onChanged;
+    const onChanged = chrome.storage && chrome.storage.onChanged;
     if (!onChanged || typeof onChanged.addListener !== 'function') return;
     onChanged.addListener((changes, area) => {
-      if (area !== 'sync') return;
-      if (!Object.keys(changes).some(key =>
-        key === SYNC_ENABLED_KEY || key === SYNC_CONFIG_CNT || key.startsWith(SYNC_CONFIG_PREFIX)
-      )) return;
-      pullConfigFromCloud().then(changed => { if (changed && onChange) onChange(); }).catch(() => {});
+      if (area !== 'local' || (!changes[FIXED_TAGS_KEY] && !changes[TAG_RULES_KEY])) return;
+      if (onChange) onChange();
     });
   }
 
@@ -1076,20 +1021,21 @@
 
   async function getTagSyncEnabled() {
     try {
-      const synced = await chrome.storage.sync.get(SYNC_ENABLED_KEY);
-      if (synced[SYNC_ENABLED_KEY]) return true;
-      const local = await chrome.storage.local.get(SYNC_ENABLED_KEY);
-      if (!local[SYNC_ENABLED_KEY]) return false;
-      await chrome.storage.sync.set({ [SYNC_ENABLED_KEY]: true });
-      return true;
+      const local = await chrome.storage.local.get(NATIVE_SYNC_ENABLED_KEY);
+      return local[NATIVE_SYNC_ENABLED_KEY] === true;
     } catch (e) {
-      try {
-        const local = await chrome.storage.local.get(SYNC_ENABLED_KEY);
-        return !!local[SYNC_ENABLED_KEY];
-      } catch (e2) {
-        return false;
-      }
+      return false;
     }
+  }
+
+  async function setTagSyncEnabled(enabled) {
+    const result = await requestNativeTagSync('setEnabled', { enabled: !!enabled });
+    return !!result.changed || !!enabled;
+  }
+
+  async function migrateTagSyncUrl(id, oldUrl, newUrl) {
+    const result = await requestNativeTagSync('migrateUrl', { id, oldUrl, newUrl });
+    return !!result.changed;
   }
 
   async function setTagSyncStatus(lastError) {
@@ -1161,7 +1107,7 @@
     return out;
   }
 
-  // 从 storage.sync 读分片并解析；返回标签映射（无数据 → null）
+  // 旧分片解析工具保留给历史测试；当前运行路径不会读取 storage.sync。
   async function parseSyncTags() {
     try {
       const r = await chrome.storage.sync.get(SYNC_TAG_CNT);
@@ -1180,49 +1126,41 @@
   async function pushTagsToCloud() {
     try {
       if (!await getTagSyncEnabled()) return false;
-      const [tags, tree] = await Promise.all([loadTags(), chrome.bookmarks.getTree()]);
-      await chrome.storage.sync.set(serializeSyncTags(projectTagsForSync(tags, collectBookmarks(tree, []))));
-      await setTagSyncStatus('');
-      return true;
+      const result = await requestNativeTagSync('publish', { includeConfig: true });
+      return !!result.changed;
     } catch (e) {
       await setTagSyncStatus((e && e.message) || e);
       throw e;
     }
   }
 
-  // 防抖写入 sync（1.5s）
+  // UI 操作后的兜底发布；后台同时监听本地标签变更。
   function scheduleSyncTags() {
     if (syncTimer) clearTimeout(syncTimer);
     syncTimer = setTimeout(async () => {
       syncTimer = null;
-      try {
-        await pushTagsToCloud();
-      } catch (e) { /* 超限/限频忽略 */ }
+      // 后台监听 bmTags 的变更并按 URL 分片写入；这里仅保留 UI 操作的兜底触发。
+      try { await pushTagsToCloud(); } catch (e) { /* 后台会持久化同步错误 */ }
     }, 1500);
   }
 
-  // 从 sync 拉取并合并进 local（union：不丢任何一端标签）；返回是否变化
+  // 从原生书签内部目录拉取并应用最新 URL 标签记录。
   async function pullTagsFromCloud() {
     try {
       if (!await getTagSyncEnabled()) return false;
-      const cloud = await parseSyncTags();
-      if (!cloud) return false;
-      const tree = await chrome.bookmarks.getTree();
-      const result = await persistTagChanges(resolveSyncTags(cloud, collectBookmarks(tree, [])), 'merge');
-      await setTagSyncStatus('');
-      return !!(result.ok && result.changed);
+      const result = await requestNativeTagSync('hydrate');
+      return !!result.changed;
     } catch (e) {
       await setTagSyncStatus((e && e.message) || e);
       return false;
     }
   }
 
-  // 注册跨端同步监听：storage.sync 变化 → 拉取合并 → 返回变化（供 UI 决定是否刷新）
+  // 注册本地标签变化监听，供 UI 在后台完成原生目录合并后刷新。
   function watchTagSync(onChange) {
-    chrome.storage.sync.onChanged.addListener((changes, area) => {
-      if (area !== 'sync') return;
-      if (!Object.keys(changes).some(k => k === SYNC_ENABLED_KEY || k === SYNC_TAG_CNT || k.startsWith(SYNC_TAG_PREFIX))) return;
-      pullTagsFromCloud().then(changed => { if (changed && onChange) onChange(); }).catch(() => {});
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local' || !changes[TAGS_KEY]) return;
+      if (onChange) onChange();
     });
   }
 
@@ -1867,6 +1805,7 @@
   function countBookmarks(nodes) {
     let n = 0;
     for (const node of nodes || []) {
+      if (isNativeSyncRoot(node)) continue;
       if (node.url) n++;
       if (node.children) n += countBookmarks(node.children);
     }
@@ -1878,6 +1817,7 @@
   function encodeBackupNodes(nodes, tags, hiddenIds) {
     return (nodes || []).flatMap(node => {
       if (!node) return [];
+      if (isNativeSyncRoot(node)) return [];
       if (node.url) {
         const entry = [String(node.title || ''), String(node.url)];
         const itemTags = Array.isArray(tags[node.id]) ? tags[node.id] : [];
@@ -1899,7 +1839,7 @@
   function encodeBackupRoots(tree, tags, hiddenIds) {
     const root = tree && tree[0];
     return ((root && root.children) || []).flatMap(node => {
-      if (!node || node.url || !Array.isArray(node.children)) return [];
+      if (!node || isNativeSyncRoot(node) || node.url || !Array.isArray(node.children)) return [];
       return [[
         String(node.id || ''),
         String(node.title || ''),
@@ -2104,6 +2044,11 @@
       for (const raw of nodes || []) {
         const node = decodeBackupNode(raw);
         if (!node) { stats.skipped++; continue; }
+        // 内部同步目录不是用户书签；即使误导入旧备份，也绝不能创建或覆盖它。
+        if (node.type === 'folder' && isNativeSyncRoot({ title: node.title })) {
+          stats.skipped += countBackupBookmarks(node.children);
+          continue;
+        }
         if (node.type === 'bookmark') {
           let url;
           try { url = normalizeHttpUrl(node.url).href; } catch (e) { stats.skipped++; continue; }
@@ -2304,7 +2249,12 @@
     suggestTags,
     inferDomainTags,
     inferHighConfidenceTags,
+    NATIVE_SYNC_ENABLED_KEY,
+    NATIVE_SYNC_ROOT_TITLE,
+    isNativeSyncRoot,
     getTagSyncEnabled,
+    setTagSyncEnabled,
+    migrateTagSyncUrl,
     pushTagsToCloud,
     pullTagsFromCloud,
     watchTagSync,

@@ -55,10 +55,9 @@ function renderTagSyncStatus(status) {
 }
 
 function renderTagSyncDiagnostics() {
-  const el = $('#tagSyncExtensionId');
+  const el = $('#tagSyncSummary');
   if (!el) return;
-  const id = chrome.runtime && chrome.runtime.id ? chrome.runtime.id : '';
-  el.textContent = id ? '扩展 ID：' + id : '';
+  el.textContent = '使用 Chrome 书签同步；无需相同扩展 ID';
 }
 
 // ---- 固定标签池：textarea ↔ 数组转换（每行一个，忽略 # 注释）----
@@ -443,7 +442,7 @@ async function load() {
     if (star) star.checked = r.bmStarHook !== false;
     const autoAi = $('#setAutoAiTag');
     if (autoAi) autoAi.checked = r.bmAutoAiTag === true;
-    // 标签云同步开关：默认关闭（隐私权衡，需主动开启）
+    // 标签原生同步开关：默认关闭（隐私权衡，需主动开启）
     const syncEl = $('#setTagSync');
     if (syncEl) syncEl.checked = await BM.getTagSyncEnabled();
     renderTagSyncStatus(r[BM.SYNC_STATUS_KEY]);
@@ -477,38 +476,34 @@ async function persistAutoAiTag() {
   }
 }
 
-// 标签云同步开关：开启时立刻把本地标签推上云端；关闭时停止读写
+// 标签原生同步开关：开启时创建或读取内部书签目录；关闭时停止读写但保留数据。
 async function persistTagSync() {
   try {
     const on = $('#setTagSync').checked;
-    await Promise.all([
-      chrome.storage.local.set({ [BM.SYNC_ENABLED_KEY]: on }),
-      chrome.storage.sync.set({ [BM.SYNC_ENABLED_KEY]: on })
-    ]);
+    await BM.setTagSyncEnabled(on);
     const msg = $('#tagSyncMsg');
     if (on) {
-      msg.textContent = '已开启 · 正在推送本地标签到云端…';
+      msg.textContent = '已开启 · 已写入原生书签同步目录';
       msg.className = 'settings-msg ok';
       try {
         await BM.initializeSyncedTagConfiguration();
         await BM.pullTagsFromCloud();
-        await BM.pushTagsToCloud();
-        await BM.loadTags();
-        const map = BM.getTags() || {};
-        if (map && Object.keys(map).length) {
-          msg.textContent = '已开启 · 标签已合并并推送 ✓';
-        } else {
-          msg.textContent = '已开启 · 暂无标签数据可推送';
-        }
+        msg.textContent = '已开启 · 标签与规则会随 Chrome 书签同步';
       } catch (e) {
-        msg.textContent = '已开启 · 推送失败：' + (e.message || e);
+        try { $('#setTagSync').checked = await BM.getTagSyncEnabled(); } catch (ignored) { /* 保留当前状态 */ }
+        msg.textContent = '已开启 · 同步失败：' + (e.message || e);
         msg.className = 'settings-msg err';
       }
     } else {
-      msg.textContent = '已关闭 · 停止读写云端（已有云端数据保留）';
+      msg.textContent = '已关闭 · 停止读写同步目录（已有数据保留）';
       msg.className = 'settings-msg';
     }
-  } catch (e) { /* noop */ }
+  } catch (e) {
+    try { $('#setTagSync').checked = await BM.getTagSyncEnabled(); } catch (ignored) { /* 保留当前状态 */ }
+    const msg = $('#tagSyncMsg');
+    msg.textContent = '同步设置失败：' + (e.message || e);
+    msg.className = 'settings-msg err';
+  }
 }
 
 // 外部（popup 抽屉等）修改设置时，实时同步到本页表单。

@@ -10,7 +10,6 @@
     "lint": "eslint js/ --ext .js",
     "lint:fix": "eslint js/ --ext .js --fix",
     "format": "prettier --write \"js/**/*.js\" \"css/*.css\" \"*.html\"",
-    "prepare:local-sync": "node scripts/prepare-local-sync.js",
     "release": "node scripts/release.js",
     "check-version": "node scripts/release.js --check"
   },

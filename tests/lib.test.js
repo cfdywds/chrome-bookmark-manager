@@ -79,70 +79,44 @@ describe('标签云同步 V2（URL 主键）', () => {
     }))).toBeNull();
   });
 
-  it('目标设备从同步的开关和 payload 首次拉取到本机书签 ID', async () => {
+  it('通过后台请求原生书签目录拉取标签', async () => {
     const previousChrome = globalThis.chrome;
-    const chunks = BM.serializeSyncTags({ 'github.com/openai': ['AI'] });
-    const localData = { bmTags: {} };
-    const localSet = vi.fn(async value => { Object.assign(localData, value); });
-    const syncGet = vi.fn(async keys => {
-      if (keys === BM.SYNC_ENABLED_KEY) return { [BM.SYNC_ENABLED_KEY]: true };
-      if (keys === BM.SYNC_TAG_CNT) return { [BM.SYNC_TAG_CNT]: chunks.bmSyncTag_cnt };
-      const out = {};
-      (keys || []).forEach(key => { out[key] = chunks[key]; });
-      return out;
-    });
+    const sendMessage = vi.fn().mockResolvedValue({ ok: true, changed: true });
     globalThis.chrome = {
-      bookmarks: {
-        getTree: vi.fn().mockResolvedValue([{ children: [
-          { id: 'target-device-id', url: 'https://www.github.com/openai/' }
-        ] }])
-      },
       storage: {
-        local: {
-          get: vi.fn(async key => ({ [key]: localData[key] })),
-          set: localSet
-        },
-        sync: { get: syncGet }
-      }
+        local: { get: vi.fn().mockResolvedValue({ bmNativeTagSyncEnabled: true }) }
+      },
+      runtime: { sendMessage }
     };
 
     try {
       await expect(BM.pullTagsFromCloud()).resolves.toBe(true);
-      expect(localData.bmTags).toEqual({ 'target-device-id': ['AI'] });
-      expect(localSet).toHaveBeenCalledWith({ bmTags: { 'target-device-id': ['AI'] } });
+      expect(sendMessage).toHaveBeenCalledWith({ type: 'bmNativeTagSync', action: 'hydrate' });
     } finally {
       if (previousChrome === undefined) delete globalThis.chrome;
       else globalThis.chrome = previousChrome;
     }
   });
 
-  it('云端写入失败时持久化可见的同步错误', async () => {
+  it('后台写入失败时持久化可见的同步错误', async () => {
     const previousChrome = globalThis.chrome;
     const localData = { bmTags: { source: ['AI'] } };
     const localSet = vi.fn(async value => { Object.assign(localData, value); });
     globalThis.chrome = {
-      bookmarks: {
-        getTree: vi.fn().mockResolvedValue([{ children: [
-          { id: 'source', url: 'https://github.com/openai' }
-        ] }])
-      },
       storage: {
         local: {
-          get: vi.fn(async key => ({ [key]: localData[key] })),
+          get: vi.fn(async key => ({ [key]: key === 'bmNativeTagSyncEnabled' ? true : localData[key] })),
           set: localSet
-        },
-        sync: {
-          get: vi.fn(async () => ({ [BM.SYNC_ENABLED_KEY]: true })),
-          set: vi.fn().mockRejectedValue(new Error('同步配额不足'))
         }
-      }
+      },
+      runtime: { sendMessage: vi.fn().mockResolvedValue({ ok: false, error: '同步目录不可用' }) }
     };
 
     try {
-      await expect(BM.pushTagsToCloud()).rejects.toThrow('同步配额不足');
-      expect(localData[BM.SYNC_STATUS_KEY]).toMatchObject({ lastError: '同步配额不足' });
+      await expect(BM.pushTagsToCloud()).rejects.toThrow('同步目录不可用');
+      expect(localData[BM.SYNC_STATUS_KEY]).toMatchObject({ lastError: '同步目录不可用' });
       expect(localSet).toHaveBeenCalledWith({
-        [BM.SYNC_STATUS_KEY]: expect.objectContaining({ lastError: '同步配额不足' })
+        [BM.SYNC_STATUS_KEY]: expect.objectContaining({ lastError: '同步目录不可用' })
       });
     } finally {
       if (previousChrome === undefined) delete globalThis.chrome;
@@ -195,6 +169,7 @@ describe('标签配置云同步（版本化快照）', () => {
     };
     const chunks = BM.serializeSyncConfig(config);
     const localData = {
+      bmNativeTagSyncEnabled: true,
       bmFixedTags: ['代码'],
       bmTagRules: { domain: {}, keyword: {} },
       bmSyncConfigRevision: { updatedAt: 10, deviceId: 'device-old' },
@@ -233,19 +208,11 @@ describe('标签配置云同步（版本化快照）', () => {
     }
   });
 
-  it('远端配置变更仅在更高修订已写入本地后通知界面', async () => {
+  it('本地标签配置变更通知界面刷新', async () => {
     const previousChrome = globalThis.chrome;
-    const cloud = {
-      version: 1,
-      revision: { updatedAt: 200, deviceId: 'device-remote' },
-      fixedTags: ['远端'],
-      tagRules: { domain: { github: ['远端'] }, keyword: {} }
-    };
-    const syncData = { [BM.SYNC_ENABLED_KEY]: true, ...BM.serializeSyncConfig(cloud) };
     const localData = {
       bmFixedTags: ['本地'],
-      bmTagRules: { domain: {}, keyword: {} },
-      bmSyncConfigRevision: { updatedAt: 100, deviceId: 'device-local' }
+      bmTagRules: { domain: {}, keyword: {} }
     };
     let listener;
     globalThis.chrome = {
@@ -257,24 +224,16 @@ describe('标签配置云同步（版本化快照）', () => {
           }),
           set: vi.fn(async values => { Object.assign(localData, values); })
         },
-        sync: {
-          get: vi.fn(async keys => {
-            const wanted = Array.isArray(keys) ? keys : [keys];
-            return Object.fromEntries(wanted.map(key => [key, syncData[key]]));
-          }),
-          onChanged: { addListener: callback => { listener = callback; } }
-        }
+        onChanged: { addListener: callback => { listener = callback; } }
       }
     };
     const onChange = vi.fn();
 
     try {
       BM.watchTagConfiguration(onChange);
-      listener({ [BM.SYNC_CONFIG_CNT]: { oldValue: 0, newValue: 1 } }, 'sync');
+      listener({ bmFixedTags: { oldValue: ['本地'], newValue: ['远端'] } }, 'local');
 
       await vi.waitFor(() => expect(onChange).toHaveBeenCalledOnce());
-      expect(localData.bmFixedTags).toEqual(['远端']);
-      expect(localData.bmTagRules).toEqual({ domain: { github: ['远端'] }, keyword: {} });
     } finally {
       BM.invalidateFixedTags();
       BM.invalidateTagRules();
@@ -283,7 +242,7 @@ describe('标签配置云同步（版本化快照）', () => {
     }
   });
 
-  it('首次启用时采用有效云端配置而不读取 LLM 配置', async () => {
+  it('首次启用时由后台应用原生目录中的配置而不读取 LLM 配置', async () => {
     const previousChrome = globalThis.chrome;
     const cloud = {
       version: 1,
@@ -291,14 +250,12 @@ describe('标签配置云同步（版本化快照）', () => {
       fixedTags: ['云端'],
       tagRules: { domain: { github: ['云端'] }, keyword: {} }
     };
-    const chunks = BM.serializeSyncConfig(cloud);
     const localData = {
       bmFixedTags: ['离线'],
       bmTagRules: { domain: {}, keyword: {} },
       bmSyncConfigRevision: { updatedAt: 200, deviceId: 'device-local' },
       bmSettings: { apiKey: 'secret-api-key' }
     };
-    const syncData = { [BM.SYNC_ENABLED_KEY]: true, ...chunks };
     const localGet = vi.fn(async keys => {
       const wanted = Array.isArray(keys) ? keys : [keys];
       return Object.fromEntries(wanted.map(key => [key, localData[key]]));
@@ -308,14 +265,15 @@ describe('标签配置云同步（版本化快照）', () => {
         local: {
           get: localGet,
           set: vi.fn(async values => { Object.assign(localData, values); })
-        },
-        sync: {
-          get: vi.fn(async keys => {
-            const wanted = Array.isArray(keys) ? keys : [keys];
-            return Object.fromEntries(wanted.map(key => [key, syncData[key]]));
-          }),
-          set: vi.fn(async values => { Object.assign(syncData, values); })
         }
+      },
+      runtime: {
+        sendMessage: vi.fn(async message => {
+          expect(message).toEqual({ type: 'bmNativeTagSync', action: 'hydrate' });
+          localData.bmFixedTags = cloud.fixedTags;
+          localData.bmTagRules = cloud.tagRules;
+          return { ok: true, changed: true };
+        })
       }
     };
 
@@ -332,15 +290,13 @@ describe('标签配置云同步（版本化快照）', () => {
     }
   });
 
-  it('读取云端配置失败时保留本地配置并记录同步错误', async () => {
+  it('读取原生目录失败时保留本地配置', async () => {
     const previousChrome = globalThis.chrome;
     const localData = {
-      bmSyncEnabled: true,
       bmFixedTags: ['本地'],
       bmTagRules: { domain: { local: ['本地'] }, keyword: {} },
       bmSyncConfigRevision: { updatedAt: 100, deviceId: 'device-local' }
     };
-    const syncSet = vi.fn();
     globalThis.chrome = {
       storage: {
         local: {
@@ -349,23 +305,15 @@ describe('标签配置云同步（版本化快照）', () => {
             return Object.fromEntries(wanted.map(key => [key, localData[key]]));
           }),
           set: vi.fn(async values => { Object.assign(localData, values); })
-        },
-        sync: {
-          get: vi.fn(async key => {
-            if (key === BM.SYNC_ENABLED_KEY) return { [BM.SYNC_ENABLED_KEY]: true };
-            throw new Error('Sync 暂不可用');
-          }),
-          set: syncSet
         }
-      }
+      },
+      runtime: { sendMessage: vi.fn().mockResolvedValue({ ok: false, error: '同步目录暂不可用' }) }
     };
 
     try {
-      await expect(BM.initializeSyncedTagConfiguration()).rejects.toThrow('Sync 暂不可用');
+      await expect(BM.initializeSyncedTagConfiguration()).rejects.toThrow('同步目录暂不可用');
       expect(localData.bmFixedTags).toEqual(['本地']);
       expect(localData.bmTagRules).toEqual({ domain: { local: ['本地'] }, keyword: {} });
-      expect(syncSet).not.toHaveBeenCalled();
-      expect(localData[BM.SYNC_STATUS_KEY].lastError).toContain('Sync 暂不可用');
     } finally {
       BM.invalidateFixedTags();
       BM.invalidateTagRules();
@@ -374,15 +322,13 @@ describe('标签配置云同步（版本化快照）', () => {
     }
   });
 
-  it('损坏的云端配置不覆盖本地配置并记录同步错误', async () => {
+  it('后台拒绝损坏原生配置时不覆盖本地配置', async () => {
     const previousChrome = globalThis.chrome;
     const localData = {
-      bmSyncEnabled: true,
       bmFixedTags: ['本地'],
       bmTagRules: { domain: { local: ['本地'] }, keyword: {} },
       bmSyncConfigRevision: { updatedAt: 100, deviceId: 'device-local' }
     };
-    const syncSet = vi.fn();
     globalThis.chrome = {
       storage: {
         local: {
@@ -391,26 +337,15 @@ describe('标签配置云同步（版本化快照）', () => {
             return Object.fromEntries(wanted.map(key => [key, localData[key]]));
           }),
           set: vi.fn(async values => { Object.assign(localData, values); })
-        },
-        sync: {
-          get: vi.fn(async keys => {
-            const wanted = Array.isArray(keys) ? keys : [keys];
-            if (wanted.includes(BM.SYNC_CONFIG_CNT)) {
-              return { [BM.SYNC_CONFIG_CNT]: 1, [BM.SYNC_CONFIG_PREFIX + '0']: '{bad json' };
-            }
-            return { [BM.SYNC_ENABLED_KEY]: true };
-          }),
-          set: syncSet
         }
-      }
+      },
+      runtime: { sendMessage: vi.fn().mockResolvedValue({ ok: false, error: '同步分片校验失败' }) }
     };
 
     try {
-      await expect(BM.initializeSyncedTagConfiguration()).rejects.toThrow('标签同步配置格式无效');
+      await expect(BM.initializeSyncedTagConfiguration()).rejects.toThrow('同步分片校验失败');
       expect(localData.bmFixedTags).toEqual(['本地']);
       expect(localData.bmTagRules).toEqual({ domain: { local: ['本地'] }, keyword: {} });
-      expect(syncSet).not.toHaveBeenCalled();
-      expect(localData[BM.SYNC_STATUS_KEY].lastError).toContain('标签同步配置');
     } finally {
       BM.invalidateFixedTags();
       BM.invalidateTagRules();
@@ -420,16 +355,14 @@ describe('标签配置云同步（版本化快照）', () => {
   });
 
 
-  it('开启同步后仅上传固定标签和规则配置', async () => {
+  it('保存配置只写本地，后台监听后负责原生同步', async () => {
     const previousChrome = globalThis.chrome;
     const localData = {
       bmFixedTags: ['本地'],
       bmTagRules: { domain: {}, keyword: {} },
       bmSettings: { apiKey: 'secret-api-key', model: 'private-model' }
     };
-    const syncData = { [BM.SYNC_ENABLED_KEY]: true };
     const localSet = vi.fn(async values => { Object.assign(localData, values); });
-    const syncSet = vi.fn(async values => { Object.assign(syncData, values); });
     globalThis.chrome = {
       storage: {
         local: {
@@ -440,15 +373,6 @@ describe('标签配置云同步（版本化快照）', () => {
             return out;
           }),
           set: localSet
-        },
-        sync: {
-          get: vi.fn(async keys => {
-            const wanted = Array.isArray(keys) ? keys : [keys];
-            const out = {};
-            wanted.forEach(key => { out[key] = syncData[key]; });
-            return out;
-          }),
-          set: syncSet
         }
       }
     };
@@ -457,13 +381,9 @@ describe('标签配置云同步（版本化快照）', () => {
       await expect(BM.saveSyncedTagConfiguration(['代码'], {
         domain: { github: ['代码'] }, keyword: {}
       })).resolves.toBe(true);
-      const payload = JSON.parse(syncData.bmSyncConfig_p0);
       expect(localData.bmFixedTags).toEqual(['代码']);
       expect(localData.bmTagRules).toEqual({ domain: { github: ['代码'] }, keyword: {} });
-      expect(payload).toMatchObject({
-        fixedTags: ['代码'], tagRules: { domain: { github: ['代码'] }, keyword: {} }
-      });
-      expect(JSON.stringify(syncSet.mock.calls)).not.toContain('secret-api-key');
+      expect(JSON.stringify(localSet.mock.calls)).not.toContain('secret-api-key');
     } finally {
       if (previousChrome === undefined) delete globalThis.chrome;
       else globalThis.chrome = previousChrome;
@@ -1019,6 +939,24 @@ describe('exportBookmarksJSON（敏感配置排除）', () => {
     }
   });
 
+  it('通过后台消息确认扩展内书签 URL 编辑后的标签迁移', async () => {
+    const previousChrome = globalThis.chrome;
+    const sendMessage = vi.fn().mockResolvedValue({ ok: true, changed: true });
+    globalThis.chrome = { runtime: { sendMessage } };
+
+    try {
+      await expect(BM.migrateTagSyncUrl('bookmark-1', 'https://old.example/', 'https://new.example/'))
+        .resolves.toBe(true);
+      expect(sendMessage).toHaveBeenCalledWith({
+        type: 'bmNativeTagSync', action: 'migrateUrl', id: 'bookmark-1',
+        oldUrl: 'https://old.example/', newUrl: 'https://new.example/'
+      });
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
   it('导出 V4 紧凑结构，内联标签和隐藏状态并保留全部根目录与回收站', async () => {
     const previousChrome = globalThis.chrome;
     const tree = [{
@@ -1039,6 +977,9 @@ describe('exportBookmarksJSON（敏感配置排除）', () => {
           children: [{
             id: 'other-bookmark', parentId: 'other', index: 0, title: '归档',
             url: 'https://archive.example/', dateAdded: 1700000000000
+          }, {
+            id: 'native-root', parentId: 'other', title: '书签管家同步数据（请勿修改）',
+            children: [{ id: 'native-device', title: 'BMN1|D|device-a', children: [] }]
           }]
         }
       ]
@@ -1092,6 +1033,7 @@ describe('exportBookmarksJSON（敏感配置排除）', () => {
       expect(data.bookmarks).toBeUndefined();
       expect(backup.count).toBe(2);
       expect(backup.json).not.toContain('\n');
+      expect(backup.json).not.toContain('书签管家同步数据（请勿修改）');
       expect(backup.json.length).toBeLessThan(legacyJson.length * 0.65);
     } finally {
       BM.invalidateTags();
