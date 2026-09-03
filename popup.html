@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>书签管家</title>
+  <link rel="stylesheet" href="css/popup.css" />
+</head>
+<body>
+  <!-- ===== SVG 图标库（lucide 风格描边，跨平台一致，替代 emoji） ===== -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></symbol>
+    <symbol id="i-repeat" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-archive" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="i-arrow-r" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+    <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M12 3l1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+    <symbol id="i-kbd" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6.01" y2="10"/><line x1="10" y1="10" x2="10.01" y2="10"/><line x1="14" y1="10" x2="14.01" y2="10"/><line x1="18" y1="10" x2="18.01" y2="10"/><line x1="6" y1="14" x2="6.01" y2="14"/><line x1="10" y1="14" x2="10.01" y2="14"/><line x1="14" y1="14" x2="14.01" y2="14"/><line x1="18" y1="14" x2="18.01" y2="14"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.83z"/><line x1="7" y1="7" x2="7.01" y2="7"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></symbol>
+  </svg>
+
+  <div id="app">
+    <header id="topbar">
+      <div class="brand-row">
+        <div class="brand">
+          <span class="brand-icon">🐾</span>
+          <span>书签管家</span>
+        </div>
+        <div class="brand-actions">
+          <button id="addBtn" class="icon-btn" title="新增书签"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"/></svg></button>
+          <button id="settingsBtn" class="icon-btn" title="LLM 分类设置"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-gear"/></svg></button>
+          <button id="helpBtn" class="icon-btn" title="操作指南 / 快捷键 (?)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-help"/></svg></button>
+          <button id="rescanMini" class="icon-btn" title="重新扫描"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refresh"/></svg></button>
+          <button id="closePanelBtn" class="icon-btn" title="收起侧边栏"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+        </div>
+      </div>
+
+      <div class="search-box">
+        <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"/></svg>
+        <input id="searchInput" type="text" placeholder="搜索标题、网址、域名" autocomplete="off" spellcheck="false" />
+        <button id="searchClear" class="search-clear hidden" title="清空">✕</button>
+      </div>
+    </header>
+
+    <nav id="tabs" class="tabs">
+      <button class="tab active" data-tab="overview"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-home"/></svg> 概览</button>
+      <button class="tab" data-tab="tags"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-tag"/></svg> 标签</button>
+      <button class="tab" data-tab="hidden"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eye-off"/></svg> 隐藏</button>
+    </nav>
+
+    <main id="content">
+      <div class="loading" role="status">正在扫描书签…</div>
+    </main>
+
+    <div id="operationNotice" class="operation-notice hidden" role="alert">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-alert"/></svg>
+      <div class="operation-notice-copy">
+        <strong id="operationNoticeTitle">操作失败</strong>
+        <span id="operationNoticeDetail"></span>
+      </div>
+      <button id="operationNoticeAction" class="btn small primary hidden" type="button">继续打标</button>
+    </div>
+
+    <div id="progressWrap" class="progress-wrap hidden" role="status" aria-live="polite">
+      <div class="progress-copy">
+        <span id="progressLabel">处理中…</span>
+        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+      </div>
+      <button id="progressCancel" class="btn small ghost hidden" type="button">终止</button>
+    </div>
+
+    <div id="bulkBar" class="bulk-bar hidden">
+      <span id="bulkCount">已选 <b>0</b> 项</span>
+      <div class="bulk-extra">
+        <button id="bulkAll" class="btn ghost" title="全选当前列表">全选</button>
+        <button id="bulkInvert" class="btn ghost" title="反选当前列表">反选</button>
+      </div>
+      <button id="bulkTag" class="btn">🏷 打标签</button>
+      <button id="bulkDelete" class="btn danger">删除选中</button>
+      <button id="bulkClear" class="btn ghost">取消</button>
+    </div>
+
+    <footer id="footer">
+      <button id="rescanBtn" class="btn primary"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refresh"/></svg> 重新扫描</button>
+    </footer>
+  </div>
+
+  <div id="toasts"></div>
+
+  <!-- ===== 自定义确认弹层 ===== -->
+  <div id="confirmWrap" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-title" id="confirmTitle">确认操作？</div>
+      <div class="modal-msg" id="confirmMsg"></div>
+      <div class="modal-actions">
+        <button id="confirmFourth" class="btn ghost hidden">第四按钮</button>
+        <button id="confirmThird" class="btn ghost hidden">第三按钮</button>
+        <button id="confirmNo" class="btn ghost">取消</button>
+        <button id="confirmYes" class="btn danger">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 输入弹层（新建/重命名标签等） ===== -->
+  <div id="promptWrap" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-title" id="promptTitle">输入</div>
+      <div class="modal-msg" id="promptMsg"></div>
+      <input id="promptInput" class="modal-input" type="text" placeholder="输入内容…" autocomplete="off" spellcheck="false" />
+      <div class="modal-actions">
+        <button id="promptNo" class="btn ghost">取消</button>
+        <button id="promptYes" class="btn primary">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 标签管理弹层（重命名 / 从池删除） ===== -->
+  <div id="tagMgrWrap" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-title">🏷️ 管理标签（固定池）</div>
+      <div class="modal-msg" style="font-size:11px;color:var(--muted);">重命名会同步修改所有带该标签的书签；删除仅从池中移除（书签上的标签保留）。</div>
+      <div id="tagMgrList" class="tag-mgr-list"></div>
+      <div class="modal-actions">
+        <button id="tagMgrClose" class="btn ghost">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 设置抽屉（右侧滑入） ===== -->
+  <div id="drawerOverlay" class="drawer-overlay hidden"></div>
+  <aside id="addDrawer" class="drawer hidden">
+    <div class="drawer-head">
+      <div class="drawer-title-wrap"><span class="drawer-title" id="addDrawerTitle">➕ 新增书签</span><button class="help-dot" type="button" data-tip="输入网址后会自动给出本地建议标签；也可用 AI 打标生成 1 至 3 个标签。多个标签以逗号分隔。" aria-label="输入网址后会自动给出本地建议标签；也可用 AI 打标生成 1 至 3 个标签。多个标签以逗号分隔。">?</button></div>
+      <button id="addClose" class="icon-btn dark" title="关闭">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="form-row">
+        <label>🔗 网址（必填）</label>
+        <input id="addUrl" type="text" placeholder="https://example.com" autocomplete="off" spellcheck="false" />
+        <div id="addDupHint" class="rec-hint warn" style="display:none;"></div>
+      </div>
+      <div class="form-row">
+        <label>📝 标题（留空自动生成）</label>
+        <input id="addTitle" type="text" placeholder="自动生成" autocomplete="off" spellcheck="false" />
+      </div>
+      <div class="form-row">
+        <label>🏷️ 标签（可多个，逗号分隔）</label>
+        <div class="cat-pick">
+          <input id="addTags" type="text" placeholder="代码, 工作, 教程" autocomplete="off" spellcheck="false" />
+          <button id="addAiTag" class="btn small ghost" type="button">🤖 AI 打标</button>
+        </div>
+        <div id="tagSuggest" class="tag-suggest"></div>
+      </div>
+    </div>
+    <div class="drawer-foot">
+      <span id="addMsg" class="settings-msg"></span>
+      <button id="addSave" class="btn primary">保存书签</button>
+    </div>
+  </aside>
+
+  <!-- ===== 操作指南抽屉 ===== -->
+  <aside id="helpDrawer" class="drawer hidden">
+    <div class="drawer-head">
+      <span class="drawer-title">❓ 操作指南</span>
+      <button id="helpClose" class="icon-btn dark" title="关闭">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="help-group">
+        <div class="help-group-title">📖 主要入口</div>
+        <div class="help-item"><b>🏠 概览</b>——搜索 + 标签云 + 待办提醒；重复书签、空文件夹和回收站均从这里进入</div>
+        <div class="help-item"><b>🏷️ 标签</b>——按标签浏览/筛选（一个书签可多个标签），点 #标签 快速过滤</div>
+        <div class="help-item"><b>👁 隐藏</b>——单独查看已隐藏书签，可取消隐藏、编辑或删除</div>
+      </div>
+      <div class="help-group">
+        <div class="help-group-title">💡 通用技巧</div>
+        <div class="help-item">✅ 勾选列表项 → 底部出现「删除选中」批量栏（含全选 / 反选）</div>
+        <div class="help-item">🖱️ 点击书签行直接打开链接；Ctrl+点击 后台打开</div>
+        <div class="help-item">🖱️ 拖动书签行可<u>排序 / 拖到其他分组</u>（文件夹分组会合并过去）</div>
+        <div class="help-item">🗜️ 点击分组标题可折叠 / 展开（状态会被记住）</div>
+        <div class="help-item">➕ 新增书签：输入网址自动推荐标签，可 🤖 AI 打标（生成 1-3 个标签）</div>
+        <div class="help-item">🗑️ 所有删除都会先进回收站（30 天内可恢复）</div>
+        <div class="help-item">🔍 顶部搜索框可全局搜索标题 / 网址 / 域名</div>
+      </div>
+      <div class="help-group">
+        <div class="help-group-title">⌨️ 键盘快捷键</div>
+        <div class="help-item"><b>/</b> 聚焦搜索框 · <b>?</b> 打开本指南 · <b>Esc</b> 关闭抽屉 / 退出方案</div>
+        <div class="help-item"><b>j / k</b> 上下移动高亮行 · <b>Enter</b> 打开高亮书签 · <b>Shift+Enter</b> 后台打开</div>
+        <div class="help-item"><b>Ctrl/Cmd + K</b> 聚焦搜索框（备用入口）</div>
+      </div>
+    </div>
+    <div class="drawer-hint">💾 数据全部保存在本地，不会上传</div>
+  </aside>
+
+  <script defer src="js/lib.js"></script>
+  <script defer src="js/analyzer.js"></script>
+  <script defer src="js/popup.js"></script>
+</body>
+</html>

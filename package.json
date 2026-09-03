@@ -1,0 +1,22 @@
+{
+  "name": "bookmark-manager",
+  "version": "1.0.0",
+  "description": "书签管家 · Chrome MV3 书签管理扩展（零构建，纯原生 JS）",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint js/ --ext .js",
+    "lint:fix": "eslint js/ --ext .js --fix",
+    "format": "prettier --write \"js/**/*.js\" \"css/*.css\" \"*.html\"",
+    "release": "node scripts/release.js",
+    "check-version": "node scripts/release.js --check"
+  },
+  "devDependencies": {
+    "eslint": "^9.9.0",
+    "globals": "^17.11.0",
+    "prettier": "^3.3.3",
+    "vitest": "^2.1.0"
+  }
+}
