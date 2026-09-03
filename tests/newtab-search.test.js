@@ -6,6 +6,8 @@ import { dirname, join } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const newtabSource = readFileSync(join(__dirname, '..', 'js', 'newtab.js'), 'utf-8').replace(/\r\n/g, '\n');
 const newtabCss = readFileSync(join(__dirname, '..', 'css', 'newtab.css'), 'utf-8').replace(/\r\n/g, '\n');
+const newtabHtml = readFileSync(join(__dirname, '..', 'newtab.html'), 'utf-8').replace(/\r\n/g, '\n');
+const popupHtml = readFileSync(join(__dirname, '..', 'popup.html'), 'utf-8').replace(/\r\n/g, '\n');
 
 function getFunctionSource(name) {
   const start = newtabSource.indexOf(`function ${name}(`);
@@ -15,6 +17,17 @@ function getFunctionSource(name) {
 }
 
 describe('新标签页搜索', () => {
+  it('侧边栏和新标签页都提供开源仓库入口', () => {
+    const repositoryUrl = 'https://github.com/cfdywds/chrome-bookmark-manager';
+
+    expect(popupHtml).toContain(`href="${repositoryUrl}"`);
+    expect(popupHtml).toContain('rel="noopener noreferrer"');
+    expect(popupHtml).toContain('aria-label="查看开源仓库"');
+    expect(newtabHtml).toContain(`href="${repositoryUrl}"`);
+    expect(newtabHtml).toContain('rel="noopener noreferrer"');
+    expect(newtabHtml).toContain('aria-label="查看开源仓库"');
+  });
+
   it('编辑 URL 后显式迁移标签同步记录', () => {
     expect(newtabSource).toContain('await window.BM.migrateTagSyncUrl(it.id, it.url, normalizedUrl);');
   });
@@ -144,9 +157,16 @@ describe('新标签页搜索', () => {
     expect(newtabCss).toContain('outline: 2px solid var(--primary);');
   });
 
-  it('抽屉使用半透明灰色背景，并为深色主题保留对应层次', () => {
-    expect(newtabCss).toContain('background: rgba(231, 234, 242, .58);');
-    expect(newtabCss).toContain('background: rgba(35, 38, 51, .58);');
+  it('抽屉使用更透明的灰色背景，并为深色主题保留对应层次', () => {
+    expect(newtabCss).toContain('background: rgba(231, 234, 242, .38);');
+    expect(newtabCss).toContain('background: rgba(35, 38, 51, .38);');
+  });
+
+  it('窄屏保留仓库图标，并隐藏非关键的书签计数', () => {
+    expect(newtabCss).toContain('.nt-source-link span { display: none; }');
+    expect(newtabCss).toContain('@media (max-width: 420px)');
+    expect(newtabCss).toContain('.nt-count { display: none; }');
+    expect(newtabCss).toContain('min-width: 32px; min-height: 32px;');
   });
 
   it('打开书签后隐藏悬浮操作，直到鼠标移出卡片', () => {

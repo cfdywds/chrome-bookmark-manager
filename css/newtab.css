@@ -29,6 +29,15 @@
 .nt-brand .brand-icon { font-size: 20px; }
 .nt-top-actions { display: flex; align-items: center; gap: 10px; }
 .nt-count { font-size: 12px; color: var(--muted); }
+.nt-source-link {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  min-width: 32px; min-height: 32px; padding: 7px;
+  color: var(--muted); font-size: 12px; font-weight: 600;
+  text-decoration: none; white-space: nowrap; border-radius: 8px;
+}
+.nt-source-link svg { width: 15px; height: 15px; }
+.nt-source-link:hover { color: var(--primary); }
+.nt-source-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 4px; }
 
 /* ---- 大搜索框 ---- */
 .nt-search {
@@ -191,7 +200,7 @@
   display: flex; align-items: center; justify-content: flex-end; gap: 8px;
   padding: 0 12px;
   border-radius: 0 11px 11px 0;
-  background: rgba(231, 234, 242, .58);
+  background: rgba(231, 234, 242, .38);
   backdrop-filter: blur(6px);
   border-left: 1px solid var(--line-2);
   box-shadow: -8px 0 18px rgba(52, 58, 93, .1);
@@ -231,7 +240,7 @@
 .nt-action svg { width: 18px; height: 18px; }
 
 @media (prefers-color-scheme: dark) {
-  .nt-actions { background: rgba(35, 38, 51, .58); }
+  .nt-actions { background: rgba(35, 38, 51, .38); }
   .nt-action.is-copied { border-color: var(--ok); color: var(--ok); }
 }
 
@@ -285,6 +294,11 @@
   .nt-grid { grid-template-columns: minmax(0, 1fr); }
   .nt-card-wrap,
   .nt-edit { width: 100%; }
+  .nt-source-link span { display: none; }
+}
+
+@media (max-width: 420px) {
+  .nt-count { display: none; }
 }
 
 @media (max-width: 320px) {

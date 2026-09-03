@@ -117,7 +117,7 @@ html, body {
   width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid rgba(255,255,255,.32); background: rgba(255,255,255,.14);
   color: #fff; border-radius: 10px; font-size: 14px; cursor: pointer;
-  transition: all .15s; backdrop-filter: blur(4px);
+  text-decoration: none; transition: all .15s; backdrop-filter: blur(4px);
 }
 .icon-btn:hover { background: rgba(255,255,255,.28); transform: translateY(-1px); }
 .icon-btn:active { transform: scale(.94); }
@@ -125,6 +125,13 @@ html, body {
 .search-clear:focus-visible, .toast-act:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+
+@media (max-width: 380px) {
+  .brand { gap: 6px; font-size: 14px; }
+  .brand-icon { width: 27px; height: 27px; }
+  .brand-actions { gap: 4px; }
+  .icon-btn { width: 28px; height: 28px; }
 }
 
 /* 全局搜索框 */

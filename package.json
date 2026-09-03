@@ -1,6 +1,6 @@
 {
   "name": "bookmark-manager",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "书签管家 · Chrome MV3 书签管理扩展（零构建，纯原生 JS）",
   "private": true,
   "type": "module",
