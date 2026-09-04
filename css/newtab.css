@@ -12,7 +12,8 @@
 }
 
 .nt-wrap {
-  max-width: 1080px;
+  /* 宽度上限由设置页「新标签页外观」控制（--nt-maxw 由 newtab.js 注入） */
+  max-width: var(--nt-maxw, 1080px);
   margin: 0 auto;
   padding: 28px 24px 60px;
 }
@@ -240,9 +241,13 @@
 .nt-action svg { width: 18px; height: 18px; }
 
 @media (prefers-color-scheme: dark) {
-  .nt-actions { background: rgba(35, 38, 51, .38); }
-  .nt-action.is-copied { border-color: var(--ok); color: var(--ok); }
+  /* 仅「跟随系统」时命中；设置了强制主题（data-nt-theme）时交由下方两条规则接管 */
+  :root:not([data-nt-theme]) .nt-actions { background: rgba(35, 38, 51, .38); }
+  :root:not([data-nt-theme]) .nt-action.is-copied { border-color: var(--ok); color: var(--ok); }
 }
+/* 强制主题（设置页「新标签页外观」）：卡片操作抽屉遮罩跟随所选主题，不随系统偏好漂移 */
+html[data-nt-theme='light'] .nt-actions { background: rgba(231, 234, 242, .38); }
+html[data-nt-theme='dark']  .nt-actions { background: rgba(35, 38, 51, .38); }
 
 /* ===== Inline 编辑浮层 ===== */
 .nt-edit {

@@ -181,6 +181,59 @@
       </div>
     </section>
 
+    <!-- ===== 分组 4：新标签页外观 ===== -->
+    <section class="opt-section">
+      <div class="opt-section-head">
+        <div class="opt-section-icon opt-section-icon-ui">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+        </div>
+        <div class="opt-section-text">
+          <h2>新标签页外观 <button class="help-dot" type="button" data-tip="布局宽度与配色仅作用于新标签页，不改变侧边栏；均为本地设置，不上传不同步。" aria-label="布局宽度与配色仅作用于新标签页。">?</button></h2>
+        </div>
+      </div>
+
+      <div class="opt-card opt-card-compact opt-card-tag-ui">
+        <div class="opt-card-head">
+          <span class="opt-card-icon">🎨</span>
+          <div>
+            <div class="opt-card-title">布局宽度与配色 <button class="help-dot" type="button" data-tip="宽度影响卡片列数：屏幕越宽列数越多。2K 屏可选手「超宽」或「自动铺满」。选择自定义背景色时，文字与面板会按背景亮度自动匹配明暗，保证可读。" aria-label="宽度影响卡片列数。">?</button></div>
+          </div>
+        </div>
+        <div class="opt-grid">
+          <div class="form-row">
+            <label>↔️ 内容区宽度</label>
+            <select id="setNtWidth">
+              <option value="1080">紧凑 · 默认（1080px / 约 3-4 列）</option>
+              <option value="1440">标准（1440px / 约 4-5 列）</option>
+              <option value="1720">宽屏（1720px / 约 5-6 列）</option>
+              <option value="2560">超宽 · 2K（2560px / 约 7-8 列）</option>
+              <option value="auto">自动铺满（列数完全跟随屏幕）</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>🎨 页面配色</label>
+            <select id="setNtTheme">
+              <option value="auto">跟随系统（默认）</option>
+              <option value="light">始终浅色</option>
+              <option value="dark">始终深色</option>
+              <option value="custom">自定义背景色…</option>
+            </select>
+          </div>
+          <div class="form-row form-row-wide" id="ntBgRow" hidden>
+            <label>🖌️ 背景颜色 <button class="help-dot" type="button" data-tip="点击色块取色，或直接输入十六进制色值（#rrggbb）。" aria-label="点击色块取色。">?</button></label>
+            <div class="nt-bg-picker">
+              <input type="color" id="setNtBg" value="#14161f" />
+              <input type="text" id="setNtBgHex" maxlength="7" placeholder="#14161f" autocomplete="off" spellcheck="false" />
+              <button id="setNtBgReset" type="button" class="btn ghost small">重置默认色</button>
+            </div>
+          </div>
+        </div>
+        <div class="opt-foot">
+          <span id="ntAppearMsg" class="settings-msg"></span>
+        </div>
+      </div>
+    </section>
+
   </div>
 
   <script src="js/lib.js"></script>

@@ -891,6 +891,7 @@ mark { background: #fde68a; color: inherit; border-radius: 3px; padding: 0 1px; 
 .opt-section-icon-ai    { background: linear-gradient(135deg, #6d5ef5, #a78bfa); }
 .opt-section-icon-tag   { background: linear-gradient(135deg, #14b8a6, #34d399); }
 .opt-section-icon-browser { background: linear-gradient(135deg, #f59e0b, #fb923c); }
+.opt-section-icon-ui { background: linear-gradient(135deg, #38bdf8, #6d5ef5); }
 .opt-section-text { display: flex; flex-direction: column; gap: 2px; }
 .opt-section-text h2 { font-size: 17px; font-weight: 700; color: var(--ink); margin: 0; letter-spacing: -0.2px; }
 .opt-section-text p { font-size: 11.5px; color: var(--muted); margin: 0; line-height: 1.5; }
@@ -915,6 +916,7 @@ mark { background: #fde68a; color: inherit; border-radius: 3px; padding: 0 1px; 
 .opt-card-tag-ai      { border-left: 3px solid #6d5ef5; }
 .opt-card-tag-tag     { border-left: 3px solid #14b8a6; }
 .opt-card-tag-browser { border-left: 3px solid #f59e0b; }
+.opt-card-tag-ui { border-left: 3px solid #38bdf8; }
 .opt-card-tag-ai:first-of-type,
 .opt-card:not(.opt-card-compact) { border-left: 3px solid #6d5ef5; }
 
@@ -1099,3 +1101,12 @@ mark { background: #fde68a; color: inherit; border-radius: 3px; padding: 0 1px; 
 .backup-card .help-dot[data-tip]::after { left: 50%; right: auto; transform: translate(-50%, -2px); }
 .backup-card .help-dot[data-tip]:hover::after,
 .backup-card .help-dot[data-tip]:focus-visible::after { transform: translate(-50%, 0); }
+
+/* ---- 新标签页外观（设置页）---- */
+.nt-bg-picker { display: flex; align-items: center; gap: 10px; }
+.nt-bg-picker input[type="color"] {
+  width: 54px; height: 42px; padding: 3px;
+  border: 1px solid var(--line-2); border-radius: 8px;
+  background: var(--panel); cursor: pointer; flex-shrink: 0;
+}
+.nt-bg-picker input[type="text"] { flex: 1; min-width: 0; }

@@ -8,6 +8,11 @@ const PROVIDERS = (typeof BM !== 'undefined' && BM.PROVIDERS) || {};
 const $ = sel => document.querySelector(sel);
 const LLM_PROFILES_KEY = 'bmLlmProfiles';
 const ACTIVE_LLM_PROFILE_KEY = 'bmActiveLlmProfileId';
+// 新标签页外观（宽度 / 配色 / 自定义背景色）
+const NT_APPEARANCE_KEY = 'bmNewtabAppearance';
+const NT_WIDTH_OPTIONS = ['1080', '1440', '1720', '2560', 'auto'];
+const NT_THEME_OPTIONS = ['auto', 'light', 'dark', 'custom'];
+const NT_DEFAULT_BG = '#14161f';
 let llmProfiles = [];
 let activeLlmProfileId = '';
 let nextProfileId = 0;
@@ -35,6 +40,51 @@ function setTrMsg(text, cls) {
   if (!el) return;
   el.textContent = text || '';
   el.className = 'settings-msg' + (cls ? ' ' + cls : '');
+}
+
+function setNtMsg(text, cls) {
+  const el = $('#ntAppearMsg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'settings-msg' + (cls ? ' ' + cls : '');
+}
+
+// ---- 新标签页外观：表单 ↔ 存储 ----
+function ntBgRowVisible(show) {
+  const row = $('#ntBgRow');
+  if (row) row.hidden = !show;
+}
+
+function fillNtAppearance(raw) {
+  raw = (raw && typeof raw === 'object') ? raw : {};
+  const widthEl = $('#setNtWidth');
+  if (widthEl) widthEl.value = NT_WIDTH_OPTIONS.indexOf(raw.width) >= 0 ? raw.width : '1080';
+  const themeEl = $('#setNtTheme');
+  if (themeEl) themeEl.value = NT_THEME_OPTIONS.indexOf(raw.theme) >= 0 ? raw.theme : 'auto';
+  const bg = /^#[0-9a-fA-F]{6}$/.test(String(raw.bg || '')) ? String(raw.bg).toLowerCase() : NT_DEFAULT_BG;
+  const colorEl = $('#setNtBg');
+  const hexEl = $('#setNtBgHex');
+  if (colorEl) colorEl.value = bg;
+  if (hexEl) hexEl.value = bg;
+  ntBgRowVisible(themeEl ? themeEl.value === 'custom' : false);
+}
+
+function ntAppearanceValue() {
+  const hex = $('#setNtBgHex').value.trim();
+  return {
+    width: $('#setNtWidth').value,
+    theme: $('#setNtTheme').value,
+    bg: /^#[0-9a-fA-F]{6}$/.test(hex) ? hex.toLowerCase() : NT_DEFAULT_BG
+  };
+}
+
+async function persistNtAppearance(msg) {
+  try {
+    await chrome.storage.local.set({ [NT_APPEARANCE_KEY]: ntAppearanceValue() });
+    if (msg) setNtMsg(msg, 'ok');
+  } catch (e) {
+    setNtMsg('保存失败：' + (e.message || e), 'err');
+  }
 }
 
 function renderTagSyncStatus(status) {
@@ -427,7 +477,8 @@ async function load() {
     try { await BM.initializeSyncedTagConfiguration(); } catch (e) { /* 保留本地标签配置 */ }
     const r = await chrome.storage.local.get([
       'bmSettings', LLM_PROFILES_KEY, ACTIVE_LLM_PROFILE_KEY,
-      'bmFixedTags', 'bmTagRules', 'bmStarHook', 'bmAutoAiTag', BM.SYNC_ENABLED_KEY, BM.SYNC_STATUS_KEY
+      'bmFixedTags', 'bmTagRules', 'bmStarHook', 'bmAutoAiTag', BM.SYNC_ENABLED_KEY, BM.SYNC_STATUS_KEY,
+      NT_APPEARANCE_KEY
     ]);
     llmProfiles = normalizeLlmProfiles(r[LLM_PROFILES_KEY], r.bmSettings);
     activeLlmProfileId = llmProfiles.some(profile => profile.id === r[ACTIVE_LLM_PROFILE_KEY])
@@ -447,6 +498,7 @@ async function load() {
     if (syncEl) syncEl.checked = await BM.getTagSyncEnabled();
     renderTagSyncStatus(r[BM.SYNC_STATUS_KEY]);
     renderTagSyncDiagnostics();
+    fillNtAppearance(r[NT_APPEARANCE_KEY]);
   } catch (e) {
     console.warn('[书签管家] 读取设置失败', e);
   }
@@ -537,6 +589,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes[BM.SYNC_STATUS_KEY]) {
     renderTagSyncStatus(changes[BM.SYNC_STATUS_KEY].newValue);
   }
+  if (changes[NT_APPEARANCE_KEY] && $('#setNtWidth')) {
+    // 另一窗口（新标签页 / 另一设置页）改外观时同步到本页表单
+    const next = changes[NT_APPEARANCE_KEY].newValue;
+    if (next && !sameStoredValue(next, ntAppearanceValue())) fillNtAppearance(next);
+  }
 });
 
 try {
@@ -592,5 +649,27 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#setStarHook').addEventListener('change', persistStarHook);
   $('#setAutoAiTag').addEventListener('change', persistAutoAiTag);
   $('#setTagSync').addEventListener('change', persistTagSync);
+  // 新标签页外观：改动即存，新标签页通过 onChanged 实时生效
+  $('#setNtWidth').addEventListener('change', () => persistNtAppearance('已保存 · 新标签页宽度即时生效'));
+  $('#setNtTheme').addEventListener('change', () => {
+    ntBgRowVisible($('#setNtTheme').value === 'custom');
+    persistNtAppearance('已保存 · 新标签页配色即时生效');
+  });
+  $('#setNtBg').addEventListener('input', () => {
+    $('#setNtBgHex').value = $('#setNtBg').value;
+    persistNtAppearance(null);
+  });
+  $('#setNtBgHex').addEventListener('input', () => {
+    const v = $('#setNtBgHex').value.trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+      $('#setNtBg').value = v.toLowerCase();
+      persistNtAppearance(null);
+    }
+  });
+  $('#setNtBgReset').addEventListener('click', async () => {
+    $('#setNtBg').value = NT_DEFAULT_BG;
+    $('#setNtBgHex').value = NT_DEFAULT_BG;
+    await persistNtAppearance('已重置为默认背景色');
+  });
   load();
 });

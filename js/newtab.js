@@ -26,6 +26,78 @@
     });
   }
 
+  // ---- 新标签页外观（设置页「新标签页外观」）----
+  const NT_APPEARANCE_KEY = 'bmNewtabAppearance';
+  // 与 popup.css :root 两套色板一致（DRY 约束：值改动时需同步两处）
+  const NT_PALETTES = {
+    light: {
+      '--bg': '#f4f5fb', '--panel': '#ffffff', '--ink': '#1b1e2c', '--ink-2': '#4c5267',
+      '--muted': '#6b7384', '--line': '#e8eaf4', '--line-2': '#dde0ee',
+      '--primary': '#6d5ef5', '--primary-2': '#8b5cf6', '--primary-3': '#a78bfa', '--primary-soft': '#eef0ff',
+      '--accent': '#38bdf8', '--pink': '#d946ef',
+      '--grad': 'linear-gradient(135deg, #6d5ef5 0%, #8b5cf6 48%, #d946ef 100%)',
+      '--grad-soft': 'linear-gradient(135deg, #eef0ff 0%, #f7f2ff 100%)',
+      '--danger': '#f43f5e', '--danger-soft': '#ffe4e9',
+      '--warn': '#f59e0b', '--warn-soft': '#fef3c7',
+      '--ok': '#10b981', '--ok-strong': '#047857', '--ok-soft': '#d1fae5',
+      '--shadow-sm': '0 1px 2px rgba(20, 16, 60, .05)',
+      '--shadow': '0 6px 20px rgba(20, 16, 60, .08)',
+      '--shadow-lg': '0 16px 48px rgba(20, 16, 60, .14)'
+    },
+    dark: {
+      '--bg': '#14161f', '--panel': '#1e2030', '--ink': '#f0f2fa', '--ink-2': '#c6cad8',
+      '--muted': '#9499ac', '--line': '#2a2d3e', '--line-2': '#373b50',
+      '--primary': '#8f82ff', '--primary-2': '#a78bfa', '--primary-3': '#c4b5fd', '--primary-soft': '#25233f',
+      '--accent': '#38bdf8', '--pink': '#e879f9',
+      '--grad': 'linear-gradient(135deg, #5b4de0 0%, #7c5cf0 48%, #c84de0 100%)',
+      '--grad-soft': 'linear-gradient(135deg, #232336 0%, #2a2438 100%)',
+      '--danger': '#fb7185', '--danger-soft': '#3d2330',
+      '--warn': '#fbbf24', '--warn-soft': '#3a3220',
+      '--ok': '#34d399', '--ok-strong': '#6ee7b7', '--ok-soft': '#17342c',
+      '--shadow-sm': '0 1px 2px rgba(0, 0, 0, .3)',
+      '--shadow': '0 6px 20px rgba(0, 0, 0, .35)',
+      '--shadow-lg': '0 16px 48px rgba(0, 0, 0, .5)'
+    }
+  };
+  const NT_WIDTHS = ['1080', '1440', '1720', '2560', 'auto'];
+  const NT_DEFAULT_BG = '#14161f';
+
+  function hexLuma(hex) {
+    const h = String(hex || '').replace('#', '');
+    if (!/^[0-9a-fA-F]{6}$/.test(h)) return 255; // 非法 → 当作亮色
+    const n = parseInt(h, 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+  }
+
+  // 应用外观：注入 --nt-maxw 与主题变量；theme='auto' 时还原为系统（移除覆盖）
+  function applyAppearance(raw) {
+    raw = (raw && typeof raw === 'object') ? raw : {};
+    const width = NT_WIDTHS.indexOf(raw.width) >= 0 ? raw.width : '1080';
+    const theme = ['auto', 'light', 'dark', 'custom'].indexOf(raw.theme) >= 0 ? raw.theme : 'auto';
+    const bg = /^#[0-9a-fA-F]{6}$/.test(String(raw.bg || '')) ? String(raw.bg).toLowerCase() : NT_DEFAULT_BG;
+    const root = document.documentElement;
+
+    // 1) 内容区宽度
+    root.style.setProperty('--nt-maxw', width === 'auto' ? 'none' : width + 'px');
+
+    // 2) 主题：先摘除旧注入（删除全部变量后自动回退到 popup.css 的 :root 定义）
+    root.removeAttribute('data-nt-theme');
+    Object.values(NT_PALETTES).forEach(pal => Object.keys(pal).forEach(k => root.style.removeProperty(k)));
+
+    if (theme === 'auto') return; // 交给 @media (prefers-color-scheme)
+
+    const paletteKey = (theme === 'custom') ? (hexLuma(bg) < 128 ? 'dark' : 'light') : theme;
+    const palette = NT_PALETTES[paletteKey];
+    if (!palette) return;
+    Object.entries(palette).forEach(([k, v]) => root.style.setProperty(k, v));
+    if (theme === 'custom') {
+      // 自定义背景：页面底色用所选色，其余面板沿用对应明暗主题
+      root.style.setProperty('--bg', bg);
+    }
+    root.setAttribute('data-nt-theme', theme === 'custom' ? paletteKey : theme);
+  }
+
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -366,6 +438,10 @@
   let syncTimer = null;
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
+    // 外观配置变化 → 即时应用（无需重开新标签页）
+    if (changes[NT_APPEARANCE_KEY]) {
+      applyAppearance(changes[NT_APPEARANCE_KEY].newValue);
+    }
     const keys = ['bmTags', 'bmHiddenIds', 'bmFixedTags', 'bmTagRules'];
     if (!keys.some(k => changes[k])) return;
     clearTimeout(syncTimer);
@@ -387,6 +463,11 @@
       .then(changed => ({ changed: !!changed, failed: false }))
       .catch(() => ({ changed: false, failed: true }));
     await waitForInitialTagSync(tagConfigurationTask);
+    // 应用外观配置（宽度/主题/自定义背景）——最先执行，避免闪烁
+    try {
+      const r = await chrome.storage.local.get(NT_APPEARANCE_KEY);
+      applyAppearance(r[NT_APPEARANCE_KEY]);
+    } catch (e) { /* 保持默认外观 */ }
     try { await window.BM.loadTags(); } catch (e) { /* 无标签 */ }
     try { await window.BM.loadFixedTags(); } catch (e) { /* 默认池 */ }
     try { await window.BM.loadTagRules(); } catch (e) { /* 无自定义规则 */ }
