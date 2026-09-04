@@ -10,6 +10,21 @@
   let activeTag = '';
   let shown = 0;
   const STEP = 200; // 每次「加载更多」数量
+  const INITIAL_TAG_SYNC_WAIT_MS = 1200;
+
+  function waitForInitialTagSync(task) {
+    return new Promise(resolve => {
+      let settled = false;
+      const finish = result => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      };
+      const timer = setTimeout(() => finish({ timedOut: true }), INITIAL_TAG_SYNC_WAIT_MS);
+      task.then(finish, () => finish({ failed: true }));
+    });
+  }
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -368,29 +383,10 @@
 
   // 初始化：加载配置 + 分析书签
   (async function init() {
-    let tagConfigurationSyncReady = true;
-    try { await window.BM.initializeSyncedTagConfiguration(); }
-    catch (e) { tagConfigurationSyncReady = false; }
-    try {
-      window.BM.watchTagConfiguration && window.BM.watchTagConfiguration(() => {
-        window.BM.invalidateFixedTags && window.BM.invalidateFixedTags();
-        window.BM.invalidateTagRules && window.BM.invalidateTagRules();
-        setTimeout(async () => {
-          try { DATA = await window.BMAnalyzer.analyze(); render(); } catch (e) { /* ignore */ }
-        }, 300);
-      });
-    } catch (e) { /* 保留本地标签配置 */ }
-    if (tagConfigurationSyncReady) {
-      try { await window.BM.pullTagsFromCloud(); } catch (e) { /* 保留本地标签 */ }
-      try {
-        window.BM.watchTagSync && window.BM.watchTagSync(() => {
-          window.BM.invalidateTags && window.BM.invalidateTags();
-          setTimeout(async () => {
-            try { DATA = await window.BMAnalyzer.analyze(); render(); } catch (e) { /* ignore */ }
-          }, 300);
-        });
-      } catch (e) { /* noop */ }
-    }
+    const tagConfigurationTask = window.BM.initializeSyncedTagConfiguration()
+      .then(changed => ({ changed: !!changed, failed: false }))
+      .catch(() => ({ changed: false, failed: true }));
+    await waitForInitialTagSync(tagConfigurationTask);
     try { await window.BM.loadTags(); } catch (e) { /* 无标签 */ }
     try { await window.BM.loadFixedTags(); } catch (e) { /* 默认池 */ }
     try { await window.BM.loadTagRules(); } catch (e) { /* 无自定义规则 */ }
@@ -404,5 +400,14 @@
       $('#ntEmptyDesc').textContent = (e && e.message) || String(e);
       console.error('[书签管家] newtab 初始化失败', e);
     }
+    // 首屏已展示后再做一次标签拉取。初始化任务若仍在后台队列中，完成后会在此继续。
+    void tagConfigurationTask.then(async result => {
+      if (result.failed) return;
+      const changed = await window.BM.pullTagsFromCloud();
+      if (!changed || !DATA) return;
+      window.BM.invalidateTags && window.BM.invalidateTags();
+      DATA = await window.BMAnalyzer.analyze();
+      render();
+    }).catch(() => {});
   })();
 })();

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -34,11 +34,26 @@ describe('新标签页搜索', () => {
 
   it('初始化时主动拉取已有的云端标签', () => {
     expect(newtabSource).toContain('await window.BM.pullTagsFromCloud()');
-    expect(newtabSource).toContain('await window.BM.initializeSyncedTagConfiguration()');
-    expect(newtabSource.indexOf('await window.BM.initializeSyncedTagConfiguration()'))
-      .toBeLessThan(newtabSource.indexOf('await window.BM.pullTagsFromCloud()'));
-    expect(newtabSource).toContain('if (tagConfigurationSyncReady)');
-    expect(newtabSource).toContain('window.BM.watchTagConfiguration');
+    expect(newtabSource).toContain('const tagConfigurationTask = window.BM.initializeSyncedTagConfiguration()');
+    expect(newtabSource).toContain('await waitForInitialTagSync(tagConfigurationTask);');
+    expect(newtabSource).toContain('tagConfigurationTask.then(async result =>');
+    expect(newtabSource).not.toContain('window.BM.watchTagConfiguration');
+    expect(newtabSource).not.toContain('window.BM.watchTagSync');
+  });
+
+  it('初始同步未返回时，在时限后继续初始化', async () => {
+    vi.useFakeTimers();
+    const INITIAL_TAG_SYNC_WAIT_MS = 1200;
+    const task = new Promise(() => {});
+    const waitForInitialTagSync = eval(`(${getFunctionSource('waitForInitialTagSync')})`);
+
+    try {
+      const waiting = waitForInitialTagSync(task);
+      await vi.advanceTimersByTimeAsync(INITIAL_TAG_SYNC_WAIT_MS);
+      await expect(waiting).resolves.toEqual({ timedOut: true });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('仅在输入搜索词时纳入匹配的隐藏书签', () => {

@@ -26,6 +26,7 @@ const TAG_CLEAR_BATCH_SIZE = 400;
 const DELETE_PROGRESS_INTERVAL_MS = 80;
 const TRASH_DELETE_HEARTBEAT_INTERVAL_MS = 5000;
 const SELF_CREATION_MESSAGE = 'bmSelfCreatingBookmark';
+const INITIAL_TAG_SYNC_WAIT_MS = 1200;
 
 // ---- LLM 设置：服务商预设统一来自 lib.js（DRY，与 options.js 共享同一份配置）----
 const PROVIDERS = BM.PROVIDERS;
@@ -33,6 +34,22 @@ let SETTINGS = { provider: 'deepseek', baseUrl: '', apiKey: '', model: 'deepseek
 let settingsReady = Promise.resolve();
 let tagConfigurationReady = Promise.resolve();
 let tagConfigurationSyncFailed = false;
+
+// 同步目录可能在 Chrome 书签同步中暂时不完整。首屏不能因此永久停在扫描态，
+// 任务仍会在后台完成，并由 storage 监听触发后续刷新。
+function waitForInitialTagConfiguration() {
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(finish, INITIAL_TAG_SYNC_WAIT_MS);
+    tagConfigurationReady.then(finish, finish);
+  });
+}
 
 // ---- SVG 图标助手（配合 popup.html 的 <symbol> sprite，替代 emoji）----
 const ICON = name => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-${name}"/></svg>`;
@@ -1179,7 +1196,7 @@ function showError(err) {
 
 // ---------- 数据加载 ----------
 async function runRefresh() {
-  await tagConfigurationReady;
+  await waitForInitialTagConfiguration();
   tabRenderToken++;
   listRenderLimits = Object.create(null);
   content().innerHTML = '<div class="loading">正在扫描书签…</div>';
@@ -1637,7 +1654,7 @@ async function init() {
       return false;
     })
     : Promise.resolve(false);
-  settingsReady = tagConfigurationReady.then(loadSettings);
+  settingsReady = loadSettings();
 
   // 标签切换
   document.querySelectorAll('.tab').forEach(t => {
@@ -1998,7 +2015,6 @@ async function init() {
       if (area === 'local' && changes.bmTagRules) {
         try { BM.invalidateTagRules(); } catch (e) { /* noop */ }
         try { if (BM.loadTagRules) BM.loadTagRules().catch(() => {}); } catch (e) { /* noop */ }
-        refresh();
       }
       if (area === 'local' && changes.bmTags) {
         try { BM.invalidateTags(); } catch (e) { /* noop */ }
@@ -2009,19 +2025,19 @@ async function init() {
 
   await Promise.all([settingsReady, refresh(true)]);
 
-  // 标签原生同步开启时：启动目录拉取，并在后台合并后实时刷新。
-  if (!tagConfigurationSyncFailed) {
-    try {
+  // 标签原生同步在首屏之后继续；它不能阻塞本地书签的可用视图。
+  try {
+    BM.watchTagConfiguration(() => {
+      BM.invalidateFixedTags();
+      BM.invalidateTagRules();
+      refresh(true);
+    });
+    void tagConfigurationReady.then(async () => {
+      if (tagConfigurationSyncFailed) return;
       const changed = await BM.pullTagsFromCloud();
       if (changed) { BM.invalidateTags(); await refresh(true); }
-      BM.watchTagConfiguration(() => {
-        BM.invalidateFixedTags();
-        BM.invalidateTagRules();
-        refresh(true);
-      });
-      BM.watchTagSync(() => { BM.invalidateTags(); refresh(true); });
-    } catch (e) { /* 无 sync 权限等忽略 */ }
-  }
+    }).catch(() => {});
+  } catch (e) { /* 无 sync 权限等忽略 */ }
 
 }
 
