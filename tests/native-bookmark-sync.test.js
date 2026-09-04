@@ -46,6 +46,7 @@ function createHarness(tree, initialLocal) {
   let nextId = nextBookmarkId(tree);
   const messageListeners = [];
   const storageListeners = [];
+  const bookmarkCreatedListeners = [];
   const bookmarkChangedListeners = [];
   const bookmarkRemovedListeners = [];
   const localData = { ...(initialLocal || {}) };
@@ -95,7 +96,7 @@ function createHarness(tree, initialLocal) {
       }),
       get: vi.fn().mockRejectedValue(new Error('Bookmark not found')),
       search: vi.fn().mockResolvedValue([]),
-      onCreated: { addListener: vi.fn() },
+      onCreated: { addListener: listener => bookmarkCreatedListeners.push(listener) },
       onChanged: { addListener: listener => bookmarkChangedListeners.push(listener) },
       onRemoved: { addListener: listener => bookmarkRemovedListeners.push(listener) },
       onMoved: { addListener: vi.fn() },
@@ -124,6 +125,9 @@ function createHarness(tree, initialLocal) {
     localSet,
     emitBookmarkChanged(id, changes) {
       bookmarkChangedListeners.forEach(listener => listener(id, changes));
+    },
+    triggerBookmarkCreated(id, bookmark) {
+      return Promise.all(bookmarkCreatedListeners.map(listener => listener(id, bookmark)));
     },
     emitBookmarkRemoved(id, node) {
       bookmarkRemovedListeners.forEach(listener => listener(id, { node }));
@@ -197,6 +201,116 @@ describe('原生书签标签同步', () => {
       expect(target.localData.bmFixedTags).toEqual(['AI', '工作']);
       expect(target.localData.bmTagRules).toEqual({ domain: { openai: ['AI'] }, keyword: {} });
       expect(syncRoot(target.tree).children.filter(node => node.title.startsWith('BMN1|D|'))).toHaveLength(1);
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('同步目录先到时，远端书签不会被本机默认标签覆盖', async () => {
+    const source = createHarness(createTree([
+      { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+    ]), {
+      bmTags: { source: ['工作'] },
+      bmFixedTags: ['AI', '工作'],
+      bmTagRules: { domain: {}, keyword: {} }
+    });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+      const target = createHarness(clone(source.tree), {
+        bmTags: {}, bmFixedTags: ['AI', '工作'], bmTagRules: { domain: {}, keyword: {} }
+      });
+      // Chrome 同步时，保留目录可能先到；普通书签随后才触发 onCreated。
+      target.tree[0].children[0].children = [];
+      globalThis.chrome = target.chrome;
+      new Function(backgroundCode)();
+
+      await target.send({ type: 'bmNativeTagSync', action: 'hydrate' });
+      const remoteBookmark = {
+        id: 'target', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research'
+      };
+      target.tree[0].children[0].children.push(remoteBookmark);
+      await target.triggerBookmarkCreated('target', remoteBookmark);
+
+      expect(target.localData.bmTags).toEqual({ target: ['工作'] });
+      // 等待 onCreated 的防抖水合完成，避免其计时器落到后续测试的全局 chrome 上。
+      await new Promise(resolve => setTimeout(resolve, 900));
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('同步分片未完整到达时，延后默认打标直到远端标签可读取', async () => {
+    const source = createHarness(createTree([
+      { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+    ]), {
+      bmTags: { source: ['工作'] },
+      bmFixedTags: ['AI', '工作'],
+      bmTagRules: { domain: {}, keyword: {} }
+    });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+      const target = createHarness(clone(source.tree), {
+        bmTags: {}, bmFixedTags: ['AI', '工作'], bmTagRules: { domain: {}, keyword: {} }
+      });
+      const completeDeviceChildren = clone(syncRoot(source.tree).children[0].children);
+      const targetDevice = syncRoot(target.tree).children[0];
+      targetDevice.children = targetDevice.children.filter(node => !node.title.startsWith('BMN1|S|'));
+      target.tree[0].children[0].children = [];
+      globalThis.chrome = target.chrome;
+      new Function(backgroundCode)();
+
+      const remoteBookmark = {
+        id: 'target', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research'
+      };
+      target.tree[0].children[0].children.push(remoteBookmark);
+      await target.triggerBookmarkCreated('target', remoteBookmark);
+      expect(target.localData.bmTags).toEqual({});
+
+      targetDevice.children = completeDeviceChildren;
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      expect(target.localData.bmTags).toEqual({ target: ['工作'] });
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('目录先到但本机状态未启用时，会发布新增书签的默认标签', async () => {
+    const source = createHarness(createTree([
+      { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+    ]), {
+      bmTags: { source: ['工作'] },
+      bmFixedTags: ['AI', '工作', '代码'],
+      bmTagRules: { domain: {}, keyword: {} }
+    });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+      const target = createHarness(clone(source.tree), {
+        bmTags: {}, bmFixedTags: ['AI', '工作', '代码'], bmTagRules: { domain: {}, keyword: {} }
+      });
+      target.tree[0].children[0].children = [];
+      globalThis.chrome = target.chrome;
+      new Function(backgroundCode)();
+
+      const localBookmark = {
+        id: 'target', parentId: '1', title: '仓库', url: 'https://github.com/example/repo'
+      };
+      target.tree[0].children[0].children.push(localBookmark);
+      await target.triggerBookmarkCreated('target', localBookmark);
+      await vi.waitFor(() => expect(target.localData.bmNativeTagSyncRecords).toMatchObject({
+        'github.com/example/repo': { tags: ['代码'] }
+      }));
     } finally {
       if (previousChrome === undefined) delete globalThis.chrome;
       else globalThis.chrome = previousChrome;
