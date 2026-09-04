@@ -40,25 +40,18 @@
 
   <div id="app">
     <header id="topbar">
-      <div class="brand-row">
-        <div class="brand">
-          <span class="brand-icon">🐾</span>
-          <span>书签管家</span>
+      <!-- 单行工具栏：搜索框填满左侧，操作按钮靠右；品牌名由 Chrome 标题栏展示 -->
+      <div class="toolbar-row">
+        <div class="search-box">
+          <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"/></svg>
+          <input id="searchInput" type="text" placeholder="搜索标题、网址、域名" autocomplete="off" spellcheck="false" />
+          <button id="searchClear" class="search-clear hidden" title="清空">✕</button>
         </div>
         <div class="brand-actions">
           <button id="addBtn" class="icon-btn" title="新增书签"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"/></svg></button>
           <button id="settingsBtn" class="icon-btn" title="LLM 分类设置"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-gear"/></svg></button>
           <button id="helpBtn" class="icon-btn" title="操作指南 / 快捷键 (?)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-help"/></svg></button>
-          <a class="icon-btn" href="https://github.com/cfdywds/chrome-bookmark-manager" target="_blank" rel="noopener noreferrer" title="查看开源仓库" aria-label="查看开源仓库"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-link"/></svg></a>
-          <button id="rescanMini" class="icon-btn" title="重新扫描"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refresh"/></svg></button>
-          <button id="closePanelBtn" class="icon-btn" title="收起侧边栏"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
         </div>
-      </div>
-
-      <div class="search-box">
-        <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"/></svg>
-        <input id="searchInput" type="text" placeholder="搜索标题、网址、域名" autocomplete="off" spellcheck="false" />
-        <button id="searchClear" class="search-clear hidden" title="清空">✕</button>
       </div>
     </header>
 
@@ -101,6 +94,7 @@
     </div>
 
     <footer id="footer">
+      <span id="appVersion" class="app-version" title="扩展版本号"></span>
       <button id="rescanBtn" class="btn primary"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refresh"/></svg> 重新扫描</button>
     </footer>
   </div>
@@ -208,7 +202,7 @@
         <div class="help-item"><b>Ctrl/Cmd + K</b> 聚焦搜索框（备用入口）</div>
       </div>
     </div>
-    <div class="drawer-hint">💾 数据全部保存在本地，不会上传</div>
+    <div class="drawer-hint">💾 数据全部保存在本地，不会上传 · <a href="https://github.com/cfdywds/chrome-bookmark-manager" target="_blank" rel="noopener noreferrer">GitHub 开源仓库</a></div>
   </aside>
 
   <script defer src="js/lib.js"></script>

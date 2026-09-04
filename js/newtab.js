@@ -31,36 +31,36 @@
   // 与 popup.css :root 两套色板一致（DRY 约束：值改动时需同步两处）
   const NT_PALETTES = {
     light: {
-      '--bg': '#f4f5fb', '--panel': '#ffffff', '--ink': '#1b1e2c', '--ink-2': '#4c5267',
-      '--muted': '#6b7384', '--line': '#e8eaf4', '--line-2': '#dde0ee',
-      '--primary': '#6d5ef5', '--primary-2': '#8b5cf6', '--primary-3': '#a78bfa', '--primary-soft': '#eef0ff',
-      '--accent': '#38bdf8', '--pink': '#d946ef',
-      '--grad': 'linear-gradient(135deg, #6d5ef5 0%, #8b5cf6 48%, #d946ef 100%)',
-      '--grad-soft': 'linear-gradient(135deg, #eef0ff 0%, #f7f2ff 100%)',
-      '--danger': '#f43f5e', '--danger-soft': '#ffe4e9',
-      '--warn': '#f59e0b', '--warn-soft': '#fef3c7',
-      '--ok': '#10b981', '--ok-strong': '#047857', '--ok-soft': '#d1fae5',
-      '--shadow-sm': '0 1px 2px rgba(20, 16, 60, .05)',
-      '--shadow': '0 6px 20px rgba(20, 16, 60, .08)',
-      '--shadow-lg': '0 16px 48px rgba(20, 16, 60, .14)'
+      '--bg': '#f3f5f8', '--panel': '#ffffff', '--ink': '#101828', '--ink-2': '#344054',
+      '--muted': '#667085', '--line': '#e7ebf0', '--line-2': '#dce1e8',
+      '--primary': '#2563eb', '--primary-2': '#0ea5e9', '--primary-3': '#7cb8f7', '--primary-soft': '#e9f1fe',
+      '--accent': '#06b6d4', '--pink': '#ec4899',
+      '--grad': 'linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)',
+      '--grad-soft': 'linear-gradient(135deg, #eaf2fe 0%, #e8f9fd 100%)',
+      '--danger': '#e11d48', '--danger-soft': '#ffe7ec',
+      '--warn': '#d97706', '--warn-soft': '#fdf1d7',
+      '--ok': '#059669', '--ok-strong': '#047857', '--ok-soft': '#d5f5e7',
+      '--shadow-sm': '0 1px 2px rgba(15, 23, 42, .06)',
+      '--shadow': '0 6px 20px rgba(15, 23, 42, .09)',
+      '--shadow-lg': '0 16px 48px rgba(15, 23, 42, .16)'
     },
     dark: {
-      '--bg': '#14161f', '--panel': '#1e2030', '--ink': '#f0f2fa', '--ink-2': '#c6cad8',
-      '--muted': '#9499ac', '--line': '#2a2d3e', '--line-2': '#373b50',
-      '--primary': '#8f82ff', '--primary-2': '#a78bfa', '--primary-3': '#c4b5fd', '--primary-soft': '#25233f',
-      '--accent': '#38bdf8', '--pink': '#e879f9',
-      '--grad': 'linear-gradient(135deg, #5b4de0 0%, #7c5cf0 48%, #c84de0 100%)',
-      '--grad-soft': 'linear-gradient(135deg, #232336 0%, #2a2438 100%)',
-      '--danger': '#fb7185', '--danger-soft': '#3d2330',
-      '--warn': '#fbbf24', '--warn-soft': '#3a3220',
-      '--ok': '#34d399', '--ok-strong': '#6ee7b7', '--ok-soft': '#17342c',
-      '--shadow-sm': '0 1px 2px rgba(0, 0, 0, .3)',
-      '--shadow': '0 6px 20px rgba(0, 0, 0, .35)',
-      '--shadow-lg': '0 16px 48px rgba(0, 0, 0, .5)'
+      '--bg': '#0f1117', '--panel': '#171b24', '--ink': '#f2f4f8', '--ink-2': '#c3c9d4',
+      '--muted': '#8b93a3', '--line': '#242a36', '--line-2': '#303845',
+      '--primary': '#5da2f5', '--primary-2': '#38bdf8', '--primary-3': '#93c5fd', '--primary-soft': '#1a2436',
+      '--accent': '#22d3ee', '--pink': '#f472b6',
+      '--grad': 'linear-gradient(135deg, #3b82f6 0%, #22d3ee 100%)',
+      '--grad-soft': 'linear-gradient(135deg, #182234 0%, #16232c 100%)',
+      '--danger': '#fb7185', '--danger-soft': '#3a2229',
+      '--warn': '#fbbf24', '--warn-soft': '#332a14',
+      '--ok': '#34d399', '--ok-strong': '#6ee7b7', '--ok-soft': '#12332a',
+      '--shadow-sm': '0 1px 2px rgba(0, 0, 0, .4)',
+      '--shadow': '0 6px 20px rgba(0, 0, 0, .45)',
+      '--shadow-lg': '0 16px 48px rgba(0, 0, 0, .55)'
     }
   };
   const NT_WIDTHS = ['1080', '1440', '1720', '2560', 'auto'];
-  const NT_DEFAULT_BG = '#14161f';
+  const NT_DEFAULT_BG = '#0f1117';
 
   function hexLuma(hex) {
     const h = String(hex || '').replace('#', '');
@@ -305,6 +305,17 @@
       if (first) first.click();
     }
   });
+  // 全局快捷键：/ 聚焦搜索（与侧边栏一致）；Esc 清空搜索
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && search) {
+      search = ''; searchInput.value = ''; $('#ntClear').classList.add('hidden');
+      render();
+      return;
+    }
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+    if (e.key === '/') { e.preventDefault(); searchInput.focus(); }
+  });
   $('#ntTags').addEventListener('click', e => {
     const t = e.target.closest('.nt-tag');
     if (!t) return;
@@ -372,19 +383,41 @@
       // 立即刷新
       DATA = await window.BMAnalyzer.analyze();
       render();
-      showToast('已移入回收站（30 天内可在侧边栏「概览」中恢复）');
+      showToast('已移入回收站 · 30 天内可恢复', false, {
+        label: '撤销',
+        onClick: async () => {
+          try {
+            const r = await window.BM.restoreTrashItems([{ id: it.id }]);
+            showToast(r.restored ? '已恢复书签 ✓' : '恢复失败：该记录可能已被永久删除', !r.restored);
+            DATA = await window.BMAnalyzer.analyze();
+            render();
+          } catch (err) {
+            showToast('恢复失败：' + (err.message || err), true);
+          }
+        }
+      });
     } catch (e) {
       showToast('删除失败：' + (e.message || e), true);
     }
   }
 
-  // Toast 简易提示
-  function showToast(msg, danger) {
+  // Toast 简易提示（可附带撤销等动作按钮）
+  function showToast(msg, danger, action) {
     const t = document.createElement('div');
     t.className = 'nt-toast' + (danger ? ' danger' : '');
-    t.textContent = msg;
+    const txt = document.createElement('span');
+    txt.textContent = msg;
+    t.appendChild(txt);
+    if (action && action.label && typeof action.onClick === 'function') {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'nt-toast-act';
+      btn.textContent = action.label;
+      btn.addEventListener('click', () => { t.remove(); action.onClick(); });
+      t.appendChild(btn);
+    }
     document.body.appendChild(t);
-    setTimeout(() => { t.classList.add('nt-toast-out'); setTimeout(() => t.remove(), 220); }, 1800);
+    setTimeout(() => { t.classList.add('nt-toast-out'); setTimeout(() => t.remove(), 220); }, action ? 6000 : 1800);
   }
 
   // Inline 编辑浮层（标题/URL/标签），不离开 New Tab
@@ -459,6 +492,8 @@
 
   // 初始化：加载配置 + 分析书签
   (async function init() {
+    // 版本号：直接读 manifest，保证与实际安装版本一致
+    try { $('#ntVersion').textContent = 'v' + chrome.runtime.getManifest().version; } catch (e) { /* noop */ }
     const tagConfigurationTask = window.BM.initializeSyncedTagConfiguration()
       .then(changed => ({ changed: !!changed, failed: false }))
       .catch(() => ({ changed: false, failed: true }));

@@ -390,6 +390,9 @@ async function loadNativeSyncState(api) {
     ? stored[NATIVE_SYNC_STATE_KEY] : {};
   const state = {
     enabled: stored[NATIVE_SYNC_ENABLED_KEY] === true,
+    // 区分「从未配置」（值不存在）和「用户明确关闭」（值为 false）：
+    // 前者允许同步目录首次到达时自动接管，后者必须保持关闭。
+    everConfigured: stored[NATIVE_SYNC_ENABLED_KEY] !== undefined,
     deviceId: String(raw.deviceId || '').trim() || nativeCreateDeviceId(),
     clock: Math.max(0, Math.floor(Number(raw.clock) || 0)),
     sequence: Math.max(0, Math.floor(Number(raw.sequence) || 0)),
@@ -468,6 +471,13 @@ async function readNativeHeadPayload(children, head) {
 
 async function writeNativeBucket(api, deviceFolder, bucket, payload) {
   const encoded = await encodeNativePayload(payload);
+  // 内容与已发布版本一致时跳过重写：UI 每次标签操作都会触发兜底全量发布，
+  // 不跳过会让所有桶重建分片并在 Chrome 书签同步中放大为大量节点增删。
+  const current = await api.bookmarks.getChildren(deviceFolder.id);
+  const existingHead = findNativeHead(current, bucket);
+  if (existingHead && existingHead.checksum === nativeChecksum(encoded)) {
+    return;
+  }
   const chunks = [];
   for (let index = 0; index < encoded.length; index += NATIVE_SYNC_CHUNK_CHARS) {
     chunks.push(encoded.slice(index, index + NATIVE_SYNC_CHUNK_CHARS));
@@ -480,8 +490,8 @@ async function writeNativeBucket(api, deviceFolder, bucket, payload) {
       title: `${NATIVE_SYNC_PROTOCOL}|S|${bucket}|${generation}|${index}|${chunks.length}|${chunks[index]}`
     });
   }
-  const current = await api.bookmarks.getChildren(deviceFolder.id);
-  const oldHead = findNativeHead(current, bucket);
+  const childrenBeforeWrite = await api.bookmarks.getChildren(deviceFolder.id);
+  const oldHead = findNativeHead(childrenBeforeWrite, bucket);
   const headTitle = `${NATIVE_SYNC_PROTOCOL}|H|${bucket}|${generation}|${chunks.length}|${checksum}`;
   if (oldHead) await api.bookmarks.update(oldHead.node.id, { title: headTitle });
   else await api.bookmarks.create({ parentId: deviceFolder.id, title: headTitle });
@@ -737,6 +747,10 @@ async function hydrateNativeSyncResult(api) {
     return { changed: false, ready: !state.enabled };
   }
   if (!state.enabled) {
+    // 同步目录随 Chrome 书签同步首次到达时自动接管（仅限从未配置过的设备）；
+    // 用户明确关闭过同步时保持关闭，书签事件不能把开关静默重新打开，
+    // 否则「停止读写同步目录」的设置在下一次收藏后就会失效。
+    if (state.everConfigured) return { changed: false, ready: true };
     state.enabled = true;
     await saveNativeSyncState(api, state);
   }

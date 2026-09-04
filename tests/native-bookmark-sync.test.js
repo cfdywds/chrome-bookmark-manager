@@ -399,6 +399,62 @@ describe('原生书签标签同步', () => {
     }
   });
 
+  it('明确关闭同步后，书签事件不会把开关静默重新打开', async () => {
+    vi.useFakeTimers();
+    const source = createHarness(createTree([
+      { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+    ]), { bmTags: { source: ['AI'] }, bmFixedTags: [], bmTagRules: { domain: {}, keyword: {} } });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+      expect(syncRoot(source.tree)).toBeTruthy();
+      await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: false });
+      expect(source.localData.bmNativeTagSyncEnabled).toBe(false);
+      const recordsBefore = clone(source.localData.bmNativeTagSyncRecords);
+
+      // 关闭后目录仍保留，但任何书签事件都不应重新开启同步
+      source.emitBookmarkChanged('source', { title: 'OpenAI' });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(source.localData.bmNativeTagSyncEnabled).toBe(false);
+
+      // 关闭期间本地标签变更只落本地，不写入同步记录
+      await source.send({ type: 'bmTagMutation', changes: { source: ['工具'] }, mode: 'overwrite' });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(source.localData.bmTags).toEqual({ source: ['工具'] });
+      expect(clone(source.localData.bmNativeTagSyncRecords)).toEqual(recordsBefore);
+    } finally {
+      vi.useRealTimers();
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('内容未变化的桶重复发布时不会重建分片', async () => {
+    const source = createHarness(createTree([
+      { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+    ]), { bmTags: { source: ['AI'] }, bmFixedTags: [], bmTagRules: { domain: {}, keyword: {} } });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+      const deviceFolder = syncRoot(source.tree).children.find(node => node.title.startsWith('BMN1|D|'));
+      const childrenBefore = clone(deviceFolder.children);
+      const createCallsBefore = source.chrome.bookmarks.create.mock.calls.length;
+
+      await source.send({ type: 'bmNativeTagSync', action: 'publish', includeConfig: true });
+
+      expect(source.chrome.bookmarks.create.mock.calls.length).toBe(createCallsBefore);
+      expect(syncRoot(source.tree).children.find(node => node.title.startsWith('BMN1|D|')).children)
+        .toEqual(childrenBefore);
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
   it('书签地址修改后的明确标签更新会迁移标签，并为旧地址发布墓碑', async () => {
     vi.useFakeTimers();
     const source = createHarness(createTree([

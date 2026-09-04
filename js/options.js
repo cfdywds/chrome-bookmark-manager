@@ -12,7 +12,7 @@ const ACTIVE_LLM_PROFILE_KEY = 'bmActiveLlmProfileId';
 const NT_APPEARANCE_KEY = 'bmNewtabAppearance';
 const NT_WIDTH_OPTIONS = ['1080', '1440', '1720', '2560', 'auto'];
 const NT_THEME_OPTIONS = ['auto', 'light', 'dark', 'custom'];
-const NT_DEFAULT_BG = '#14161f';
+const NT_DEFAULT_BG = '#0f1117';
 let llmProfiles = [];
 let activeLlmProfileId = '';
 let nextProfileId = 0;
@@ -330,7 +330,7 @@ async function persist() {
   }
   await persistSilent();
   if (permissionError) {
-    setMsg('配置已保存；后台 AI 因未获新域名权限而关闭：' + (permissionError.message || permissionError), 'err', false);
+    setMsg('配置已保存；但新域名还没有授权访问，已暂时关闭「后台 AI 补充标签」：' + (permissionError.message || permissionError), 'err', false);
   } else {
     setMsg('✓ 已自动保存', 'ok');
   }
@@ -352,7 +352,7 @@ async function persistFixedTags() {
   const max = (typeof BM !== 'undefined' && BM.MAX_FIXED_TAGS) || 50;
   try {
     await BM.saveSyncedTagConfiguration(tags, rules);
-    setFtMsg(`✓ 已保存 ${tags.length} 个标签${tags.length > max ? `（超出 ${max}，AI 打标仅取前 ${max}）` : ''}`, 'ok');
+    setFtMsg(`✓ 已保存 ${tags.length} 个标签${tags.length > max ? `（超出上限 ${max}，超出部分不会参与 AI 打标）` : ''}`, 'ok');
   } catch (e) {
     setFtMsg('保存失败：' + (e.message || e), 'err');
   }
@@ -473,6 +473,7 @@ function fillTagRules(rules) {
 
 async function load() {
   try {
+    try { $('#optVersion').textContent = 'v' + chrome.runtime.getManifest().version; } catch (e) { /* noop */ }
     await BM.migrateStorage();
     try { await BM.initializeSyncedTagConfiguration(); } catch (e) { /* 保留本地标签配置 */ }
     const r = await chrome.storage.local.get([
@@ -516,7 +517,7 @@ async function persistAutoAiTag() {
     const enabled = $('#setAutoAiTag').checked;
     if (enabled) {
       const cfg = formSettings();
-      if (!cfg.baseUrl || !cfg.apiKey || !cfg.model) throw new Error('请先填写并保存 LLM 配置');
+      if (!cfg.baseUrl || !cfg.apiKey || !cfg.model) throw new Error('请先填好 AI 服务配置（接口地址、API Key、模型名）并保存');
       await BM.requestLlmHostPermission(cfg.baseUrl);
     }
     await chrome.storage.local.set({ bmAutoAiTag: enabled });
@@ -535,7 +536,7 @@ async function persistTagSync() {
     await BM.setTagSyncEnabled(on);
     const msg = $('#tagSyncMsg');
     if (on) {
-      msg.textContent = '已开启 · 已写入原生书签同步目录';
+      msg.textContent = '已开启：已创建同步目录，标签将随 Chrome 书签同步';
       msg.className = 'settings-msg ok';
       try {
         await BM.initializeSyncedTagConfiguration();
@@ -547,7 +548,7 @@ async function persistTagSync() {
         msg.className = 'settings-msg err';
       }
     } else {
-      msg.textContent = '已关闭 · 停止读写同步目录（已有数据保留）';
+      msg.textContent = '已关闭：不再读写同步目录；已有数据保留，随时可重新开启';
       msg.className = 'settings-msg';
     }
   } catch (e) {
@@ -614,7 +615,7 @@ async function testConnection() {
     model: $('#setModel').value.trim()
   };
   if (!cfg.baseUrl || !cfg.apiKey || !cfg.model) {
-    setMsg('请先填完三项再测试', 'err');
+    setMsg('请先填好接口地址、API Key 和模型名再测试', 'err');
     return;
   }
   const btn = $('#settingsTest');

@@ -53,7 +53,7 @@
 }
 .nt-search:focus-within {
   border-color: var(--primary);
-  box-shadow: 0 0 0 4px rgba(109, 94, 245, .15), var(--shadow);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, .15), var(--shadow);
 }
 .nt-search-ico { width: 20px; height: 20px; color: var(--muted); flex-shrink: 0; }
 .nt-search input {
@@ -66,6 +66,7 @@
   font-size: 14px; cursor: pointer; padding: 4px 8px; border-radius: 8px;
 }
 .nt-clear:hover { background: var(--line); color: var(--ink); }
+.nt-clear:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 /* ---- 标签筛选条 ---- */
 .nt-tags {
@@ -81,9 +82,10 @@
 }
 .nt-tag .cnt { font-size: 11px; opacity: .7; }
 .nt-tag:hover { border-color: var(--primary); color: var(--primary); transform: translateY(-1px); }
+.nt-tag:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .nt-tag.active {
   background: var(--grad); color: #fff; border-color: transparent;
-  box-shadow: 0 3px 10px rgba(109, 94, 245, .3);
+  box-shadow: 0 3px 10px rgba(37, 99, 235, .3);
 }
 .nt-tag.active .cnt { opacity: .85; }
 
@@ -195,20 +197,18 @@
 .nt-empty-title { font-size: 16px; font-weight: 700; color: var(--ink-2); margin-bottom: 6px; }
 .nt-empty-desc { font-size: 13px; }
 
-/* ===== 卡片操作抽屉（hover / focus 展开）===== */
+/* ===== 卡片操作（hover / focus 淡入的柔和纱罩）===== */
+/* 从卡片右缘向左渐隐为面板色，无描边无投影，避免生硬的“盖板”感 */
 .nt-actions {
-  position: absolute; inset: 1px 1px 1px 74px;
-  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
-  padding: 0 12px;
+  position: absolute; inset: 1px 1px 1px 32%;
+  display: flex; align-items: center; justify-content: flex-end; gap: 6px;
+  padding: 0 10px;
   border-radius: 0 11px 11px 0;
-  background: rgba(231, 234, 242, .38);
-  backdrop-filter: blur(6px);
-  border-left: 1px solid var(--line-2);
-  box-shadow: -8px 0 18px rgba(52, 58, 93, .1);
+  background: linear-gradient(90deg, transparent, var(--panel) 42%);
   opacity: 0; visibility: hidden;
-  transform: translateX(100%);
+  transform: translateX(10px);
   pointer-events: none;
-  transition: opacity .18s, visibility .18s, transform .18s;
+  transition: opacity .16s, visibility .16s, transform .16s;
   z-index: 2;
 }
 .nt-card-wrap:hover .nt-actions,
@@ -218,22 +218,22 @@
 }
 .nt-card-wrap.nt-card-opening .nt-actions {
   opacity: 0; visibility: hidden;
-  transform: translateX(100%);
+  transform: translateX(10px);
 }
 .nt-action {
   box-sizing: border-box;
-  border: 1px solid var(--line-2);
+  border: 1px solid var(--line);
   background: var(--panel);
   color: var(--ink-2);
-  flex: 0 0 36px;
-  width: 36px; height: 36px; padding: 8px;
-  border-radius: 7px; cursor: pointer;
+  flex: 0 0 34px;
+  width: 34px; height: 34px; padding: 8px;
+  border-radius: 9px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 2px 8px rgba(52, 58, 93, .1);
+  box-shadow: 0 1px 6px rgba(15, 23, 42, .1);
   pointer-events: auto;
   transition: background .12s, color .12s, transform .12s;
 }
-.nt-action:hover { background: var(--primary-soft, #eef0ff); color: var(--primary); transform: translateY(-1px); }
+.nt-action:hover { background: var(--primary-soft); color: var(--primary); transform: translateY(-1px); }
 .nt-action.danger:hover { background: var(--danger-soft, #ffe4e9); color: var(--danger); }
 .nt-action.is-copied { background: var(--ok-soft, #e4f8ee); border-color: #78cda2; color: #047857; }
 .nt-action.is-copy-error { background: var(--danger-soft, #ffe4e9); color: var(--danger, #bf3350); }
@@ -241,13 +241,9 @@
 .nt-action svg { width: 18px; height: 18px; }
 
 @media (prefers-color-scheme: dark) {
-  /* 仅「跟随系统」时命中；设置了强制主题（data-nt-theme）时交由下方两条规则接管 */
-  :root:not([data-nt-theme]) .nt-actions { background: rgba(35, 38, 51, .38); }
+  /* 仅「跟随系统」时命中；纱罩颜色由 var(--panel) 自适应，无需单独覆盖 */
   :root:not([data-nt-theme]) .nt-action.is-copied { border-color: var(--ok); color: var(--ok); }
 }
-/* 强制主题（设置页「新标签页外观」）：卡片操作抽屉遮罩跟随所选主题，不随系统偏好漂移 */
-html[data-nt-theme='light'] .nt-actions { background: rgba(231, 234, 242, .38); }
-html[data-nt-theme='dark']  .nt-actions { background: rgba(35, 38, 51, .38); }
 
 /* ===== Inline 编辑浮层 ===== */
 .nt-edit {
@@ -279,6 +275,7 @@ html[data-nt-theme='dark']  .nt-actions { background: rgba(35, 38, 51, .38); }
 .nt-edit-btn.primary { background: var(--grad); color: #fff; }
 .nt-edit-btn.ghost { background: transparent; color: var(--muted); }
 .nt-edit-btn.ghost:hover { background: var(--line); }
+.nt-edit-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 /* ===== Toast ===== */
 .nt-toast {
@@ -289,10 +286,29 @@ html[data-nt-theme='dark']  .nt-actions { background: rgba(35, 38, 51, .38); }
   font-size: 12px; font-weight: 500;
   z-index: 999; backdrop-filter: blur(8px);
   animation: ntToastIn .22s ease;
+  display: flex; align-items: center; gap: 10px;
 }
 .nt-toast.danger { background: rgba(244, 63, 94, .92); }
+.nt-toast-act {
+  border: none; cursor: pointer;
+  background: rgba(255, 255, 255, .16); color: #fff;
+  font-size: 12px; font-weight: 600; padding: 3px 10px;
+  border-radius: 999px; font-family: inherit;
+}
+.nt-toast-act:hover { background: rgba(255, 255, 255, .3); }
+.nt-toast-act:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .nt-toast-out { opacity: 0; transform: translateX(-50%) translateY(8px); transition: all .22s; }
 @keyframes ntToastIn { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%); } }
+
+/* 减弱动态效果偏好：去掉位移/过渡，仅保留状态变化本身 */
+@media (prefers-reduced-motion: reduce) {
+  .nt-card-wrap, .nt-card, .nt-actions, .nt-action, .nt-tag,
+  .nt-fav-img, .nt-toast, .nt-toast-act, .nt-edit-btn {
+    transition: none !important; animation: none !important;
+  }
+  .nt-card-wrap:hover, .nt-card-wrap:focus-within,
+  .nt-tag:hover, .nt-action:hover { transform: none; }
+}
 
 @media (max-width: 560px) {
   .nt-wrap { padding: 18px 14px 50px; }
@@ -316,3 +332,9 @@ html[data-nt-theme='dark']  .nt-actions { background: rgba(35, 38, 51, .38); }
     padding: 8px 12px;
   }
 }
+
+/* 品牌位使用扩展真实图标（与工具栏一致） */
+.nt-brand img.brand-icon { display: block; border-radius: 6px; }
+
+/* 品牌旁的版本号 */
+.nt-version { font-size: 11px; font-weight: 500; color: var(--muted); }

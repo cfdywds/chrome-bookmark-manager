@@ -20,9 +20,10 @@ describe('新标签页搜索', () => {
   it('侧边栏和新标签页都提供开源仓库入口', () => {
     const repositoryUrl = 'https://github.com/cfdywds/chrome-bookmark-manager';
 
+    // 侧边栏入口在操作指南抽屉底部（顶栏按钮精简后迁入）
     expect(popupHtml).toContain(`href="${repositoryUrl}"`);
     expect(popupHtml).toContain('rel="noopener noreferrer"');
-    expect(popupHtml).toContain('aria-label="查看开源仓库"');
+    expect(popupHtml).toContain('GitHub 开源仓库');
     expect(newtabHtml).toContain(`href="${repositoryUrl}"`);
     expect(newtabHtml).toContain('rel="noopener noreferrer"');
     expect(newtabHtml).toContain('aria-label="查看开源仓库"');
@@ -172,9 +173,10 @@ describe('新标签页搜索', () => {
     expect(newtabCss).toContain('outline: 2px solid var(--primary);');
   });
 
-  it('抽屉使用更透明的灰色背景，并为深色主题保留对应层次', () => {
-    expect(newtabCss).toContain('background: rgba(231, 234, 242, .38);');
-    expect(newtabCss).toContain('background: rgba(35, 38, 51, .38);');
+  it('卡片悬浮操作使用向面板色渐隐的纱罩，无描边盖板', () => {
+    expect(newtabCss).toContain('background: linear-gradient(90deg, transparent, var(--panel) 42%);');
+    expect(newtabCss).not.toMatch(/\.nt-actions[^}]*border-left/);
+    expect(newtabCss).not.toMatch(/\.nt-actions[^}]*backdrop-filter/);
   });
 
   it('窄屏保留仓库图标，并隐藏非关键的书签计数', () => {

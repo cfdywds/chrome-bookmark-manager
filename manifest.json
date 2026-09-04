@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "书签管家 · Bookmark Manager",
+  "name": "Bookmark Manager",
   "version": "1.0.1",
   "description": "书签管家：多标签管理、重复与空文件夹清理、AI 隐私保护、回收站和备份。数据默认本地保存，可选通过 Chrome 书签同步标签。",
   "permissions": [
@@ -22,7 +22,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "书签管家",
+    "default_title": "Bookmark Manager",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png"

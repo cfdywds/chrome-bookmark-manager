@@ -206,7 +206,7 @@ async function applyCustomRules(trigger) {
   try {
     await Promise.all([BM.loadTags(), BM.loadFixedTags(), BM.loadTagRules()]);
     if (!getCustomRuleCount()) {
-      toast('请先在设置中配置至少一条自定义规则', 'warn');
+      toast('还没有自定义规则：到「设置 → 标签体系」添加一条（如 github=代码），就能一键批量应用', 'warn');
       return;
     }
 
@@ -217,7 +217,7 @@ async function applyCustomRules(trigger) {
     };
     const matched = previews.append.matched;
     if (!matched) {
-      toast('没有书签命中当前自定义规则', 'warn');
+      toast('当前规则没有匹配到任何书签——检查关键字是否出现在网址、域名或标题里', 'warn');
       return;
     }
     if (trigger) trigger.textContent = '选择策略…';
@@ -235,7 +235,7 @@ async function applyCustomRules(trigger) {
 
     const result = collectCustomRuleApplications(mode);
     if (!result.changed) {
-      toast('没有需要更新的标签', 'ok');
+      toast('命中的书签都已是目标状态，无需更改 ✓', 'ok');
       return;
     }
     const saved = await BM.setTagsBatch(result.changes);
@@ -279,19 +279,35 @@ function confirmDialog(opts) {
       fourth.classList.add('hidden');
     }
     wrap.classList.remove('hidden');
+    const onWrapClick = e => { if (e.target === wrap) done(false); };
     const done = v => {
       wrap.classList.add('hidden');
-      yes.onclick = no.onclick = wrap.onclick = third.onclick = fourth.onclick = null;
+      yes.onclick = no.onclick = third.onclick = fourth.onclick = null;
+      wrap.removeEventListener('click', onWrapClick);
       document.removeEventListener('keydown', onKey);
       resolve(v);
     };
     const no = $('#confirmNo');
-    const onKey = e => { if (e.key === 'Escape') done(false); if (e.key === 'Enter') done(true); };
+    // Enter 仅在焦点不在按钮上时视为确认；焦点在「取消」等按钮时应由按钮自身的点击语义生效。
+    // 弹层内 Tab 循环（与抽屉焦点陷阱一致），避免焦点跑到背景内容。
+    const trapTab = e => {
+      if (e.key !== 'Tab') return;
+      const list = [...wrap.querySelectorAll('button, input')]
+        .filter(x => !x.classList.contains('hidden') && !x.disabled && x.offsetParent !== null);
+      if (!list.length) return;
+      if (e.shiftKey && document.activeElement === list[0]) { e.preventDefault(); list[list.length - 1].focus(); }
+      else if (!e.shiftKey && document.activeElement === list[list.length - 1]) { e.preventDefault(); list[0].focus(); }
+    };
+    const onKey = e => {
+      if (e.key === 'Escape') { done(false); return; }
+      if (e.key === 'Enter' && !(e.target.closest && e.target.closest('button'))) { done(true); return; }
+      trapTab(e);
+    };
     yes.onclick = () => done(true);
     no.onclick = () => done(false);
     if (opts.thirdText) third.onclick = () => done('third');
     if (opts.fourthText) fourth.onclick = () => done('fourth');
-    wrap.addEventListener('click', e => { if (e.target === wrap) done(false); });
+    wrap.addEventListener('click', onWrapClick);
     document.addEventListener('keydown', onKey);
     yes.focus();
   });
@@ -310,19 +326,22 @@ function promptDialog(opts) {
     wrap.classList.remove('hidden');
     const yes = $('#promptYes');
     const no = $('#promptNo');
+    const onWrapClick = e => { if (e.target === wrap) done(null); };
     const done = v => {
       wrap.classList.add('hidden');
-      yes.onclick = no.onclick = wrap.onclick = null;
+      yes.onclick = no.onclick = null;
+      wrap.removeEventListener('click', onWrapClick);
       document.removeEventListener('keydown', onKey);
       resolve(v);
     };
     const onKey = e => {
-      if (e.key === 'Escape') done(null);
-      if (e.key === 'Enter') done(input.value.trim() || null);
+      if (e.key === 'Escape') { done(null); return; }
+      if (e.key === 'Enter' && !(e.target.closest && e.target.closest('button'))) { done(input.value.trim() || null); return; }
+      trapTab(e);
     };
     yes.onclick = () => done(input.value.trim() || null);
     no.onclick = () => done(null);
-    wrap.addEventListener('click', e => { if (e.target === wrap) done(null); });
+    wrap.addEventListener('click', onWrapClick);
     document.addEventListener('keydown', onKey);
     input.focus();
     input.select();
@@ -540,7 +559,7 @@ async function undoDelete(items) {
   try {
     const result = await BM.restoreTrashItems(items);
     if (result.restored) toast('已撤销删除 ' + result.restored + ' 项 ✓', 'ok');
-    if (result.failed.length) toast('有 ' + result.failed.length + ' 项未能撤销', 'warn');
+    if (result.failed.length) toast('有 ' + result.failed.length + ' 项没能自动恢复，可到「概览 → 回收站」重试', 'warn');
   } catch (e) {
     console.warn('[书签管家] 撤销失败', e);
     toast('撤销失败：' + (e.message || e), 'danger');
@@ -553,7 +572,7 @@ function openBookmarkUrl(rawUrl, active) {
   try {
     chrome.tabs.create({ url: BM.normalizeHttpUrl(rawUrl).href, active: !!active });
   } catch (e) {
-    toast('仅支持打开 http 或 https 网址', 'warn');
+    toast('这个链接不是普通网页（http/https），无法打开', 'warn');
   }
 }
 
@@ -696,7 +715,7 @@ function renderOverview() {
   const hero = $('#heroSearch');
   if (hero) hero.addEventListener('input', () => {
     const q = hero.value.trim();
-    if (!q) return;
+    if (!q) { clearSearch(); return; }
     $('#searchInput').value = q;
     SEARCH = q.toLowerCase();
     $('#searchClear').classList.remove('hidden');
@@ -1063,7 +1082,7 @@ function renderTrash(container) {
 async function doRestoreTrash(id) {
   if (trashRestoreInProgress) return;
   const t = (DATA.trash || []).find(x => x.id === id);
-  if (!t) { toast('该记录不存在', 'warn'); return; }
+  if (!t) { toast('这条回收站记录已不存在，重新扫描后再试', 'warn'); return; }
   trashRestoreInProgress = true;
   try {
     const r = await BM.restoreTrashItem(t);
@@ -1256,7 +1275,7 @@ function buildDeletePlan(kind) {
     }));
   }
   groups = groups.filter(g => g.items.length);
-  if (!groups.length) { toast('没有可一键清理的项', 'warn'); return; }
+  if (!groups.length) { toast('当前没有可一键清理的重复书签', 'warn'); return; }
   PLAN = { type: 'delete', groups, prefix: '' };
   planMode = true;
   render(currentTab);
@@ -1328,7 +1347,7 @@ async function applyPlan() {
   try {
     const ids = [];
     PLAN.groups.forEach(g => g.items.forEach(i => { if (i.included) ids.push(i.id); }));
-    if (!ids.length) { toast('没有要删除的项', 'warn'); return; }
+    if (!ids.length) { toast('还没有勾选要删除的项', 'warn'); return; }
     const ok = await confirmDialog({
       title: '删除选中的 ' + ids.length + ' 个书签？',
       message: '每组将保留 1 个。删除后 30 天内可在「回收站」恢复；本次产生的空文件夹将同步清理（文件夹不可恢复）。',
@@ -1366,7 +1385,7 @@ async function unifyExactTags() {
   try { await BM.loadTags(); await BM.loadFixedTags(); } catch (e) { /* noop */ }
   const currentMap = BM.getTags() || {};
   const groups = getSameUrlGroups();
-  if (!groups.length) { toast('没有同址多书签需要统一', 'ok'); return; }
+  if (!groups.length) { toast('当前没有同址（网址相同）的多个书签，无需统一', 'ok'); return; }
   // 找出确实存在不一致的组（任一组的标签集合彼此不同）。
   const tagSig = tags => [...(tags || [])].sort().join('\u0000');
   const diverged = groups.filter(items => {
@@ -1425,7 +1444,7 @@ function updateBulk() {
 
 // ---------- 书签备份 / 恢复（JSON 导出 / 导入） ----------
 async function exportBackup() {
-  if (!DATA) { toast('暂无数据，请先扫描', 'warn'); return; }
+  if (!DATA) { toast('书签还在扫描中，完成后就能导出', 'warn'); return; }
   try {
     const r = await BM.exportBookmarksJSON();
     const blob = new Blob([r.json], { type: 'application/json' });
@@ -1926,16 +1945,8 @@ async function init() {
 
   // 底部按钮
   $('#rescanBtn').addEventListener('click', () => refresh(true));
-  $('#rescanMini').addEventListener('click', () => refresh(true));
-  // 收起侧边栏（关闭面板）
-  $('#closePanelBtn').addEventListener('click', async () => {
-    try {
-      const win = await chrome.windows.getCurrent();
-      if (chrome.sidePanel && chrome.sidePanel.close) {
-        await chrome.sidePanel.close({ windowId: win.id });
-      }
-    } catch (e) { /* 无 close 或失败 */ }
-  });
+  // 版本号在底部栏左侧；直接读 manifest，保证与实际安装版本一致
+  try { $('#appVersion').textContent = 'v' + chrome.runtime.getManifest().version; } catch (e) { /* noop */ }
 
   // ---------- 键盘快捷键：/ 搜索、? 帮助、Esc 关抽屉/退方案、Ctrl+K 搜索、j/k 导航 ----------
   document.addEventListener('keydown', e => {
@@ -2134,7 +2145,7 @@ async function openAddDrawerForCurrentTab() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.url || !/^https?:/i.test(tab.url)) {
-      toast('当前页面不支持保存为书签', 'warn');
+      toast('当前页不是普通网页（比如浏览器设置页），无法收藏', 'warn');
       openAddDrawer(); // 空表单兜底
       return;
     }
@@ -2219,19 +2230,19 @@ async function aiTagSuggest() {
   try {
     await settingsReady;
     if (!SETTINGS.apiKey || !SETTINGS.baseUrl || !SETTINGS.model) {
-      setAddMsg('未配置 LLM，请先到 ⚙️ 设置', 'err');
+      setAddMsg('还没有配置 AI 服务，先到设置页填好接口地址、API Key 和模型名', 'err');
       try { chrome.runtime.openOptionsPage(); } catch (e) { /* noop */ }
       return;
     }
     if (!await BM.hasLlmHostPermission(SETTINGS.baseUrl)) {
-      setAddMsg('请先在 ⚙️ 设置中点击“保存配置”并授予该 LLM 服务访问权限', 'err');
+      setAddMsg('需要授权访问 AI 服务域名：到设置页点一次「保存配置」并在弹窗中允许', 'err');
       try { chrome.runtime.openOptionsPage(); } catch (e) { /* noop */ }
       return;
     }
     const safeUrl = BM.normalizeHttpUrl(url).href;
     const meta = BM.getBookmarkMetadata(safeUrl, title || safeUrl);
     if (meta.sensitive.some(item => item.sev === 'high')) {
-      setAddMsg('该书签触发 AI 隐私保护，不会发送给 AI，请手动填写标签', 'warn');
+      setAddMsg('这个书签涉及隐私（登录 / 金融等），已阻止发送给 AI，请手动填写标签', 'warn');
       return;
     }
     btn.textContent = '打标中…';
@@ -2316,7 +2327,7 @@ async function saveAdd() {
     }
     const tree = await chrome.bookmarks.getTree();
     const bar = tree[0].children && tree[0].children[0];
-    if (!bar) { setAddMsg('未找到书签栏根目录', 'err'); return; }
+    if (!bar) { setAddMsg('没有找到书签栏，无法保存书签（请检查浏览器的书签功能）', 'err'); return; }
     // 标签兜底：用户没填 → 自动套用本地规则建议（可保存后编辑修改）
     let finalTags = tags;
     if (!finalTags.length) {
@@ -2387,7 +2398,7 @@ async function aiTagAll(force, resumeItems) {
   const targets = isResume ? resumeItems : getAiTagTargets(force);
   if (!targets.length) { toast(isResume || force ? '没有待处理书签' : '所有书签都已打标 ✓', 'ok'); return; }
   if (!SETTINGS.apiKey || !SETTINGS.baseUrl || !SETTINGS.model) {
-    toast('请先在 ⚙️ 设置中配置 LLM API', 'warn');
+    toast('还没有配置 AI 服务：在设置页填好接口地址、API Key 和模型名即可开始', 'warn');
     try { chrome.runtime.openOptionsPage(); } catch (e) { /* noop */ }
     return;
   }
@@ -2411,7 +2422,7 @@ async function aiTagAll(force, resumeItems) {
   const unsupportedTargets = targets.filter(it => !BM.isHttpUrl(it.url));
   const batch = targets.filter(it => !protectedTargets.includes(it) && !unsupportedTargets.includes(it));
   if (!batch.length) {
-    toast('没有可发送给 AI 的可处理 HTTP(S) 书签', 'warn');
+    toast('这些书签都不适合发给 AI（仅支持普通网页；登录、银行等敏感站点已自动保护）', 'warn');
     return;
   }
 
@@ -2626,10 +2637,10 @@ async function createTag() {
   const name = await promptDialog({ title: '➕ 新建标签', message: '输入新标签名（将加入固定标签池，AI 打标可选用）：', placeholder: '如：效率' });
   if (!name) return;
   const clean = BM.normalizeTag(name);
-  if (!clean) { toast('标签名无效', 'warn'); return; }
+  if (!clean) { toast('标签名不能为空（去掉首尾空格后至少留 1 个字）', 'warn'); return; }
   try { await BM.loadFixedTags(); } catch (e) { /* noop */ }
   const pool = [...(BM.getFixedTags() || [])];
-  if (pool.includes(clean)) { toast('标签已存在', 'warn'); return; }
+  if (pool.includes(clean)) { toast('#' + clean + ' 已经在标签池里了', 'warn'); return; }
   const max = BM.MAX_FIXED_TAGS || 50;
   if (pool.length >= max) { toast('标签池已达上限（' + max + '），请先删除或重命名', 'warn'); return; }
   pool.push(clean);
@@ -2666,13 +2677,13 @@ async function renameTag(oldName) {
   });
   if (!newName || newName === oldName) return;
   const clean = BM.normalizeTag(newName);
-  if (!clean) { toast('标签名无效', 'warn'); return; }
+  if (!clean) { toast('新标签名不能为空', 'warn'); return; }
   // 1. 改固定池
   try { await BM.loadFixedTags(); } catch (e) { /* noop */ }
   const pool = [...(BM.getFixedTags() || [])];
   const idx = pool.indexOf(oldName);
   if (idx >= 0) {
-    if (pool.includes(clean)) { toast('目标标签已存在', 'warn'); return; }
+    if (pool.includes(clean)) { toast('#' + clean + ' 已存在，换一个名字吧', 'warn'); return; }
     pool[idx] = clean;
     try {
       await BM.loadTagRules();
@@ -2744,10 +2755,10 @@ function openTagManager() {
 // 批量打标签：选中书签 → 追加指定标签（去重、限数）
 async function bulkTagSelected() {
   const sel = getSelectedIds();
-  if (!sel.length) { toast('请先勾选书签', 'warn'); return; }
+  if (!sel.length) { toast('先在列表里勾选要打标签的书签', 'warn'); return; }
   const input = await promptDialog({
     title: '🏷 批量打标签',
-    message: '为选中的 <b>' + sel.length + '</b> 个书签追加标签（逗号分隔，已存在的不会重复）：',
+    message: '为选中的 ' + sel.length + ' 个书签追加标签（逗号分隔，已存在的不会重复）：',
     placeholder: '开发, 工作'
   });
   if (!input) return;
@@ -2779,7 +2790,7 @@ async function migrateTags() {
   try { await BM.loadTags(); } catch (e) { /* noop */ }
   try { await BM.loadFixedTags(); } catch (e) { /* noop */ }
   const map = BM.getTags();
-  if (!map || !Object.keys(map).length) { toast('没有标签数据', 'warn'); return; }
+  if (!map || !Object.keys(map).length) { toast('还没有任何标签记录，不需要收敛', 'warn'); return; }
   const ids = Object.keys(map);
   const activeIds = ids.filter(id => !!getItemById(id));
   const staleIds = ids.filter(id => !getItemById(id));
