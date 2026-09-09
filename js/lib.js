@@ -787,10 +787,16 @@
   const NATIVE_SYNC_ENABLED_KEY = 'bmNativeTagSyncEnabled';
   const NATIVE_SYNC_REQUEST_KEY = 'bmNativeTagSyncRequest';
   const NATIVE_SYNC_COMPLETED_REQUEST_KEY = 'bmNativeTagSyncCompletedRequest';
+  const NATIVE_SYNC_CONFIG_REQUEST_KEY = 'bmNativeTagSyncConfigRequest';
   const NATIVE_SYNC_MESSAGE = 'bmNativeTagSync';
   const NATIVE_SYNC_WAKE_ACTION = 'wakePendingSetting';
   const NATIVE_SYNC_SETTING_ALARM = 'bm-native-sync-setting';
+  const NATIVE_SYNC_SETTING_RETRY_PERIOD_MINUTES = 0.5;
   const NATIVE_SYNC_ROOT_TITLE = '书签管家同步数据（请勿修改）';
+
+  function nativeSyncSettingAlarmName(requestId) {
+    return NATIVE_SYNC_SETTING_ALARM + '-' + requestId;
+  }
 
   function isNativeSyncRoot(node) {
     return !!node && !node.url && node.title === NATIVE_SYNC_ROOT_TITLE;
@@ -816,6 +822,7 @@
     /^A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received\.?$/i;
   let nativeHydrationRequest = null;
   let nativeSyncSettingIntent = 0;
+  let nativeConfigWriteIntent = 0;
 
   function isClosedNativeSyncChannel(error) {
     return !(error instanceof NativeSyncResponseError) &&
@@ -847,7 +854,10 @@
     }
   }
 
-  function requestNativeTagHydration() {
+  function requestNativeTagHydration(configSnapshot) {
+    // 设置页的快照请求不能与无快照的普通水合共用；后台要用它识别
+    // 水合期间刚被用户保存的标签配置。
+    if (configSnapshot) return requestNativeTagSync('hydrate', { configSnapshot });
     if (nativeHydrationRequest) return nativeHydrationRequest;
     const request = requestNativeTagSync('hydrate');
     nativeHydrationRequest = request;
@@ -865,19 +875,34 @@
   async function saveSyncedTagConfiguration(fixedTags, tagRules) {
     const normalized = normalizeConfigFixedTags(fixedTags);
     if (!normalized) throw new Error('固定标签格式无效');
+    const requestId = globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function'
+      ? 'config-' + globalThis.crypto.randomUUID()
+      : 'config-' + Date.now().toString(36) + '-' + (++nativeConfigWriteIntent).toString(36);
+    const rules = normalizeTagRules(tagRules);
+    // 只先持久化请求，实际配置写入与远端水合在后台同一队列中串行执行。
+    // 这样保存发生在水合期间时，用户值必定在该次水合之后落盘。
     await chrome.storage.local.set({
-      [FIXED_TAGS_KEY]: normalized,
-      [TAG_RULES_KEY]: normalizeTagRules(tagRules)
+      [NATIVE_SYNC_CONFIG_REQUEST_KEY]: {
+        id: requestId,
+        fixedTags: normalized,
+        tagRules: rules
+      }
     });
     invalidateFixedTags();
     invalidateTagRules();
+    try {
+      await requestNativeTagSync('saveConfig', { id: requestId });
+    } catch (e) {
+      // 请求已经持久化；MV3 消息通道在重载时关闭也会由 storage 事件或下次启动补跑。
+      if (!isClosedNativeSyncChannel(e)) throw e;
+    }
     return true;
   }
 
-  async function initializeSyncedTagConfiguration() {
+  async function initializeSyncedTagConfiguration(configSnapshot) {
     try {
       await clearClosedNativeSyncStatus();
-      const result = await requestNativeTagHydration();
+      const result = await requestNativeTagHydration(configSnapshot);
       if (result.changed) {
         invalidateFixedTags();
         invalidateTagRules();
@@ -942,7 +967,25 @@
     wakePendingNativeSyncSetting();
     try {
       if (chrome.alarms && typeof chrome.alarms.create === 'function') {
-        await chrome.alarms.create(NATIVE_SYNC_SETTING_ALARM, { when: Date.now() + 100 });
+        // 单次 alarm 触发时若 Worker 队列仍繁忙会被 Chrome 删除；保留短周期兜底，
+        // 直到后台明确完成这次请求后才清理。
+        await chrome.alarms.create(nativeSyncSettingAlarmName(requestId), {
+          when: Date.now() + 100,
+          periodInMinutes: NATIVE_SYNC_SETTING_RETRY_PERIOD_MINUTES
+        });
+        // storage.onChanged 可能在当前页面创建闹钟前已完成任务；只清理由该请求创建的
+        // 闹钟，避免它之后每 30 秒无意义地唤醒 Service Worker。
+        if (typeof chrome.alarms.clear === 'function') {
+          const stored = await chrome.storage.local.get([
+            NATIVE_SYNC_REQUEST_KEY,
+            NATIVE_SYNC_COMPLETED_REQUEST_KEY
+          ]);
+          const request = stored[NATIVE_SYNC_REQUEST_KEY];
+          if (!request || request.id !== requestId ||
+            stored[NATIVE_SYNC_COMPLETED_REQUEST_KEY] === requestId) {
+            await chrome.alarms.clear(nativeSyncSettingAlarmName(requestId));
+          }
+        }
       }
     } catch (e) { /* storage 事件和 Service Worker 启动恢复仍会处理该持久化请求 */ }
     return target;

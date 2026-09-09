@@ -24,6 +24,9 @@ let completedTagSyncRequestId = '';
 let pendingTagSyncRequestId = '';
 let pendingTagSyncTarget = true;
 let tagSyncStatus = null;
+let tagSyncEnabledVersion = 0;
+let tagConfigurationEditVersion = 0;
+let pendingTagConfigurationSaveCount = 0;
 
 function setMsg(text, cls, autohide) {
   const el = $('#settingsMsg');
@@ -123,7 +126,7 @@ function renderTagSyncStatus(status) {
       'checking-remote-data': '同步目录已发现，正在读取已有数据',
       'preparing-local-data': '同步目录已创建，正在整理标签数据',
       'writing-sync-data': '正在写入同步数据',
-      'waiting-for-data': '本机同步目录已就绪，等待其他设备数据'
+      'waiting-for-data': '同步目录正在等待设备写入标签数据'
     };
     const step = Number(status && status.step) || fallbackStep;
     const total = Number(status && status.totalSteps) || 5;
@@ -158,9 +161,10 @@ function renderTagSyncStatus(status) {
   if (status && status.waitingForData) {
     const count = Number(status.waitingDeviceCount) || 0;
     msg.textContent = count
-      ? '本机同步目录已就绪，正在等待 ' + count + ' 台其他设备数据'
-      : '本机同步目录已就绪，正在等待其他设备数据';
-    statusProgress(4, msg.textContent);
+      ? '同步目录正在等待 ' + count + ' 台设备写入标签数据'
+      : '同步目录正在等待设备写入标签数据';
+    // 空设备目录尚无可读取的数据，不能伪装成同步已完成。
+    clearProgress();
     msg.className = 'settings-msg';
     return;
   }
@@ -181,7 +185,7 @@ function renderTagSyncStatus(status) {
     return;
   }
   if (status && status.lastSuccessAt) {
-    setProgress(Number(status.step) || 5, Number(status.totalSteps) || 5, '同步目录和本机标签数据已就绪');
+    clearProgress();
     msg.textContent = '上次同步成功：' + new Date(status.lastSuccessAt).toLocaleString();
     msg.className = 'settings-msg ok';
     return;
@@ -448,11 +452,15 @@ async function persistFixedTags() {
   const tags = parseFixedTags($('#setFixedTags').value);
   const rules = parseTagRules($('#setDomainTagRules').value, $('#setKeywordTagRules').value);
   const max = (typeof BM !== 'undefined' && BM.MAX_FIXED_TAGS) || 50;
+  tagConfigurationEditVersion++;
+  pendingTagConfigurationSaveCount++;
   try {
     await BM.saveSyncedTagConfiguration(tags, rules);
     setFtMsg(`✓ 已保存 ${tags.length} 个标签${tags.length > max ? `（超出上限 ${max}，超出部分不会参与 AI 打标）` : ''}`, 'ok');
   } catch (e) {
     setFtMsg('保存失败：' + (e.message || e), 'err');
+  } finally {
+    pendingTagConfigurationSaveCount--;
   }
 }
 
@@ -460,11 +468,15 @@ async function persistTagRules() {
   const tags = parseFixedTags($('#setFixedTags').value);
   const rules = parseTagRules($('#setDomainTagRules').value, $('#setKeywordTagRules').value);
   const count = Object.keys(rules.domain).length + Object.keys(rules.keyword).length;
+  tagConfigurationEditVersion++;
+  pendingTagConfigurationSaveCount++;
   try {
     await BM.saveSyncedTagConfiguration(tags, rules);
     setTrMsg('✓ 已保存 ' + count + ' 条自定义规则', 'ok');
   } catch (e) {
     setTrMsg('保存失败：' + (e.message || e), 'err');
+  } finally {
+    pendingTagConfigurationSaveCount--;
   }
 }
 
@@ -552,28 +564,58 @@ async function deleteActiveLlmProfile() {
 
 // 填充固定标签池 textarea（未配置时显示默认池）
 function fillFixedTags(list) {
+  if (pendingTagConfigurationSaveCount > 0) return false;
   const el = $('#setFixedTags');
-  if (!el) return;
+  if (!el) return false;
   let tags = list;
   if (!tags || !tags.length && typeof BM !== 'undefined' && BM.DEFAULT_FIXED_TAGS) {
     tags = BM.DEFAULT_FIXED_TAGS;
   }
   el.value = (tags || []).filter(t => t !== '其他').join('\n');
+  return true;
 }
 
 function fillTagRules(rules) {
+  if (pendingTagConfigurationSaveCount > 0) return false;
   rules = rules && typeof rules === 'object' ? rules : {};
   const domain = $('#setDomainTagRules');
   const keyword = $('#setKeywordTagRules');
   if (domain) domain.value = serializeTagRuleMap(rules.domain);
   if (keyword) keyword.value = serializeTagRuleMap(rules.keyword);
+  return !!(domain || keyword);
+}
+
+function updateTagSyncEnabledFromStorage(value) {
+  tagSyncEnabledVersion++;
+  const syncEl = $('#setTagSync');
+  if (syncEl) syncEl.checked = value === true;
+}
+
+function fillTagSyncEnabledFromSnapshot(value, versionAtRead) {
+  if (tagSyncEnabledVersion !== versionAtRead) return false;
+  const syncEl = $('#setTagSync');
+  if (syncEl) syncEl.checked = value === true;
+  return true;
+}
+
+function tagConfigurationSnapshot(stored) {
+  return {
+    fixedTags: stored.bmFixedTags,
+    tagRules: stored.bmTagRules
+  };
+}
+
+function hydrateTagConfigurationAfterLoad(configSnapshot) {
+  // 原生书签水合可能等待后台队列；不能阻塞已保存的同步开关和设置表单回填。
+  BM.initializeSyncedTagConfiguration(configSnapshot).catch(() => {});
 }
 
 async function load() {
+  let initialTagConfiguration = null;
   try {
     try { $('#optVersion').textContent = 'v' + chrome.runtime.getManifest().version; } catch (e) { /* noop */ }
     await BM.migrateStorage();
-    try { await BM.initializeSyncedTagConfiguration(); } catch (e) { /* 保留本地标签配置 */ }
+    const tagSyncEnabledVersionAtRead = tagSyncEnabledVersion;
     const r = await chrome.storage.local.get([
       'bmSettings', LLM_PROFILES_KEY, ACTIVE_LLM_PROFILE_KEY,
       'bmFixedTags', 'bmTagRules', 'bmStarHook', 'bmAutoAiTag', BM.NATIVE_SYNC_ENABLED_KEY, BM.SYNC_STATUS_KEY,
@@ -594,8 +636,11 @@ async function load() {
     const autoAi = $('#setAutoAiTag');
     if (autoAi) autoAi.checked = r.bmAutoAiTag === true;
     // 标签原生同步开关：默认关闭（隐私权衡，需主动开启）
-    const syncEl = $('#setTagSync');
-    if (syncEl) syncEl.checked = await BM.getTagSyncEnabled();
+    fillTagSyncEnabledFromSnapshot(
+      r[BM.NATIVE_SYNC_ENABLED_KEY],
+      tagSyncEnabledVersionAtRead
+    );
+    initialTagConfiguration = tagConfigurationSnapshot(r);
     tagSyncStatus = r[BM.SYNC_STATUS_KEY];
     updateTagSyncRequestState(
       r[BM.NATIVE_SYNC_REQUEST_KEY],
@@ -610,6 +655,7 @@ async function load() {
   // 注意：这里【只读不写】——无条件写回会用表单默认值覆盖
   // 另一处（popup 抽屉）刚保存的配置，导致「配置丢失」。
   setMsg('设置已就绪 · 修改即时生效', 'ok', false);
+  hydrateTagConfigurationAfterLoad(initialTagConfiguration);
 }
 
 async function persistStarHook() {
@@ -641,9 +687,17 @@ async function persistTagSync() {
     await BM.setTagSyncEnabled(on);
     if (intent !== tagSyncPersistIntent) return;
     // 后台可能已在本次调用期间完成。重新读取持久化状态，不能用“初始化中”覆盖完成或失败状态。
-    const stored = await chrome.storage.local.get(BM.SYNC_STATUS_KEY);
+    const stored = await chrome.storage.local.get([
+      BM.SYNC_STATUS_KEY,
+      BM.NATIVE_SYNC_REQUEST_KEY,
+      BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY
+    ]);
     if (intent !== tagSyncPersistIntent) return;
     tagSyncStatus = stored[BM.SYNC_STATUS_KEY] || null;
+    updateTagSyncRequestState(
+      stored[BM.NATIVE_SYNC_REQUEST_KEY],
+      stored[BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY]
+    );
     renderTagSyncStatus(tagSyncStatus || {
       lastError: '', pending: true, target: on, phase: 'queued', step: 1, totalSteps: 5
     });
@@ -679,11 +733,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
       persistProfileState(profileSettings(profile)).catch(e => console.warn('[书签管家] 同步外部 LLM 配置失败', e));
     }
   }
-  if (changes.bmFixedTags && !ownProfileChange) {
+  if (changes.bmFixedTags && !ownProfileChange && pendingTagConfigurationSaveCount === 0) {
     fillFixedTags(changes.bmFixedTags.newValue);
   }
-  if (changes.bmTagRules && !ownProfileChange) {
+  if (changes.bmTagRules && !ownProfileChange && pendingTagConfigurationSaveCount === 0) {
     fillTagRules(changes.bmTagRules.newValue);
+  }
+  if (changes[BM.NATIVE_SYNC_ENABLED_KEY]) {
+    updateTagSyncEnabledFromStorage(changes[BM.NATIVE_SYNC_ENABLED_KEY].newValue);
   }
   if (changes[BM.NATIVE_SYNC_REQUEST_KEY] || changes[BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY]) {
     updateTagSyncRequestState(
@@ -709,9 +766,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 try {
   BM.watchTagConfiguration(() => {
+    const editVersion = tagConfigurationEditVersion;
     if (BM.invalidateFixedTags) BM.invalidateFixedTags();
     if (BM.invalidateTagRules) BM.invalidateTagRules();
     Promise.all([BM.loadFixedTags(), BM.loadTagRules()]).then(([tags, rules]) => {
+      if (editVersion !== tagConfigurationEditVersion || pendingTagConfigurationSaveCount > 0) return;
       fillFixedTags(tags);
       fillTagRules(rules);
     }).catch(() => {});

@@ -78,6 +78,29 @@ describe('标签原生同步', () => {
     }
   });
 
+  it('设置页水合会携带加载时的配置快照', async () => {
+    const previousChrome = globalThis.chrome;
+    const sendMessage = vi.fn().mockResolvedValue({ ok: true, changed: false });
+    const snapshot = {
+      fixedTags: ['本地'],
+      tagRules: { domain: { local: ['本地'] }, keyword: {} }
+    };
+    globalThis.chrome = {
+      storage: { local: { get: vi.fn().mockResolvedValue({}) } },
+      runtime: { sendMessage }
+    };
+
+    try {
+      await expect(BM.initializeSyncedTagConfiguration(snapshot)).resolves.toBe(false);
+      expect(sendMessage).toHaveBeenCalledWith({
+        type: 'bmNativeTagSync', action: 'hydrate', configSnapshot: snapshot
+      });
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
   it('后台消息通道关闭时不记录伪同步失败', async () => {
     const previousChrome = globalThis.chrome;
     const localSet = vi.fn();
@@ -147,7 +170,10 @@ describe('标签原生同步', () => {
           lastError: '', pending: true, target: true, requestId: expect.any(String)
         })
       }));
-      expect(create).toHaveBeenCalledWith('bm-native-sync-setting', { when: expect.any(Number) });
+      expect(create).toHaveBeenCalledWith(
+        expect.stringMatching(/^bm-native-sync-setting-setting-/),
+        { when: expect.any(Number), periodInMinutes: 0.5 }
+      );
       expect(sendMessage).toHaveBeenLastCalledWith({ type: 'bmNativeTagSync', action: 'wakePendingSetting' });
 
       await expect(BM.setTagSyncEnabled(false)).resolves.toBe(false);
@@ -159,6 +185,35 @@ describe('标签原生同步', () => {
         })
       }));
       expect(sendMessage).toHaveBeenLastCalledWith({ type: 'bmNativeTagSync', action: 'wakePendingSetting' });
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('请求已被后台完成时不保留周期恢复闹钟', async () => {
+    const previousChrome = globalThis.chrome;
+    const localData = {};
+    const prefix = 'bm-native-sync-setting-';
+    const create = vi.fn(async name => {
+      localData.bmNativeTagSyncCompletedRequest = name.slice(prefix.length);
+    });
+    const clear = vi.fn();
+    globalThis.chrome = {
+      storage: {
+        local: {
+          set: vi.fn(async values => { Object.assign(localData, values); }),
+          get: vi.fn(async () => localData)
+        }
+      },
+      alarms: { create, clear },
+      runtime: { sendMessage: vi.fn() }
+    };
+
+    try {
+      await expect(BM.setTagSyncEnabled(true)).resolves.toBe(true);
+      const alarmName = create.mock.calls[0][0];
+      expect(clear).toHaveBeenCalledWith(alarmName);
     } finally {
       if (previousChrome === undefined) delete globalThis.chrome;
       else globalThis.chrome = previousChrome;
@@ -509,7 +564,7 @@ describe('标签原生同步配置', () => {
   });
 
 
-  it('保存配置只写本地，后台监听后负责原生同步', async () => {
+  it('保存配置先持久化后台串行写入请求，不携带其他设置', async () => {
     const previousChrome = globalThis.chrome;
     const localData = {
       bmFixedTags: ['本地'],
@@ -535,8 +590,13 @@ describe('标签原生同步配置', () => {
       await expect(BM.saveSyncedTagConfiguration(['代码'], {
         domain: { github: ['代码'] }, keyword: {}
       })).resolves.toBe(true);
-      expect(localData.bmFixedTags).toEqual(['代码']);
-      expect(localData.bmTagRules).toEqual({ domain: { github: ['代码'] }, keyword: {} });
+      expect(localData.bmFixedTags).toEqual(['本地']);
+      expect(localData.bmTagRules).toEqual({ domain: {}, keyword: {} });
+      expect(localData.bmNativeTagSyncConfigRequest).toEqual({
+        id: expect.stringMatching(/^config-/),
+        fixedTags: ['代码'],
+        tagRules: { domain: { github: ['代码'] }, keyword: {} }
+      });
       expect(JSON.stringify(localSet.mock.calls)).not.toContain('secret-api-key');
     } finally {
       if (previousChrome === undefined) delete globalThis.chrome;

@@ -302,29 +302,14 @@ describe('侧边栏首屏', () => {
       .toEqual(['js/lib.js', 'js/analyzer.js', 'js/popup.js']);
   });
 
-  it('同步读取超时时仍扫描本地书签，设置读取与首轮扫描并行', () => {
+  it('同步水合不阻塞本地书签首屏，设置读取与首轮扫描并行', () => {
     expect(popupSource).toContain('tagConfigurationReady = BM.initializeSyncedTagConfiguration');
     expect(popupSource).toContain('settingsReady = loadSettings();');
-    expect(popupSource).toContain('function waitForInitialTagConfiguration()');
-    expect(getFunctionSource('runRefresh')).toContain('await waitForInitialTagConfiguration();');
+    expect(getFunctionSource('runRefresh')).not.toContain('waitForInitialTagConfiguration');
     expect(popupSource).toContain('await Promise.all([settingsReady, refresh(true)]);');
-    expect(popupSource).toContain('void tagConfigurationReady.then(async () =>');
+    expect(popupSource).toContain('void tagConfigurationReady.then(async initialChanged =>');
+    expect(popupSource).toContain('if (initialChanged) { BM.invalidateTags(); await refresh(true); }');
     expect(popupSource).toContain('BM.watchTagConfiguration');
-  });
-
-  it('初始同步未返回时，在时限后解除首屏扫描等待', async () => {
-    vi.useFakeTimers();
-    const INITIAL_TAG_SYNC_WAIT_MS = 1200;
-    const tagConfigurationReady = new Promise(() => {});
-    const waitForInitialTagConfiguration = eval(`(${getFunctionSource('waitForInitialTagConfiguration')})`);
-
-    try {
-      const waiting = waitForInitialTagConfiguration();
-      await vi.advanceTimersByTimeAsync(INITIAL_TAG_SYNC_WAIT_MS);
-      await expect(waiting).resolves.toBeUndefined();
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it('标签池编辑通过共享配置同步保存', () => {

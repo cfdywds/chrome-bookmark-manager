@@ -52,6 +52,7 @@ function createHarness(tree, initialLocal, options = {}) {
   const installedListeners = [];
   const startupListeners = [];
   const alarmListeners = [];
+  const alarms = new Map();
   const localData = { ...(initialLocal || {}) };
   const localSet = vi.fn(async values => {
     const changes = {};
@@ -60,6 +61,16 @@ function createHarness(tree, initialLocal, options = {}) {
       localData[key] = value;
     });
     storageListeners.forEach(listener => listener(changes, 'local'));
+  });
+  const localRemove = vi.fn(async keys => {
+    const names = Array.isArray(keys) ? keys : [keys];
+    const changes = {};
+    names.forEach(key => {
+      if (!Object.prototype.hasOwnProperty.call(localData, key)) return;
+      changes[key] = { oldValue: localData[key], newValue: undefined };
+      delete localData[key];
+    });
+    if (Object.keys(changes).length) storageListeners.forEach(listener => listener(changes, 'local'));
   });
   const chrome = {
     sidePanel: { setPanelBehavior: vi.fn().mockResolvedValue(), open: vi.fn() },
@@ -111,8 +122,11 @@ function createHarness(tree, initialLocal, options = {}) {
       onImportEnded: { addListener: vi.fn() }
     },
     alarms: {
-      create: vi.fn(),
-      clear: vi.fn().mockResolvedValue(true),
+      create: vi.fn((name, info) => {
+        alarms.set(name, { name, ...(info || {}) });
+      }),
+      clear: vi.fn(async name => alarms.delete(name)),
+      getAll: vi.fn(async () => [...alarms.values()]),
       onAlarm: { addListener: listener => alarmListeners.push(listener) }
     },
     storage: {
@@ -123,7 +137,8 @@ function createHarness(tree, initialLocal, options = {}) {
           if (Array.isArray(keys)) return Object.fromEntries(keys.map(key => [key, localData[key]]));
           return { ...localData };
         }),
-        set: localSet
+        set: localSet,
+        remove: localRemove
       },
       sync: { get: vi.fn().mockResolvedValue({}), set: vi.fn().mockResolvedValue() },
       session: { get: vi.fn().mockResolvedValue({}), set: vi.fn(), remove: vi.fn() }
@@ -294,7 +309,7 @@ describe('原生书签标签同步', () => {
       if (previousChrome === undefined) delete globalThis.chrome;
       else globalThis.chrome = previousChrome;
     }
-  });
+  }, 15000);
 
   it('分片未实际落盘时不会把同步状态标记为成功', async () => {
     const source = createHarness(createTree([
@@ -311,7 +326,10 @@ describe('原生书签标签同步', () => {
     try {
       await expect(source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true }))
         .resolves.toMatchObject({ ok: false, error: expect.stringMatching(/写入后验证失败/) });
-      await vi.waitFor(() => expect(source.localData.bmTagSyncStatus.lastError).toMatch(/写入后验证失败/));
+      await vi.waitFor(
+        () => expect(source.localData.bmTagSyncStatus.lastError).toMatch(/写入后验证失败/),
+        { timeout: 10000 }
+      );
       expect(source.localData.bmTagSyncStatus.lastSuccessAt).toBeUndefined();
     } finally {
       if (previousChrome === undefined) delete globalThis.chrome;
@@ -336,7 +354,10 @@ describe('原生书签标签同步', () => {
       await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
       writeOptions.dropNativeSyncChunks = true;
       await source.chrome.storage.local.set({ bmTags: { source: ['工作'] } });
-      await vi.waitFor(() => expect(source.localData.bmTagSyncStatus.lastError).toMatch(/写入后验证失败/));
+      await vi.waitFor(
+        () => expect(source.localData.bmTagSyncStatus.lastError).toMatch(/写入后验证失败/),
+        { timeout: 10000 }
+      );
 
       const target = createHarness(clone(source.tree), {
         bmTags: {},
@@ -439,6 +460,210 @@ describe('原生书签标签同步', () => {
       expect(target.localData.bmFixedTags).toEqual(['AI', '工作']);
       expect(target.localData.bmTagRules).toEqual({ domain: { openai: ['AI'] }, keyword: {} });
       expect(syncRoot(target.tree).children.filter(node => node.title.startsWith('BMN1|D|'))).toHaveLength(1);
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('设置页保存配置后，带旧快照的水合只应用标签而不覆盖本地配置', async () => {
+    const source = createHarness(createTree([
+      { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+    ]), {
+      bmTags: { source: ['远端标签'] },
+      bmFixedTags: ['远端配置'],
+      bmTagRules: { domain: { openai: ['远端配置'] }, keyword: {} }
+    });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+      const target = createHarness(clone(source.tree), {
+        bmTags: {},
+        bmFixedTags: ['刚保存的本地配置'],
+        bmTagRules: { domain: { local: ['刚保存的本地配置'] }, keyword: {} },
+        bmNativeTagSyncEnabled: true
+      });
+      target.tree[0].children[0].children = [{
+        id: 'target', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research'
+      }];
+      globalThis.chrome = target.chrome;
+      new Function(backgroundCode)();
+
+      await expect(target.send({
+        type: 'bmNativeTagSync', action: 'hydrate',
+        configSnapshot: {
+          fixedTags: ['设置页刚加载时的旧配置'],
+          tagRules: { domain: {}, keyword: {} }
+        }
+      })).resolves.toMatchObject({ ok: true, changed: true });
+
+      expect(target.localData.bmTags).toEqual({ target: ['远端标签'] });
+      expect(target.localData.bmFixedTags).toEqual(['刚保存的本地配置']);
+      expect(target.localData.bmTagRules).toEqual({
+        domain: { local: ['刚保存的本地配置'] }, keyword: {}
+      });
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('水合写入前到达的配置保存请求会在水合之后落盘', async () => {
+    let releaseHydrationWrite;
+    const source = createHarness(createTree([
+      { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+    ]), {
+      bmTags: { source: ['远端标签'] },
+      bmFixedTags: ['远端配置'],
+      bmTagRules: { domain: { openai: ['远端配置'] }, keyword: {} }
+    });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+      const target = createHarness(clone(source.tree), {
+        bmTags: {},
+        bmFixedTags: ['加载时配置'],
+        bmTagRules: { domain: {}, keyword: {} },
+        bmNativeTagSyncEnabled: true
+      });
+      target.tree[0].children[0].children = [{
+        id: 'target', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research'
+      }];
+      const originalGet = target.chrome.storage.local.get.getMockImplementation();
+      let stateReadCount = 0;
+      target.chrome.storage.local.get.mockImplementation(async keys => {
+        const wantsState = Array.isArray(keys) && keys.includes('bmNativeTagSyncState');
+        if (wantsState && ++stateReadCount === 2) {
+          await new Promise(resolve => { releaseHydrationWrite = resolve; });
+        }
+        return originalGet(keys);
+      });
+      globalThis.chrome = target.chrome;
+      new Function(backgroundCode)();
+
+      const hydration = target.send({
+        type: 'bmNativeTagSync', action: 'hydrate',
+        configSnapshot: { fixedTags: ['加载时配置'], tagRules: { domain: {}, keyword: {} } }
+      });
+      await vi.waitFor(() => expect(releaseHydrationWrite).toEqual(expect.any(Function)));
+      await target.chrome.storage.local.set({
+        bmNativeTagSyncConfigRequest: {
+          id: 'config-user-save', fixedTags: ['刚保存的本地配置'],
+          tagRules: { domain: { local: ['刚保存的本地配置'] }, keyword: {} }
+        }
+      });
+      releaseHydrationWrite();
+      await hydration;
+
+      await vi.waitFor(() => expect(target.localData.bmFixedTags).toEqual(['刚保存的本地配置']));
+      expect(target.localData.bmTagRules).toEqual({
+        domain: { local: ['刚保存的本地配置'] }, keyword: {}
+      });
+      expect(target.localData.bmTags).toEqual({ target: ['远端标签'] });
+      expect(target.localData.bmNativeTagSyncConfigRequest).toBeUndefined();
+      expect(target.chrome.storage.local.set).not.toHaveBeenCalledWith(expect.objectContaining({
+        bmFixedTags: ['远端配置']
+      }));
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('水合进入配置写入窗口后到达的保存请求不会闪写远端配置', async () => {
+    let releaseLatestConfigRead;
+    const source = createHarness(createTree([
+      { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+    ]), {
+      bmTags: { source: ['远端标签'] },
+      bmFixedTags: ['远端配置'],
+      bmTagRules: { domain: { openai: ['远端配置'] }, keyword: {} }
+    });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+      const target = createHarness(clone(source.tree), {
+        bmTags: {},
+        bmFixedTags: ['加载时配置'],
+        bmTagRules: { domain: {}, keyword: {} },
+        bmNativeTagSyncEnabled: true
+      });
+      target.tree[0].children[0].children = [{
+        id: 'target', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research'
+      }];
+      const originalGet = target.chrome.storage.local.get.getMockImplementation();
+      target.chrome.storage.local.get.mockImplementation(async keys => {
+        const isLatestConfigRead = Array.isArray(keys) && keys.length === 3 &&
+          keys.includes('bmFixedTags') && keys.includes('bmTagRules') &&
+          keys.includes('bmNativeTagSyncConfigRequest');
+        if (isLatestConfigRead && !releaseLatestConfigRead) {
+          await new Promise(resolve => { releaseLatestConfigRead = resolve; });
+        }
+        return originalGet(keys);
+      });
+      globalThis.chrome = target.chrome;
+      new Function(backgroundCode)();
+
+      const hydration = target.send({
+        type: 'bmNativeTagSync', action: 'hydrate',
+        configSnapshot: { fixedTags: ['加载时配置'], tagRules: { domain: {}, keyword: {} } }
+      });
+      await vi.waitFor(() => expect(releaseLatestConfigRead).toEqual(expect.any(Function)));
+      await target.chrome.storage.local.set({
+        bmNativeTagSyncConfigRequest: {
+          id: 'config-user-input', fixedTags: ['用户正在输入'],
+          tagRules: { domain: { local: ['用户正在输入'] }, keyword: {} }
+        }
+      });
+      releaseLatestConfigRead();
+      await hydration;
+
+      await vi.waitFor(() => expect(target.localData.bmFixedTags).toEqual(['用户正在输入']));
+      expect(target.localData.bmTags).toEqual({ target: ['远端标签'] });
+      expect(target.chrome.storage.local.set).not.toHaveBeenCalledWith(expect.objectContaining({
+        bmFixedTags: ['远端配置']
+      }));
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('一次配置保存请求只发布一个配置修订', async () => {
+    const source = createHarness(createTree([
+      { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+    ]), {
+      bmTags: { source: ['AI'] },
+      bmFixedTags: ['AI'],
+      bmTagRules: { domain: {}, keyword: {} }
+    });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+      const configWritesBefore = source.chrome.storage.local.set.mock.calls.filter(([values]) =>
+        Object.prototype.hasOwnProperty.call(values, 'bmNativeTagSyncConfig')
+      ).length;
+      await source.chrome.storage.local.set({
+        bmNativeTagSyncConfigRequest: {
+          id: 'config-single-revision', fixedTags: ['AI', '工作'],
+          tagRules: { domain: { openai: ['AI'] }, keyword: {} }
+        }
+      });
+
+      await vi.waitFor(() => expect(source.localData.bmNativeTagSyncConfigRequest).toBeUndefined());
+      await settle();
+      const configWritesAfter = source.chrome.storage.local.set.mock.calls.filter(([values]) =>
+        Object.prototype.hasOwnProperty.call(values, 'bmNativeTagSyncConfig')
+      ).length;
+      expect(configWritesAfter - configWritesBefore).toBe(1);
     } finally {
       if (previousChrome === undefined) delete globalThis.chrome;
       else globalThis.chrome = previousChrome;
@@ -614,8 +839,7 @@ describe('原生书签标签同步', () => {
     }
   });
 
-  it('当前 Service Worker 会按短退避恢复空同步目录', async () => {
-    vi.useFakeTimers();
+  it('现有同步目录只有设备层时会立即播种本机标签', async () => {
     const tree = createTree([
       { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
     ]);
@@ -634,20 +858,14 @@ describe('原生书签标签同步', () => {
 
     try {
       await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
-      await vi.advanceTimersByTimeAsync(2000);
-      await vi.advanceTimersByTimeAsync(10000);
-      await vi.advanceTimersByTimeAsync(30000);
-
-      await vi.waitFor(() => expect(syncRoot(source.tree).children.some(device =>
+      expect(syncRoot(source.tree).children.some(device =>
         device.children.some(node => node.title.startsWith('BMN1|H|'))
-      )).toBe(true));
-      await vi.waitFor(() => expect(source.localData.bmTagSyncStatus)
-        .toMatchObject({ lastError: '', lastSuccessAt: expect.any(Number) }));
-      expect(source.chrome.alarms.create).toHaveBeenCalledWith(
-        'bm-native-sync-hydration-1', { when: expect.any(Number) }
-      );
+      )).toBe(true);
+      expect(source.localData.bmNativeTagSyncRecords['openai.com/research'].tags).toEqual(['AI']);
+      expect(source.localData.bmTagSyncStatus).toMatchObject({
+        lastError: '', lastSuccessAt: expect.any(Number)
+      });
     } finally {
-      vi.useRealTimers();
       if (previousChrome === undefined) delete globalThis.chrome;
       else globalThis.chrome = previousChrome;
     }
@@ -679,8 +897,9 @@ describe('原生书签标签同步', () => {
 
       await target.send({ type: 'bmNativeTagSync', action: 'hydrate' });
       expect(target.localData.bmTagSyncStatus).toMatchObject({
-        lastError: '', waitingForData: true, waitingDeviceCount: 1
+        lastError: '', waitingForData: true, waitingDeviceCount: 1, directoryReady: false
       });
+      expect(target.localData.bmTagSyncStatus).not.toHaveProperty('lastSuccessAt');
       await vi.runAllTimersAsync();
       target.emitAlarm('bm-native-sync-hydration');
 
@@ -773,8 +992,7 @@ describe('原生书签标签同步', () => {
     }
   });
 
-  it('本机曾发布但同步根目录变空时会在最终重试重建', async () => {
-    vi.useFakeTimers();
+  it('本机缓存遇到全空设备目录时会立即重建提交头和分片', async () => {
     const source = createHarness(createTree([
       { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
     ]), { bmTags: { source: ['AI'] }, bmFixedTags: ['AI'], bmTagRules: { domain: {}, keyword: {} } });
@@ -783,23 +1001,209 @@ describe('原生书签标签同步', () => {
 
     try {
       await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
-      syncRoot(source.tree).children = [];
+      const root = syncRoot(source.tree);
+      root.children.forEach(device => { device.children = []; });
+      for (let index = 0; index < 4; index++) {
+        root.children.push({
+          id: 'empty-device-' + index, parentId: root.id,
+          title: 'BMN1|D|empty-device-' + index, children: []
+        });
+      }
 
       await source.send({ type: 'bmNativeTagSync', action: 'hydrate' });
+      const device = root.children.find(node => node.title ===
+        'BMN1|D|' + source.localData.bmNativeTagSyncState.deviceId);
+      expect(device.children.some(node => node.title.startsWith('BMN1|H|config|'))).toBe(true);
+      expect(device.children.some(node => node.title.startsWith('BMN1|S|config|'))).toBe(true);
       expect(source.localData.bmTagSyncStatus).toMatchObject({
-        lastError: '', waitingForData: true, waitingDeviceCount: 0
+        lastError: '', waitingForData: true, waitingDeviceCount: 4, directoryReady: false
       });
-      await vi.runAllTimersAsync();
-      source.emitAlarm('bm-native-sync-hydration');
-
-      await vi.waitFor(() => {
-        const device = syncRoot(source.tree).children.find(node => node.title.startsWith('BMN1|D|'));
-        expect(device.children.some(node => node.title.startsWith('BMN1|H|'))).toBe(true);
-        expect(device.children.some(node => node.title.startsWith('BMN1|S|'))).toBe(true);
-        expect(source.localData.bmTagSyncStatus).toMatchObject({ lastError: '' });
-      }, { timeout: 5000 });
+      expect(source.localData.bmTagSyncStatus).not.toHaveProperty('lastSuccessAt');
     } finally {
-      vi.useRealTimers();
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('明确启用时会把全空设备目录中的本机标签立即写入提交', async () => {
+    const tree = createTree([
+      { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+    ]);
+    tree[0].children[1].children.push({
+      id: 'sync-root', parentId: '2', title: '书签管家同步数据（请勿修改）', children: [
+        { id: 'local-device', parentId: 'sync-root', title: 'BMN1|D|local-device', children: [] },
+        { id: 'remote-device-1', parentId: 'sync-root', title: 'BMN1|D|remote-device-1', children: [] },
+        { id: 'remote-device-2', parentId: 'sync-root', title: 'BMN1|D|remote-device-2', children: [] },
+        { id: 'remote-device-3', parentId: 'sync-root', title: 'BMN1|D|remote-device-3', children: [] },
+        { id: 'remote-device-4', parentId: 'sync-root', title: 'BMN1|D|remote-device-4', children: [] }
+      ]
+    });
+    const source = createHarness(tree, {
+      bmTags: { source: ['AI', '工作'] },
+      bmFixedTags: ['AI', '工作'],
+      bmTagRules: { domain: {}, keyword: {} },
+      bmNativeTagSyncState: { deviceId: 'local-device' }
+    });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await expect(source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true }))
+        .resolves.toMatchObject({ ok: true, changed: true });
+
+      const localDevice = findNode(source.tree, 'local-device');
+      expect(localDevice.children.some(node => node.title.startsWith('BMN1|H|config|'))).toBe(true);
+      expect(localDevice.children.some(node => node.title.startsWith('BMN1|H|') &&
+        !node.title.startsWith('BMN1|H|config|'))).toBe(true);
+      expect(localDevice.children.some(node => node.title.startsWith('BMN1|S|'))).toBe(true);
+      expect(source.localData.bmNativeTagSyncRecords['openai.com/research'].tags).toEqual(['AI', '工作']);
+      expect(source.localData.bmNativeTagSyncState.seeded).toBe(true);
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('扩展重载后的已开启空目录会自动写入本机候选种子', async () => {
+    const tree = createTree([
+      { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+    ]);
+    tree[0].children[1].children.push({
+      id: 'sync-root', parentId: '2', title: '书签管家同步数据（请勿修改）', children: [
+        { id: 'local-device', parentId: 'sync-root', title: 'BMN1|D|local-device', children: [] }
+      ]
+    });
+    const source = createHarness(tree, {
+      bmTags: { source: ['AI'] },
+      bmFixedTags: ['AI'],
+      bmTagRules: { domain: {}, keyword: {} },
+      bmNativeTagSyncEnabled: true,
+      bmNativeTagSyncState: { deviceId: 'local-device', seedAfterIncomplete: true }
+    });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await expect(source.send({ type: 'bmNativeTagSync', action: 'hydrate' }))
+        .resolves.toMatchObject({ ok: true });
+
+      const localDevice = findNode(source.tree, 'local-device');
+      expect(localDevice.children.some(node => node.title.startsWith('BMN1|H|'))).toBe(true);
+      expect(localDevice.children.some(node => node.title.startsWith('BMN1|S|'))).toBe(true);
+      expect(source.localData.bmNativeTagSyncRecords['openai.com/research']).toMatchObject({
+        revision: [1, 0, 'candidate'], provisional: true
+      });
+      expect(source.localData.bmNativeTagSyncState.seedRequestId).toBe('');
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('低优先级本机种子不会压过随后抵达的远端设备目录', async () => {
+    const remote = createHarness(createTree([
+      { id: 'remote-bookmark', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+    ]), {
+      bmTags: { 'remote-bookmark': ['远端标签'] },
+      bmFixedTags: ['远端配置'],
+      bmTagRules: { domain: { openai: ['远端配置'] }, keyword: {} }
+    });
+    globalThis.chrome = remote.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await remote.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+      const delayedRemoteDevice = clone(syncRoot(remote.tree).children.find(device =>
+        device.children.some(node => node.title.startsWith('BMN1|H|'))
+      ));
+      const tree = createTree([
+        { id: 'local-bookmark', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+      ]);
+      tree[0].children[1].children.push({
+        id: 'sync-root', parentId: '2', title: '书签管家同步数据（请勿修改）', children: [
+          { id: 'local-device', parentId: 'sync-root', title: 'BMN1|D|local-device', children: [] }
+        ]
+      });
+      const local = createHarness(tree, {
+        bmTags: { 'local-bookmark': ['本机标签'] },
+        bmFixedTags: ['本机配置'],
+        bmTagRules: { domain: { local: ['本机配置'] }, keyword: {} },
+        bmNativeTagSyncState: { deviceId: 'local-device' }
+      });
+      globalThis.chrome = local.chrome;
+      new Function(backgroundCode)();
+
+      await local.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+      expect(local.localData.bmNativeTagSyncRecords['openai.com/research'].revision[0]).toBe(1);
+
+      syncRoot(local.tree).children.push(delayedRemoteDevice);
+      await local.send({ type: 'bmNativeTagSync', action: 'hydrate' });
+
+      expect(local.localData.bmTags).toEqual({ 'local-bookmark': ['远端标签'] });
+      expect(local.localData.bmFixedTags).toEqual(['远端配置']);
+      expect(local.localData.bmTagRules).toEqual({
+        domain: { openai: ['远端配置'] }, keyword: {}
+      });
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('两台低优先级种子相遇时合并数据而不按设备 ID 丢弃后到设备', async () => {
+    const remoteTree = createTree([
+      { id: 'remote-bookmark', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+    ]);
+    remoteTree[0].children[1].children.push({
+      id: 'remote-root', parentId: '2', title: '书签管家同步数据（请勿修改）', children: [
+        { id: 'a-device', parentId: 'remote-root', title: 'BMN1|D|a-device', children: [] }
+      ]
+    });
+    const remote = createHarness(remoteTree, {
+      bmTags: { 'remote-bookmark': ['远端标签'] },
+      bmFixedTags: ['远端配置'],
+      bmTagRules: { domain: { openai: ['远端配置'] }, keyword: {} },
+      bmNativeTagSyncState: { deviceId: 'a-device' }
+    });
+    globalThis.chrome = remote.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await remote.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+      const delayedRemoteDevice = clone(findNode(remote.tree, 'a-device'));
+      const localTree = createTree([
+        { id: 'local-bookmark', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+      ]);
+      localTree[0].children[1].children.push({
+        id: 'local-root', parentId: '2', title: '书签管家同步数据（请勿修改）', children: [
+          { id: 'z-device', parentId: 'local-root', title: 'BMN1|D|z-device', children: [] }
+        ]
+      });
+      const local = createHarness(localTree, {
+        bmTags: { 'local-bookmark': ['本机标签'] },
+        bmFixedTags: ['本机配置'],
+        bmTagRules: { domain: { local: ['本机配置'] }, keyword: {} },
+        bmNativeTagSyncState: { deviceId: 'z-device' }
+      });
+      globalThis.chrome = local.chrome;
+      new Function(backgroundCode)();
+
+      await local.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+      expect(local.localData.bmNativeTagSyncRecords['openai.com/research']).toMatchObject({
+        revision: [1, 0, 'candidate'], provisional: true
+      });
+
+      syncRoot(local.tree).children.push(delayedRemoteDevice);
+      await local.send({ type: 'bmNativeTagSync', action: 'hydrate' });
+
+      expect(local.localData.bmTags).toEqual({
+        'local-bookmark': ['本机标签', '远端标签']
+      });
+      expect(local.localData.bmFixedTags).toEqual(['本机配置', '远端配置']);
+      expect(local.localData.bmTagRules).toEqual({
+        domain: { local: ['本机配置'], openai: ['远端配置'] }, keyword: {}
+      });
+    } finally {
       if (previousChrome === undefined) delete globalThis.chrome;
       else globalThis.chrome = previousChrome;
     }
@@ -879,11 +1283,16 @@ describe('原生书签标签同步', () => {
         bmTagSyncStatus: { lastError: '', pending: true, target: true, requestId: 'storage-request' }
       });
       await vi.waitFor(() => expect(syncRoot(source.tree)).toBeTruthy());
-      expect(source.localData.bmNativeTagSyncCompletedRequest).toBe('storage-request');
+      await vi.waitFor(() => expect(source.localData.bmNativeTagSyncCompletedRequest).toBe('storage-request'));
       expect(source.localData.bmTagSyncStatus).toMatchObject({ lastError: '', lastSuccessAt: expect.any(Number) });
       expect(source.localSet).toHaveBeenCalledWith(expect.objectContaining({
         bmTagSyncStatus: expect.objectContaining({ phase: 'creating-directory', step: 3, totalSteps: 5 })
       }));
+      expect(source.chrome.alarms.create).toHaveBeenCalledWith(
+        'bm-native-sync-setting-storage-request',
+        expect.objectContaining({ when: expect.any(Number), periodInMinutes: 0.5 })
+      );
+      expect(source.chrome.alarms.clear).toHaveBeenCalledWith('bm-native-sync-setting-storage-request');
     } finally {
       if (previousChrome === undefined) delete globalThis.chrome;
       else globalThis.chrome = previousChrome;
@@ -944,6 +1353,7 @@ describe('原生书签标签同步', () => {
       expect(source.chrome.bookmarks.getTree).toHaveBeenCalledTimes(4);
       expect(source.localData.bmTagSyncStatus).toMatchObject({ lastError: '', lastSuccessAt: expect.any(Number) });
       expect(source.localData.bmTagSyncStatus).not.toHaveProperty('pending');
+      expect(source.chrome.alarms.clear).toHaveBeenCalledWith('bm-native-sync-setting-legacy--on');
     } finally {
       if (previousChrome === undefined) delete globalThis.chrome;
       else globalThis.chrome = previousChrome;
@@ -977,6 +1387,107 @@ describe('原生书签标签同步', () => {
       }));
       expect(source.localData.bmNativeTagSyncEnabled).toBe(false);
       expect(syncRoot(source.tree)).toBeUndefined();
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('用户在本机种子读取期间关闭同步时不会留下待发布缓存', async () => {
+    let releaseLocalTags;
+    const tree = createTree([
+      { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+    ]);
+    tree[0].children[1].children.push({
+      id: 'sync-root', parentId: '2', title: '书签管家同步数据（请勿修改）', children: [
+        { id: 'remote-device', parentId: 'sync-root', title: 'BMN1|D|remote-device', children: [] }
+      ]
+    });
+    const source = createHarness(tree, {
+      bmTags: { source: ['本机标签'] },
+      bmFixedTags: ['本机标签'],
+      bmTagRules: { domain: {}, keyword: {} },
+      bmNativeTagSyncEnabled: true,
+      bmNativeTagSyncRequest: { id: 'enable-request', target: true, at: 1 },
+      bmTagSyncStatus: { lastError: '', pending: true, target: true, requestId: 'enable-request' }
+    });
+    const originalGet = source.chrome.storage.local.get.getMockImplementation();
+    source.chrome.storage.local.get.mockImplementation(async keys => {
+      if (keys === 'bmTags' && !releaseLocalTags) {
+        await new Promise(resolve => { releaseLocalTags = resolve; });
+      }
+      return originalGet(keys);
+    });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await vi.waitFor(() => expect(releaseLocalTags).toEqual(expect.any(Function)));
+      await source.chrome.storage.local.set({
+        bmNativeTagSyncEnabled: false,
+        bmNativeTagSyncRequest: { id: 'disable-request', target: false, at: 2 },
+        bmTagSyncStatus: { lastError: '', pending: true, target: false, requestId: 'disable-request' }
+      });
+      releaseLocalTags();
+
+      await vi.waitFor(() => expect(source.localData.bmTagSyncStatus).toMatchObject({
+        lastError: '', disabled: true
+      }));
+      expect(source.localData.bmNativeTagSyncEnabled).toBe(false);
+      expect(source.localData.bmNativeTagSyncRecords).toBeUndefined();
+      expect(syncRoot(source.tree).children.every(device => !device.children.length)).toBe(true);
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('用户在本机种子已落盘但发布前关闭同步时会清理候选缓存', async () => {
+    let releaseWritingProgress;
+    const tree = createTree([
+      { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
+    ]);
+    tree[0].children[1].children.push({
+      id: 'sync-root', parentId: '2', title: '书签管家同步数据（请勿修改）', children: [
+        { id: 'remote-device', parentId: 'sync-root', title: 'BMN1|D|remote-device', children: [] }
+      ]
+    });
+    const source = createHarness(tree, {
+      bmTags: { source: ['本机标签'] },
+      bmFixedTags: ['本机标签'],
+      bmTagRules: { domain: {}, keyword: {} },
+      bmNativeTagSyncEnabled: true,
+      bmNativeTagSyncRequest: { id: 'enable-request', target: true, at: 1 },
+      bmTagSyncStatus: { lastError: '', pending: true, target: true, requestId: 'enable-request' }
+    });
+    const originalSet = source.chrome.storage.local.set.getMockImplementation();
+    source.chrome.storage.local.set.mockImplementation(async values => {
+      if (values.bmTagSyncStatus && values.bmTagSyncStatus.phase === 'writing-sync-data' &&
+        !releaseWritingProgress) {
+        await new Promise(resolve => { releaseWritingProgress = resolve; });
+      }
+      return originalSet(values);
+    });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await vi.waitFor(() => expect(releaseWritingProgress).toEqual(expect.any(Function)));
+      expect(source.localData.bmNativeTagSyncRecords).toHaveProperty('openai.com/research');
+      await source.chrome.storage.local.set({
+        bmNativeTagSyncEnabled: false,
+        bmNativeTagSyncRequest: { id: 'disable-request', target: false, at: 2 },
+        bmTagSyncStatus: { lastError: '', pending: true, target: false, requestId: 'disable-request' }
+      });
+      releaseWritingProgress();
+
+      await vi.waitFor(() => expect(source.localData.bmTagSyncStatus).toMatchObject({
+        lastError: '', disabled: true
+      }));
+      expect(source.localData.bmNativeTagSyncEnabled).toBe(false);
+      expect(source.localData.bmNativeTagSyncRecords).toBeUndefined();
+      expect(source.localData.bmNativeTagSyncConfig).toBeUndefined();
+      expect(syncRoot(source.tree).children.every(device => !device.children.length)).toBe(true);
     } finally {
       if (previousChrome === undefined) delete globalThis.chrome;
       else globalThis.chrome = previousChrome;
@@ -1027,6 +1538,38 @@ describe('原生书签标签同步', () => {
     }
   });
 
+  it('新请求写入时会立即清理被替换请求的周期闹钟', async () => {
+    let releaseOldRead;
+    const source = createHarness(createTree([]), {
+      bmTags: {},
+      bmNativeTagSyncEnabled: true,
+      bmNativeTagSyncRequest: { id: 'old-request', target: true, at: 1 },
+      bmTagSyncStatus: { lastError: '', pending: true, target: true, requestId: 'old-request' }
+    });
+    source.chrome.bookmarks.getTree.mockImplementationOnce(() => new Promise(resolve => {
+      releaseOldRead = () => resolve(clone(source.tree));
+    }));
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await vi.waitFor(() => expect(releaseOldRead).toEqual(expect.any(Function)));
+      await source.chrome.storage.local.set({
+        bmNativeTagSyncEnabled: true,
+        bmNativeTagSyncRequest: { id: 'new-request', target: true, at: 2 },
+        bmTagSyncStatus: { lastError: '', pending: true, target: true, requestId: 'new-request' }
+      });
+      await vi.waitFor(() => expect(source.chrome.alarms.clear)
+        .toHaveBeenCalledWith('bm-native-sync-setting-old-request'));
+      expect(source.chrome.alarms.clear).not.toHaveBeenCalledWith('bm-native-sync-setting-new-request');
+      releaseOldRead();
+      await vi.waitFor(() => expect(source.localData.bmNativeTagSyncCompletedRequest).toBe('new-request'));
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
   it('持久化请求失败时保留未完成标记并安排重试', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const source = createHarness(createTree([]), {
@@ -1044,10 +1587,31 @@ describe('原生书签标签同步', () => {
       }));
       expect(source.localData.bmNativeTagSyncCompletedRequest).toBeUndefined();
       expect(source.chrome.alarms.create).toHaveBeenCalledWith(
-        'bm-native-sync-setting', { when: expect.any(Number) }
+        'bm-native-sync-setting-failed-request',
+        { when: expect.any(Number), periodInMinutes: 0.5 }
       );
     } finally {
       warn.mockRestore();
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('旧请求的周期闹钟触发时会自行清理，不会持续唤醒后台', async () => {
+    const source = createHarness(createTree([]), {
+      bmNativeTagSyncEnabled: true,
+      bmNativeTagSyncRequest: { id: 'completed-request', target: true, at: 1 },
+      bmNativeTagSyncCompletedRequest: 'completed-request',
+      bmTagSyncStatus: { lastError: '', lastSuccessAt: 1 }
+    });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      source.emitAlarm('bm-native-sync-setting-stale-request');
+      await vi.waitFor(() => expect(source.chrome.alarms.clear)
+        .toHaveBeenCalledWith('bm-native-sync-setting-stale-request'));
+    } finally {
       if (previousChrome === undefined) delete globalThis.chrome;
       else globalThis.chrome = previousChrome;
     }
@@ -1074,7 +1638,8 @@ describe('原生书签标签同步', () => {
       await vi.waitFor(() => expect(source.localData.bmTagSyncStatus.lastError).toMatch(/同步节点格式无效/));
       expect(source.localData.bmNativeTagSyncCompletedRequest).toBeUndefined();
       expect(source.chrome.alarms.create).toHaveBeenCalledWith(
-        'bm-native-sync-setting', { when: expect.any(Number) }
+        'bm-native-sync-setting-retry-request',
+        { when: expect.any(Number), periodInMinutes: 0.5 }
       );
     } finally {
       if (previousChrome === undefined) delete globalThis.chrome;
@@ -1133,7 +1698,7 @@ describe('原生书签标签同步', () => {
     }
   });
 
-  it('卸载重装后保留旧空目录时，明确启用会等待最终恢复再发布本机标签', async () => {
+  it('卸载重装后保留旧空目录时，明确启用会立即写入本机标签', async () => {
     vi.useFakeTimers();
     const previous = createHarness(createTree([
       { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
@@ -1164,18 +1729,7 @@ describe('原生书签标签同步', () => {
       });
 
       await reinstalled.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
-      expect(reinstalled.localData.bmNativeTagSyncRecords).toBeUndefined();
-      expect(reinstalled.chrome.alarms.create).toHaveBeenCalledWith(
-        'bm-native-sync-hydration-1', { when: expect.any(Number) }
-      );
-      reinstalled.emitAlarm('bm-native-sync-hydration-1');
-      await vi.waitFor(() => expect(reinstalled.chrome.alarms.create).toHaveBeenCalledWith(
-        'bm-native-sync-hydration-2', { when: expect.any(Number) }
-      ));
-      expect(reinstalled.localData.bmNativeTagSyncRecords).toBeUndefined();
-      reinstalled.emitAlarm('bm-native-sync-hydration');
-      await vi.waitFor(() => expect(reinstalled.localData.bmNativeTagSyncRecords)
-        .toHaveProperty('openai.com/research'));
+      expect(reinstalled.localData.bmNativeTagSyncRecords).toHaveProperty('openai.com/research');
       expect(reinstalled.localData.bmNativeTagSyncRecords['openai.com/research'].tags).toEqual(['已恢复']);
       expect(reinstalled.localData.bmNativeTagSyncState.seeded).toBe(true);
       expect(reinstalled.localData.bmTagSyncStatus).toMatchObject({ lastError: '' });
@@ -1183,6 +1737,7 @@ describe('原生书签标签同步', () => {
         device.children.some(node => node.title.startsWith('BMN1|H|'))
       );
       expect(published).toBeTruthy();
+      expect(published.children.some(node => node.title.startsWith('BMN1|S|'))).toBe(true);
     } finally {
       vi.useRealTimers();
       if (previousChrome === undefined) delete globalThis.chrome;

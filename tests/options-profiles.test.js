@@ -99,7 +99,13 @@ describe('LLM 多配置', () => {
 
 
   it('标签同步成功时显示最近成功时间而不显示内容', () => {
-    const elements = { '#tagSyncMsg': { textContent: '', className: '' } };
+    const progress = { hidden: false, querySelector: vi.fn(() => ({ setAttribute: vi.fn() })) };
+    const elements = {
+      '#tagSyncMsg': { textContent: '', className: '' },
+      '#tagSyncProgress': progress,
+      '#tagSyncProgressBar': { style: { width: '' } },
+      '#tagSyncProgressText': { textContent: '' }
+    };
     const $ = selector => elements[selector];
     const renderTagSyncStatus = eval(`(${getFunctionSource('renderTagSyncStatus')})`);
 
@@ -107,19 +113,67 @@ describe('LLM 多配置', () => {
 
     expect(elements['#tagSyncMsg'].textContent).toContain('上次同步成功：');
     expect(elements['#tagSyncMsg'].className).toBe('settings-msg ok');
+    expect(progress.hidden).toBe(true);
   });
 
-  it('空设备目录等待数据时不显示为同步失败', () => {
-    const elements = { '#tagSyncMsg': { textContent: '', className: '' } };
+  it('空设备目录等待数据时不会伪装成本机同步成功', () => {
+    const progress = { hidden: false, querySelector: vi.fn(() => ({ setAttribute: vi.fn() })) };
+    const elements = {
+      '#tagSyncMsg': { textContent: '', className: '' },
+      '#tagSyncProgress': progress,
+      '#tagSyncProgressBar': { style: { width: '' } },
+      '#tagSyncProgressText': { textContent: '' }
+    };
     const $ = selector => elements[selector];
     const renderTagSyncStatus = eval(`(${getFunctionSource('renderTagSyncStatus')})`);
 
     renderTagSyncStatus({ lastError: '', waitingForData: true, waitingDeviceCount: 1 });
 
     expect(elements['#tagSyncMsg']).toMatchObject({
-      textContent: '本机同步目录已就绪，正在等待 1 台其他设备数据',
+      textContent: '同步目录正在等待 1 台设备写入标签数据',
       className: 'settings-msg'
     });
+    expect(progress.hidden).toBe(true);
+  });
+
+  it('标签配置保存未落定时不回填 textarea 覆盖用户输入', () => {
+    const elements = { '#setFixedTags': { value: '用户正在输入' } };
+    const $ = selector => elements[selector];
+    const fillFixedTags = eval(`(() => {
+      let pendingTagConfigurationSaveCount = 1;
+      const BM = undefined;
+      return (${getFunctionSource('fillFixedTags')});
+    })()`);
+
+    expect(fillFixedTags(['远端配置'])).toBe(false);
+    expect(elements['#setFixedTags'].value).toBe('用户正在输入');
+  });
+
+  it('当前同步请求等待远端数据时仍结束本机进度', () => {
+    const progress = { hidden: false, querySelector: vi.fn(() => ({ setAttribute: vi.fn() })) };
+    const elements = {
+      '#tagSyncMsg': { textContent: '', className: '' },
+      '#tagSyncProgress': progress,
+      '#tagSyncProgressBar': { style: { width: '' } },
+      '#tagSyncProgressText': { textContent: '' }
+    };
+    const $ = selector => elements[selector];
+    const renderTagSyncStatus = eval(`(() => {
+      let pendingTagSyncRequestId = 'current-request';
+      let pendingTagSyncTarget = true;
+      return (${getFunctionSource('renderTagSyncStatus')});
+    })()`);
+
+    renderTagSyncStatus({
+      lastError: '', waitingForData: true,
+      waitingDeviceCount: 1, requestId: 'current-request'
+    });
+
+    expect(elements['#tagSyncMsg']).toMatchObject({
+      textContent: '同步目录正在等待 1 台设备写入标签数据',
+      className: 'settings-msg'
+    });
+    expect(progress.hidden).toBe(true);
   });
 
   it('标签同步初始化会显示真实阶段进度', () => {
@@ -210,9 +264,33 @@ describe('LLM 多配置', () => {
   });
 
 
-  it('读取本地标签配置前先采用较新的云端配置', () => {
-    expect(getFunctionSource('load')).toContain('await BM.initializeSyncedTagConfiguration();');
+  it('设置页先回填同步开关，再异步水合远端标签配置', () => {
+    const loadSource = getFunctionSource('load');
+    expect(loadSource).not.toContain('await BM.initializeSyncedTagConfiguration();');
+    expect(loadSource).toContain('hydrateTagConfigurationAfterLoad(initialTagConfiguration);');
+    expect(loadSource).toContain('fillTagSyncEnabledFromSnapshot(');
+    expect(loadSource).toContain('tagConfigurationSnapshot(r);');
+    expect(optionsSource).toContain('function hydrateTagConfigurationAfterLoad(');
     expect(optionsSource).toContain('BM.watchTagConfiguration');
+  });
+
+  it('较早的同步开关快照不会反向覆盖刚到达的存储变更', () => {
+    const elements = { '#setTagSync': { checked: false } };
+    const $ = selector => elements[selector];
+    const controls = eval(`(() => {
+      let tagSyncEnabledVersion = 0;
+      return {
+        update: ${getFunctionSource('updateTagSyncEnabledFromStorage')},
+        fill: ${getFunctionSource('fillTagSyncEnabledFromSnapshot')}
+      };
+    })()`);
+
+    expect(controls.fill(false, 0)).toBe(true);
+    expect(elements['#setTagSync'].checked).toBe(false);
+    controls.update(true);
+    expect(elements['#setTagSync'].checked).toBe(true);
+    expect(controls.fill(false, 0)).toBe(false);
+    expect(elements['#setTagSync'].checked).toBe(true);
   });
 
   it('同步开关的旧异步操作不会覆盖新操作的提示', async () => {
@@ -226,6 +304,7 @@ describe('LLM 多配置', () => {
     let tagSyncStatus = null;
     let resolveFirst;
     let storedStatus = { lastError: '', disabled: true };
+    const updateTagSyncRequestState = vi.fn();
     globalThis.chrome = { storage: { local: {
       get: vi.fn(async () => ({ bmTagSyncStatus: storedStatus }))
     } } };
@@ -241,6 +320,8 @@ describe('LLM 多配置', () => {
     };
     const BM = {
       SYNC_STATUS_KEY: 'bmTagSyncStatus',
+      NATIVE_SYNC_REQUEST_KEY: 'bmNativeTagSyncRequest',
+      NATIVE_SYNC_COMPLETED_REQUEST_KEY: 'bmNativeTagSyncCompletedRequest',
       setTagSyncEnabled: vi.fn(enabled => enabled
         ? new Promise(resolve => { resolveFirst = resolve; })
         : Promise.resolve(false)),
@@ -266,7 +347,12 @@ describe('LLM 多配置', () => {
         className: 'settings-msg'
       });
       expect(BM.initializeSyncedTagConfiguration).not.toHaveBeenCalled();
-      expect(globalThis.chrome.storage.local.get).toHaveBeenCalledWith(BM.SYNC_STATUS_KEY);
+      expect(globalThis.chrome.storage.local.get).toHaveBeenCalledWith([
+        BM.SYNC_STATUS_KEY,
+        BM.NATIVE_SYNC_REQUEST_KEY,
+        BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY
+      ]);
+      expect(updateTagSyncRequestState).toHaveBeenLastCalledWith(undefined, undefined);
     } finally {
       if (previousChrome === undefined) delete globalThis.chrome;
       else globalThis.chrome = previousChrome;

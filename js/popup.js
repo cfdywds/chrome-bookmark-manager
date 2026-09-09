@@ -26,7 +26,6 @@ const TAG_CLEAR_BATCH_SIZE = 400;
 const DELETE_PROGRESS_INTERVAL_MS = 80;
 const TRASH_DELETE_HEARTBEAT_INTERVAL_MS = 5000;
 const SELF_CREATION_MESSAGE = 'bmSelfCreatingBookmark';
-const INITIAL_TAG_SYNC_WAIT_MS = 1200;
 
 // ---- LLM 设置：服务商预设统一来自 lib.js（DRY，与 options.js 共享同一份配置）----
 const PROVIDERS = BM.PROVIDERS;
@@ -34,22 +33,6 @@ let SETTINGS = { provider: 'deepseek', baseUrl: '', apiKey: '', model: 'deepseek
 let settingsReady = Promise.resolve();
 let tagConfigurationReady = Promise.resolve();
 let tagConfigurationSyncFailed = false;
-
-// 同步目录可能在 Chrome 书签同步中暂时不完整。首屏不能因此永久停在扫描态，
-// 任务仍会在后台完成，并由 storage 监听触发后续刷新。
-function waitForInitialTagConfiguration() {
-  return new Promise(resolve => {
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve();
-    };
-    const timer = setTimeout(finish, INITIAL_TAG_SYNC_WAIT_MS);
-    tagConfigurationReady.then(finish, finish);
-  });
-}
 
 // ---- SVG 图标助手（配合 popup.html 的 <symbol> sprite，替代 emoji）----
 const ICON = name => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-${name}"/></svg>`;
@@ -1215,7 +1198,6 @@ function showError(err) {
 
 // ---------- 数据加载 ----------
 async function runRefresh() {
-  await waitForInitialTagConfiguration();
   tabRenderToken++;
   listRenderLimits = Object.create(null);
   content().innerHTML = '<div class="loading">正在扫描书签…</div>';
@@ -2043,8 +2025,10 @@ async function init() {
       BM.invalidateTagRules();
       refresh(true);
     });
-    void tagConfigurationReady.then(async () => {
+    void tagConfigurationReady.then(async initialChanged => {
       if (tagConfigurationSyncFailed) return;
+      // 首次水合可能在 storage 监听注册前完成，需主动重渲染以应用已落盘的云端标签。
+      if (initialChanged) { BM.invalidateTags(); await refresh(true); }
       const changed = await BM.pullTagsFromCloud();
       if (changed) { BM.invalidateTags(); await refresh(true); }
     }).catch(() => {});
