@@ -863,6 +863,14 @@ mark { background: #fde68a; color: inherit; border-radius: 3px; padding: 0 1px; 
 .opt-foot { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
 .opt-foot .settings-msg { flex: 1; font-size: 12px; }
 .opt-foot .btn { padding: 9px 20px; font-size: 12.5px; }
+.tag-sync-progress {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px;
+  margin-top: 10px;
+}
+.tag-sync-progress[hidden] { display: none; }
+.tag-sync-progress-track { height: 5px; overflow: hidden; background: var(--line); border-radius: 3px; }
+.tag-sync-progress-bar { display: block; width: 0; height: 100%; background: var(--primary); transition: width .2s ease; }
+.tag-sync-progress-text { font-size: 11px; color: var(--muted); line-height: 1.45; }
 .llm-profile-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; margin-bottom: 14px; }
 .llm-profile-bar .form-row { margin: 0; }
 .profile-actions { display: flex; gap: 6px; }

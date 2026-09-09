@@ -22,6 +22,8 @@ const MAX_TAGS_PER_BOOKMARK = 6;
 const AUTO_TAG_BATCH_DELAY_MS = 200;
 const SYNC_STATUS_KEY = 'bmTagSyncStatus';
 const NATIVE_SYNC_ENABLED_KEY = 'bmNativeTagSyncEnabled';
+const NATIVE_SYNC_REQUEST_KEY = 'bmNativeTagSyncRequest';
+const NATIVE_SYNC_COMPLETED_REQUEST_KEY = 'bmNativeTagSyncCompletedRequest';
 const NATIVE_SYNC_STATE_KEY = 'bmNativeTagSyncState';
 const NATIVE_SYNC_RECORDS_KEY = 'bmNativeTagSyncRecords';
 const NATIVE_SYNC_CONFIG_KEY = 'bmNativeTagSyncConfig';
@@ -29,9 +31,19 @@ const NATIVE_SYNC_URLS_KEY = 'bmNativeTagSyncUrls';
 const NATIVE_SYNC_ROOT_TITLE = '书签管家同步数据（请勿修改）';
 const NATIVE_SYNC_PROTOCOL = 'BMN1';
 const NATIVE_SYNC_BUCKETS = 32;
-const NATIVE_SYNC_CHUNK_CHARS = 900;
+// 同步节点存放在书签标题中。保守控制在常见浏览器标题限制以内，
+// 为协议字段预留空间，避免目录创建成功而数据分片被拒绝。
+const NATIVE_SYNC_CHUNK_CHARS = 180;
 const NATIVE_SYNC_MESSAGE = 'bmNativeTagSync';
+const NATIVE_SYNC_WAKE_ACTION = 'wakePendingSetting';
 const NATIVE_SYNC_DELAY_MS = 800;
+const NATIVE_SYNC_HYDRATION_RETRY_DELAYS_MS = [2000, 10000, 30000];
+const NATIVE_SYNC_HYDRATION_ALARM = 'bm-native-sync-hydration';
+const NATIVE_SYNC_SETTING_ALARM = 'bm-native-sync-setting';
+const NATIVE_SYNC_SETTING_RETRY_DELAY_MS = 2000;
+const CLOSED_NATIVE_SYNC_CHANNEL = /(?:message (?:channel|port) closed|asynchronous response.*channel closed)/i;
+const LEGACY_CLOSED_NATIVE_SYNC_CHANNEL =
+  /^A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received\.?$/i;
 const LEGACY_DEFAULT_FIXED_TAGS = [
   'AI', '前端', '后端', '移动端', 'JAVA', 'Python', '数据库', '运维', '安全', '设计',
   '学习', '教程', '工具', '效率', '工作', '资讯', '阅读', '视频', '娱乐', '生活', '社交', '博客',
@@ -79,6 +91,7 @@ let nativeSyncQueue = Promise.resolve();
 let nativeSyncTimer = null;
 let nativeSyncApplying = false;
 let nativeSyncGeneration = 0;
+let nativeSyncActiveSettingId = '';
 const deferredNativeSyncAutoTags = new Map();
 // storage.onChanged 在 Service Worker 队列执行时，apply 期间的布尔标志已经会复位。
 // 用实际写入值消费一次事件，避免接收端把远端内容重新写成自己的新版本。
@@ -396,21 +409,34 @@ async function loadNativeSyncState(api) {
     deviceId: String(raw.deviceId || '').trim() || nativeCreateDeviceId(),
     clock: Math.max(0, Math.floor(Number(raw.clock) || 0)),
     sequence: Math.max(0, Math.floor(Number(raw.sequence) || 0)),
-    seeded: raw.seeded === true
+    seeded: raw.seeded === true,
+    seedAfterIncomplete: raw.seedAfterIncomplete === true,
+    presence: raw.presence === true,
+    presenceDeviceIds: Array.isArray(raw.presenceDeviceIds)
+      ? [...new Set(raw.presenceDeviceIds.map(id => String(id || '')).filter(Boolean))]
+      : []
   };
   return state;
 }
 
+function nativeSyncStateValue(state) {
+  return {
+    deviceId: state.deviceId,
+    clock: state.clock,
+    sequence: state.sequence,
+    seeded: !!state.seeded,
+    seedAfterIncomplete: !!state.seedAfterIncomplete,
+    presence: !!state.presence,
+    presenceDeviceIds: state.presence ? state.presenceDeviceIds || [] : []
+  };
+}
+
 async function saveNativeSyncState(api, state) {
-  await api.storage.local.set({
-    [NATIVE_SYNC_ENABLED_KEY]: !!state.enabled,
-    [NATIVE_SYNC_STATE_KEY]: {
-      deviceId: state.deviceId,
-      clock: state.clock,
-      sequence: state.sequence,
-      seeded: !!state.seeded
-    }
-  });
+  const updates = { [NATIVE_SYNC_STATE_KEY]: nativeSyncStateValue(state) };
+  // 设置页已先持久化最新开关；执行中的旧设置任务只能更新元数据，
+  // 不能把用户刚切换的新目标重新写回去。
+  if (!nativeSyncActiveSettingId) updates[NATIVE_SYNC_ENABLED_KEY] = !!state.enabled;
+  await api.storage.local.set(updates);
 }
 
 async function loadNativeSyncRecords(api) {
@@ -453,7 +479,18 @@ async function ensureNativeDeviceFolder(api, root, deviceId) {
 }
 
 function findNativeHead(children, bucket) {
-  return (children || []).map(nativeHeadInfo).find(info => info && info.bucket === bucket) || null;
+  return (children || []).map(nativeHeadInfo)
+    .filter(info => info && info.bucket === bucket)
+    .sort((left, right) => compareNativeGeneration(right.generation, left.generation))[0] || null;
+}
+
+function compareNativeGeneration(left, right) {
+  const parse = value => String(value || '').split('-', 2).map(part => parseInt(part, 36) || 0);
+  const a = parse(left);
+  const b = parse(right);
+  if (a[0] !== b[0]) return a[0] - b[0];
+  if (a[1] !== b[1]) return a[1] - b[1];
+  return String(left || '').localeCompare(String(right || ''));
 }
 
 async function readNativeHeadPayload(children, head) {
@@ -476,7 +513,8 @@ async function writeNativeBucket(api, deviceFolder, bucket, payload) {
   const current = await api.bookmarks.getChildren(deviceFolder.id);
   const existingHead = findNativeHead(current, bucket);
   if (existingHead && existingHead.checksum === nativeChecksum(encoded)) {
-    return;
+    const existing = await readNativeHeadPayload(current, existingHead);
+    if (!existing.error) return;
   }
   const chunks = [];
   for (let index = 0; index < encoded.length; index += NATIVE_SYNC_CHUNK_CHARS) {
@@ -490,13 +528,29 @@ async function writeNativeBucket(api, deviceFolder, bucket, payload) {
       title: `${NATIVE_SYNC_PROTOCOL}|S|${bucket}|${generation}|${index}|${chunks.length}|${chunks[index]}`
     });
   }
-  const childrenBeforeWrite = await api.bookmarks.getChildren(deviceFolder.id);
-  const oldHead = findNativeHead(childrenBeforeWrite, bucket);
   const headTitle = `${NATIVE_SYNC_PROTOCOL}|H|${bucket}|${generation}|${chunks.length}|${checksum}`;
-  if (oldHead) await api.bookmarks.update(oldHead.node.id, { title: headTitle });
-  else await api.bookmarks.create({ parentId: deviceFolder.id, title: headTitle });
+  // 新分片验证成功前不能创建提交头。否则分片被浏览器拒绝或静默丢失时，
+  // 已同步的上一版本会被新头遮蔽，尽管旧数据仍完整存在。
+  const written = await api.bookmarks.getChildren(deviceFolder.id);
+  const pending = await readNativeHeadPayload(written, { bucket, generation, count: chunks.length, checksum });
+  if (pending.error) {
+    throw new Error(`同步分片写入后验证失败：${bucket} ${pending.error}`);
+  }
+  await api.bookmarks.create({ parentId: deviceFolder.id, title: headTitle });
 
   const after = await api.bookmarks.getChildren(deviceFolder.id);
+  const committedHead = after.map(nativeHeadInfo).find(head =>
+    head && head.bucket === bucket && head.generation === generation && head.checksum === checksum
+  );
+  if (!committedHead) {
+    throw new Error(`同步分片写入后验证失败：${bucket} 提交头缺失`);
+  }
+  const staleHeads = after.map(nativeHeadInfo).filter(head =>
+    head && head.bucket === bucket && head.generation !== generation
+  );
+  for (const head of staleHeads) {
+    try { await api.bookmarks.remove(head.node.id); } catch (e) { /* 读取端仍会忽略较旧 Head */ }
+  }
   const staleChunks = after.map(nativeChunkInfo).filter(chunk =>
     chunk && chunk.bucket === bucket && chunk.generation !== generation
   );
@@ -525,6 +579,43 @@ function nativeQueue(task) {
   const result = nativeSyncQueue.then(task, task);
   nativeSyncQueue = result.catch(() => {});
   return result;
+}
+
+function nativeHydrationAlarmName(retryAttempt) {
+  return `${NATIVE_SYNC_HYDRATION_ALARM}-${retryAttempt}`;
+}
+
+function nativeHydrationAlarmAttempt(name) {
+  // 兼容旧版本已创建的单一闹钟：它只会在最终恢复窗口触发。
+  if (name === NATIVE_SYNC_HYDRATION_ALARM) return NATIVE_SYNC_HYDRATION_RETRY_DELAYS_MS.length;
+  const prefix = NATIVE_SYNC_HYDRATION_ALARM + '-';
+  if (!String(name || '').startsWith(prefix)) return 0;
+  const retryAttempt = Number(String(name).slice(prefix.length));
+  return Number.isInteger(retryAttempt) && retryAttempt > 0 &&
+    retryAttempt <= NATIVE_SYNC_HYDRATION_RETRY_DELAYS_MS.length ? retryAttempt : 0;
+}
+
+async function clearNativeHydrationAlarm(api) {
+  if (!api.alarms || typeof api.alarms.clear !== 'function') return;
+  const names = [NATIVE_SYNC_HYDRATION_ALARM].concat(
+    NATIVE_SYNC_HYDRATION_RETRY_DELAYS_MS.map((_delay, index) => nativeHydrationAlarmName(index + 1))
+  );
+  await Promise.all(names.map(name => api.alarms.clear(name).catch(() => false)));
+}
+
+async function cancelNativeHydrationSchedule(api) {
+  if (nativeSyncTimer) {
+    clearTimeout(nativeSyncTimer);
+    nativeSyncTimer = null;
+  }
+  await clearNativeHydrationAlarm(api);
+}
+
+function scheduleNativeSyncSettingRetry(api) {
+  if (!api.alarms || typeof api.alarms.create !== 'function') return;
+  api.alarms.create(NATIVE_SYNC_SETTING_ALARM, {
+    when: Date.now() + NATIVE_SYNC_SETTING_RETRY_DELAY_MS
+  });
 }
 
 async function publishNativeSync(api, buckets, includeConfig) {
@@ -556,7 +647,39 @@ async function publishNativeSync(api, buckets, includeConfig) {
       });
     }
   }
+  await setBackgroundTagSyncStatus(api, '');
   return true;
+}
+
+async function publishNativeSyncPresence(api) {
+  const state = await loadNativeSyncState(api);
+  if (!state.enabled) return false;
+  const tree = await api.bookmarks.getTree();
+  const root = findNativeSyncRoot(tree);
+  if (!root) throw new Error('未找到书签管家同步数据目录，请重新启用同步');
+  const emptyDeviceIds = nativeEmptyDeviceIds(root);
+  const deviceFolder = await ensureNativeDeviceFolder(api, root, state.deviceId);
+  // Presence 使用空 records，不携带任何标签或配置 revision，避免压过迟到的远端数据。
+  await writeNativeBucket(api, deviceFolder, 'presence', {
+    version: 1,
+    type: 'records',
+    deviceId: state.deviceId,
+    records: {}
+  });
+  state.presence = true;
+  state.presenceDeviceIds = emptyDeviceIds;
+  await saveNativeSyncState(api, state);
+  await setBackgroundTagSyncStatus(api, '');
+  return true;
+}
+
+async function republishNativeSyncState(api, state) {
+  const records = await loadNativeSyncRecords(api);
+  const config = await loadNativeSyncConfig(api);
+  if (!Object.keys(records).length && !config) {
+    return state.presence ? publishNativeSyncPresence(api) : false;
+  }
+  return publishNativeSync(api, null, true);
 }
 
 function mergeNativeRecord(target, key, raw) {
@@ -575,17 +698,39 @@ async function readNativeSyncData(tree) {
   const errors = [];
   let hasDeviceFolder = false;
   let hasEmptyDeviceFolder = false;
+  let hasPublishedDeviceFolder = false;
+  const emptyDeviceIds = [];
   for (const deviceFolder of root.children || []) {
     const deviceId = nativeDeviceFolderId(deviceFolder);
     if (!deviceId) continue;
     hasDeviceFolder = true;
     const children = deviceFolder.children || [];
+    const malformedProtocolNode = children.find(node => {
+      const parts = nativeTitleParts(node && node.title);
+      if (!parts || (parts[1] !== 'H' && parts[1] !== 'S')) return false;
+      return parts[1] === 'H' ? !nativeHeadInfo(node) : !nativeChunkInfo(node);
+    });
+    if (malformedProtocolNode) {
+      hasPublishedDeviceFolder = true;
+      errors.push(`${deviceId}: 同步节点格式无效`);
+    }
     const heads = children.map(nativeHeadInfo).filter(Boolean);
+    const chunks = children.map(nativeChunkInfo).filter(Boolean);
+    const headBuckets = new Set(heads.map(head => head.bucket));
+    const orphanChunk = chunks.find(chunk => !headBuckets.has(chunk.bucket));
+    if (orphanChunk) {
+      hasPublishedDeviceFolder = true;
+      errors.push(`${deviceId}/${orphanChunk.bucket}: 提交头缺失`);
+    }
     if (!heads.length) {
       hasEmptyDeviceFolder = true;
+      emptyDeviceIds.push(deviceId);
       continue;
     }
-    for (const head of heads) {
+    hasPublishedDeviceFolder = true;
+    const latestHeads = [...new Set(heads.map(head => head.bucket))]
+      .map(bucket => findNativeHead(children, bucket));
+    for (const head of latestHeads) {
       const result = await readNativeHeadPayload(children, head);
       if (result.error) {
         errors.push(`${deviceId}/${head.bucket}: ${result.error}`);
@@ -621,19 +766,49 @@ async function readNativeSyncData(tree) {
   }
   return {
     root, records, config, maxRevision, errors,
+    hasPublishedDeviceFolder, emptyDeviceIds,
     complete: hasDeviceFolder && !hasEmptyDeviceFolder
   };
 }
 
-async function applyNativeSyncData(api, source) {
+function nativeEmptyDeviceIds(root) {
+  return (root && root.children || []).map(device => ({
+    id: nativeDeviceFolderId(device),
+    heads: (device.children || []).map(nativeHeadInfo).filter(Boolean)
+  })).filter(device => device.id && !device.heads.length).map(device => device.id);
+}
+
+async function applyNativeSyncData(api, source, allowedEmptyDeviceIds = null) {
   const data = await readNativeSyncData(source);
-  if (!data) return { changed: false, ready: false, records: {} };
-  // 任一分片尚未到达时，不能用其他设备的旧值覆盖本机或抢先写出新修订号。
-  // Chrome 书签同步的节点到达顺序不保证，等待下次 hydrate 才是可恢复的选择。
-  if (!data.complete || data.errors.length) {
-    const reason = data.errors.length ? data.errors[0] : '同步目录尚未完整到达';
-    await setBackgroundTagSyncStatus(api, '同步数据不完整或损坏：' + reason);
-    return { changed: false, ready: false, records: data.records };
+  if (!data) return { changed: false, ready: false, retry: true, records: {} };
+  const allowAllEmptyDevices = allowedEmptyDeviceIds === true;
+  const allowedEmptyDevices = new Set(Array.isArray(allowedEmptyDeviceIds) ? allowedEmptyDeviceIds : []);
+  const awaitingDeviceData = data.emptyDeviceIds.length > 0 &&
+    !allowAllEmptyDevices && !data.emptyDeviceIds.every(id => allowedEmptyDevices.has(id));
+  if (data.errors.length) {
+    await setBackgroundTagSyncStatus(api, '同步数据损坏：' + data.errors[0]);
+    return {
+      changed: false,
+      ready: false,
+      retry: true,
+      records: data.records,
+      hasPublishedData: data.hasPublishedDeviceFolder,
+      hasPayloadErrors: true
+    };
+  }
+  if (!data.hasPublishedDeviceFolder) {
+    // 仅有根目录或空设备目录是 Chrome 书签同步的正常到达顺序，不应误报为损坏。
+    await setBackgroundTagSyncWaitingStatus(api, data.emptyDeviceIds);
+    return {
+      changed: false,
+      ready: false,
+      retry: true,
+      records: data.records,
+      hasPublishedData: false,
+      hasPayloadErrors: false,
+      emptyDeviceIds: data.emptyDeviceIds,
+      awaitingDeviceData: true
+    };
   }
   const stored = await api.storage.local.get([
     TAGS_KEY, FIXED_TAGS_KEY, TAG_RULES_KEY, NATIVE_SYNC_URLS_KEY
@@ -672,12 +847,7 @@ async function applyNativeSyncData(api, source) {
   if (compareNativeRevision(data.maxRevision, [state.clock, state.sequence, state.deviceId]) > 0) {
     state.clock = data.maxRevision[0];
     state.sequence = data.maxRevision[1];
-    updates[NATIVE_SYNC_STATE_KEY] = {
-      deviceId: state.deviceId,
-      clock: state.clock,
-      sequence: state.sequence,
-      seeded: state.seeded
-    };
+    updates[NATIVE_SYNC_STATE_KEY] = nativeSyncStateValue(state);
   }
   const currentUrls = nativeBookmarkUrlMap(bookmarks);
   const nextUrls = stored[NATIVE_SYNC_URLS_KEY] && typeof stored[NATIVE_SYNC_URLS_KEY] === 'object'
@@ -700,8 +870,18 @@ async function applyNativeSyncData(api, source) {
     try { await api.storage.local.set(updates); }
     finally { nativeSyncApplying = false; }
   }
-  await setBackgroundTagSyncStatus(api, '');
-  return { changed: tagsChanged || configChanged, ready: true, records: data.records };
+  if (awaitingDeviceData) await setBackgroundTagSyncWaitingStatus(api, data.emptyDeviceIds);
+  else await setBackgroundTagSyncStatus(api, '');
+  return {
+    changed: tagsChanged || configChanged,
+    ready: true,
+    retry: awaitingDeviceData,
+    records: data.records,
+    hasPublishedData: data.hasPublishedDeviceFolder,
+    hasPayloadErrors: false,
+    emptyDeviceIds: data.emptyDeviceIds,
+    awaitingDeviceData
+  };
 }
 
 async function publishMissingNativeSyncRecords(api, state, tree, remoteRecords) {
@@ -722,12 +902,7 @@ async function publishMissingNativeSyncRecords(api, state, tree, remoteRecords) 
   await api.storage.local.set({
     [NATIVE_SYNC_RECORDS_KEY]: records,
     [NATIVE_SYNC_URLS_KEY]: nativeBookmarkUrlMap(bookmarks),
-    [NATIVE_SYNC_STATE_KEY]: {
-      deviceId: state.deviceId,
-      clock: state.clock,
-      sequence: state.sequence,
-      seeded: true
-    }
+    [NATIVE_SYNC_STATE_KEY]: nativeSyncStateValue(state)
   });
   if (keys.size) {
     await publishNativeSync(api, new Set([...keys].map(nativeBucketForUrl)), false);
@@ -735,38 +910,70 @@ async function publishMissingNativeSyncRecords(api, state, tree, remoteRecords) 
   return keys.size > 0;
 }
 
-async function hydrateNativeSyncResult(api) {
+async function hydrateNativeSyncResult(api, recoverIncomplete = false) {
   if (!api.bookmarks || typeof api.bookmarks.getTree !== 'function') {
-    return { changed: false, ready: true };
+    return { changed: false, ready: true, retry: false };
   }
   const state = await loadNativeSyncState(api);
-  const tree = await api.bookmarks.getTree();
+  let tree = await api.bookmarks.getTree();
   const root = findNativeSyncRoot(tree);
   if (!root) {
     if (state.enabled) await setBackgroundTagSyncStatus(api, '未找到书签管家同步数据目录');
-    return { changed: false, ready: !state.enabled };
+    return { changed: false, ready: !state.enabled, retry: state.enabled };
   }
   if (!state.enabled) {
     // 同步目录随 Chrome 书签同步首次到达时自动接管（仅限从未配置过的设备）；
     // 用户明确关闭过同步时保持关闭，书签事件不能把开关静默重新打开，
     // 否则「停止读写同步目录」的设置在下一次收藏后就会失效。
     if (state.everConfigured) return { changed: false, ready: true };
-    state.enabled = true;
+  }
+  // 兼容 presence 状态首次上线前写入的记录：它没有保存待忽略的旧空设备 ID。
+  if (state.presence && !state.presenceDeviceIds.length) {
+    state.presenceDeviceIds = nativeEmptyDeviceIds(root);
     await saveNativeSyncState(api, state);
   }
-  const result = await applyNativeSyncData(api, tree);
+  const enableAfterHydration = !state.enabled;
+  const allowedEmptyDeviceIds = recoverIncomplete
+    ? true : state.presence ? state.presenceDeviceIds : null;
+  let result = await applyNativeSyncData(api, tree, allowedEmptyDeviceIds);
+  if (!result.ready && recoverIncomplete &&
+    !result.hasPublishedData && !result.hasPayloadErrors &&
+    (state.seeded || state.seedAfterIncomplete)) {
+    if (state.seeded) {
+      // 本机已经发布过，但同步根目录只剩空目录时，用本机持久化记录重建提交头。
+      const republished = await republishNativeSyncState(api, state);
+      if (!republished) await publishNativeSyncPresence(api);
+    } else {
+      // 卸载重装会清空 seeded，但用户明确启用前可能已经从备份恢复了标签。
+      // 等完远端分片到达窗口后仍无发布数据，才将当前本机数据作为新种子。
+      const seeded = await seedNativeSyncFromLocal(api, state, tree, true);
+      await publishNativeSync(api, nativeBucketsForRecords(seeded.records), true);
+    }
+    tree = await api.bookmarks.getTree();
+    result = await applyNativeSyncData(api, tree, true);
+  }
   if (!result.ready) return result;
+  if (state.presence && !result.emptyDeviceIds.some(id => state.presenceDeviceIds.includes(id))) {
+    const hydratedState = await loadNativeSyncState(api);
+    hydratedState.presence = false;
+    hydratedState.presenceDeviceIds = [];
+    await saveNativeSyncState(api, hydratedState);
+  }
+  if (enableAfterHydration && !result.awaitingDeviceData) {
+    // 目录可能先于 Head/分片到达；只有完整读取后才完成自动接管，
+    // 否则设置页会把空目录误显示成用户已经启用。
+    const hydratedState = await loadNativeSyncState(api);
+    hydratedState.enabled = true;
+    await saveNativeSyncState(api, hydratedState);
+  }
+  if (!result.retry) await clearNativeHydrationAlarm(api);
+  if (result.awaitingDeviceData) return result;
   const currentState = await loadNativeSyncState(api);
   if (!currentState.seeded) {
     const published = await publishMissingNativeSyncRecords(api, currentState, tree, result.records);
     return { ...result, changed: result.changed || published };
   }
   return result;
-}
-
-async function hydrateNativeSync(api) {
-  const result = await hydrateNativeSyncResult(api);
-  return result.changed;
 }
 
 // Chrome 书签同步的元数据目录和普通书签没有固定到达顺序。目录先到时，
@@ -786,7 +993,7 @@ function discardDeferredNativeSyncAutoTags(node) {
 }
 
 async function flushDeferredNativeSyncAutoTags(result) {
-  if (!result.ready || !deferredNativeSyncAutoTags.size) return;
+  if (!result.ready || result.awaitingDeviceData || !deferredNativeSyncAutoTags.size) return;
   const entries = [...deferredNativeSyncAutoTags.values()];
   deferredNativeSyncAutoTags.clear();
   entries.forEach(entry => {
@@ -810,6 +1017,8 @@ async function seedNativeSyncFromLocal(api, state, tree, replaceRecords) {
   Object.entries(byKey).forEach(([key, values]) => {
     records[key] = { tags: values, revision: nativeNextRevision(state) };
   });
+  state.presence = false;
+  state.presenceDeviceIds = [];
   const config = {
     revision: nativeNextRevision(state),
     ...nativeConfigValues(stored[FIXED_TAGS_KEY], stored[TAG_RULES_KEY])
@@ -819,39 +1028,86 @@ async function seedNativeSyncFromLocal(api, state, tree, replaceRecords) {
     [NATIVE_SYNC_RECORDS_KEY]: records,
     [NATIVE_SYNC_CONFIG_KEY]: config,
     [NATIVE_SYNC_URLS_KEY]: nativeBookmarkUrlMap(bookmarks),
-    [NATIVE_SYNC_STATE_KEY]: {
-      deviceId: state.deviceId,
-      clock: state.clock,
-      sequence: state.sequence,
-      seeded: true
-    }
+    [NATIVE_SYNC_STATE_KEY]: nativeSyncStateValue(state)
   });
   return { records, config };
 }
 
-async function setNativeSyncEnabled(api, enabled) {
-  const state = await loadNativeSyncState(api);
-  if (!enabled) {
-    state.enabled = false;
+async function hasLocalNativeTagAssignments(api, tree) {
+  const stored = await api.storage.local.get(TAGS_KEY);
+  const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
+  return collectNativeUserBookmarks(tree, []).some(bookmark =>
+    normalizeNativeTags(tags[bookmark.id]).length > 0
+  );
+}
+
+async function setNativeSyncEnabled(api, enabled, settingId = '') {
+  const previousSettingId = nativeSyncActiveSettingId;
+  nativeSyncActiveSettingId = settingId;
+  try {
+    if (!(await isCurrentNativeSyncSetting(api))) return false;
+    const state = await loadNativeSyncState(api);
+    if (!enabled) {
+      state.enabled = false;
+      state.seedAfterIncomplete = false;
+      await saveNativeSyncState(api, state);
+      await cancelNativeHydrationSchedule(api);
+      await setBackgroundTagSyncDisabledStatus(api);
+      return false;
+    }
+    await setBackgroundTagSyncProgress(api, 'reading-bookmarks');
+    const tree = await api.bookmarks.getTree();
+    if (!(await isCurrentNativeSyncSetting(api))) return false;
+    const existingRoot = findNativeSyncRoot(tree);
+    if (!existingRoot) await setBackgroundTagSyncProgress(api, 'creating-directory');
+    await ensureNativeSyncRoot(api, tree);
+    state.enabled = true;
+    // 只有用户显式开启才设置此标记；后台自动发现目录不会据此覆盖迟到的远端数据。
+    if (!state.seeded) state.seedAfterIncomplete = !!existingRoot;
     await saveNativeSyncState(api, state);
-    await setBackgroundTagSyncStatus(api, '');
-    return false;
+    if (!existingRoot) {
+      // 根目录被误删或首次启用时，以本机当前标签重建一份完整的起始数据。
+      await setBackgroundTagSyncProgress(api, 'preparing-local-data');
+      await seedNativeSyncFromLocal(api, state, tree, true);
+      const records = await loadNativeSyncRecords(api);
+      await setBackgroundTagSyncProgress(api, 'writing-sync-data');
+      await publishNativeSync(api, nativeBucketsForRecords(records), true);
+      await setBackgroundTagSyncStatus(api, '');
+    } else {
+      await setBackgroundTagSyncProgress(api, 'checking-remote-data');
+      const result = await hydrateNativeSyncResult(api);
+      if (result.retry && !result.hasPublishedData && !result.hasPayloadErrors) {
+        // 已持久化的记录保留原 revision 重发，避免无谓压过可能迟到的远端数据。
+        const republished = state.seeded && await republishNativeSyncState(api, state);
+        if (!republished) {
+          const hasLocalTags = await hasLocalNativeTagAssignments(api, tree);
+          if (state.seeded || !hasLocalTags) {
+            // 空 presence 不含标签修订号；已播种设备重建提交或空本机上线均不会覆盖远端。
+            await publishNativeSyncPresence(api);
+            const recovered = await hydrateNativeSyncResult(api, true);
+            if (recovered.retry) scheduleNativeHydration(api, 1);
+            return { changed: true, retry: false };
+          }
+          // 远端设备目录先到、Head/分片稍后到是正常情况。此时不能以本机当前时间播种，
+          // 否则迟到的远端记录会因修订号较旧而永久丢失；最终水合才允许恢复本机缓存。
+          scheduleNativeHydration(api, 1);
+          return { changed: false, retry: false };
+        }
+        const recovered = await hydrateNativeSyncResult(api, true);
+        if (recovered.retry) {
+          scheduleNativeHydration(api, 1);
+          return { changed: false, retry: true };
+        }
+      } else if (result.retry) {
+        scheduleNativeHydration(api, 1);
+        // 已有完整提交时可以完成用户的开关请求，空设备目录继续由水合任务等待。
+        return { changed: false, retry: !result.ready };
+      }
+    }
+    return true;
+  } finally {
+    nativeSyncActiveSettingId = previousSettingId;
   }
-  const tree = await api.bookmarks.getTree();
-  const existingRoot = findNativeSyncRoot(tree);
-  await ensureNativeSyncRoot(api, tree);
-  state.enabled = true;
-  await saveNativeSyncState(api, state);
-  if (!existingRoot) {
-    // 根目录被误删或首次启用时，以本机当前标签重建一份完整的起始数据。
-    await seedNativeSyncFromLocal(api, state, tree, true);
-    const records = await loadNativeSyncRecords(api);
-    await publishNativeSync(api, nativeBucketsForRecords(records), true);
-    await setBackgroundTagSyncStatus(api, '');
-  } else {
-    await hydrateNativeSync(api);
-  }
-  return true;
 }
 
 async function recordNativeTagChanges(api, change) {
@@ -884,12 +1140,7 @@ async function recordNativeTagChanges(api, change) {
   await api.storage.local.set({
     [NATIVE_SYNC_RECORDS_KEY]: records,
     [NATIVE_SYNC_URLS_KEY]: currentUrls,
-    [NATIVE_SYNC_STATE_KEY]: {
-      deviceId: state.deviceId,
-      clock: state.clock,
-      sequence: state.sequence,
-      seeded: state.seeded
-    }
+    [NATIVE_SYNC_STATE_KEY]: nativeSyncStateValue(state)
   });
   await publishNativeSync(api, new Set([...affectedKeys].map(nativeBucketForUrl)), false);
 }
@@ -905,12 +1156,7 @@ async function recordNativeConfigChange(api) {
   };
   await api.storage.local.set({
     [NATIVE_SYNC_CONFIG_KEY]: config,
-    [NATIVE_SYNC_STATE_KEY]: {
-      deviceId: state.deviceId,
-      clock: state.clock,
-      sequence: state.sequence,
-      seeded: state.seeded
-    }
+    [NATIVE_SYNC_STATE_KEY]: nativeSyncStateValue(state)
   });
   await publishNativeSync(api, new Set(), true);
 }
@@ -940,12 +1186,7 @@ async function recordNativeBookmarkRemoval(api, node) {
   await api.storage.local.set({
     [NATIVE_SYNC_RECORDS_KEY]: records,
     [NATIVE_SYNC_URLS_KEY]: nativeBookmarkUrlMap(bookmarks),
-    [NATIVE_SYNC_STATE_KEY]: {
-      deviceId: state.deviceId,
-      clock: state.clock,
-      sequence: state.sequence,
-      seeded: state.seeded
-    }
+    [NATIVE_SYNC_STATE_KEY]: nativeSyncStateValue(state)
   });
   await publishNativeSync(api, new Set([...affectedKeys].map(nativeBucketForUrl)), false);
 }
@@ -972,44 +1213,264 @@ async function recordNativeBookmarkUrlMigration(api, id, oldUrl, newUrl) {
   await api.storage.local.set({
     [NATIVE_SYNC_RECORDS_KEY]: records,
     [NATIVE_SYNC_URLS_KEY]: nativeBookmarkUrlMap(bookmarks),
-    [NATIVE_SYNC_STATE_KEY]: {
-      deviceId: state.deviceId,
-      clock: state.clock,
-      sequence: state.sequence,
-      seeded: state.seeded
-    }
+    [NATIVE_SYNC_STATE_KEY]: nativeSyncStateValue(state)
   });
   await publishNativeSync(api, new Set([...affectedKeys].map(nativeBucketForUrl)), false);
   return true;
 }
 
-function scheduleNativeHydration(api = chrome) {
+function runScheduledNativeHydration(api, retryAttempt) {
+  return nativeQueue(async () => {
+    const recoverIncomplete = retryAttempt === NATIVE_SYNC_HYDRATION_RETRY_DELAYS_MS.length;
+    const result = await hydrateNativeSyncResult(api, recoverIncomplete);
+    await flushDeferredNativeSyncAutoTags(result);
+    return result;
+  })
+    .then(result => {
+      if (result.retry && retryAttempt < NATIVE_SYNC_HYDRATION_RETRY_DELAYS_MS.length) {
+        scheduleNativeHydration(api, retryAttempt + 1);
+      }
+      return result;
+    })
+    .catch(async error => {
+      await setBackgroundTagSyncStatus(api, error && error.message || error);
+      console.warn('[书签管家] 原生标签同步读取失败', error);
+      if (retryAttempt < NATIVE_SYNC_HYDRATION_RETRY_DELAYS_MS.length) {
+        scheduleNativeHydration(api, retryAttempt + 1);
+      }
+    });
+}
+
+function scheduleNativeHydration(api = chrome, retryAttempt = 0) {
   if (nativeSyncTimer) clearTimeout(nativeSyncTimer);
+  if (retryAttempt > 1 && api.alarms && typeof api.alarms.clear === 'function') {
+    try {
+      const cleared = api.alarms.clear(nativeHydrationAlarmName(retryAttempt - 1));
+      if (cleared && typeof cleared.catch === 'function') cleared.catch(() => {});
+    } catch (e) { /* 旧 alarm 即使保留也不影响当前内存重试 */ }
+  }
+  const delay = retryAttempt
+    ? NATIVE_SYNC_HYDRATION_RETRY_DELAYS_MS[retryAttempt - 1]
+    : NATIVE_SYNC_DELAY_MS;
+  // Chrome 会把很短的 alarm 延迟限制到约 30 秒。当前 Worker 仍存活时先用计时器，
+  // 同时保留 alarm 作为 Worker 被回收后的兜底，避免空同步目录被无谓地等待数分钟。
+  if (retryAttempt > 0 &&
+    api.alarms && typeof api.alarms.create === 'function') {
+    try {
+      const scheduled = api.alarms.create(nativeHydrationAlarmName(retryAttempt), { when: Date.now() + delay });
+      if (scheduled && typeof scheduled.catch === 'function') scheduled.catch(() => {});
+    } catch (e) { /* 当前 Worker 的计时器仍会完成本次重试 */ }
+  }
   nativeSyncTimer = setTimeout(() => {
     nativeSyncTimer = null;
-    nativeQueue(async () => {
-      const result = await hydrateNativeSyncResult(api);
-      await flushDeferredNativeSyncAutoTags(result);
-      return result.changed;
-    })
-      .catch(error => console.warn('[书签管家] 原生标签同步读取失败', error));
-  }, NATIVE_SYNC_DELAY_MS);
+    runScheduledNativeHydration(api, retryAttempt);
+  }, delay);
 }
 
 
-async function setBackgroundTagSyncStatus(api, lastError) {
-  const at = Date.now();
-  const status = lastError
-    ? { lastError: String(lastError), at }
-    : { lastError: '', at, lastSuccessAt: at };
+async function setBackgroundTagSyncStatus(api, lastError, errorKind = 'sync') {
   try {
+    if (!(await canUpdateNativeSyncStatus(api))) return false;
+    const at = Date.now();
+    const status = lastError
+      ? { lastError: String(lastError), at, errorKind }
+      : {
+        lastError: '', at, lastSuccessAt: at,
+        phase: 'complete', step: 5, totalSteps: 5, directoryReady: true
+      };
+    if (nativeSyncActiveSettingId) status.requestId = nativeSyncActiveSettingId;
     await api.storage.local.set({ [SYNC_STATUS_KEY]: status });
+    return true;
   } catch (e) { /* 保留原始同步错误 */ }
+  return false;
+}
+
+function nativeSyncProgressDetails(phase) {
+  const steps = {
+    queued: [1, '请求已保存，正在启动同步服务'],
+    'reading-bookmarks': [2, '正在读取本机书签'],
+    'creating-directory': [3, '正在创建同步目录'],
+    'checking-remote-data': [3, '同步目录已发现，正在读取已有数据'],
+    'preparing-local-data': [4, '同步目录已创建，正在整理标签数据'],
+    'writing-sync-data': [4, '正在写入同步数据']
+  };
+  const current = steps[phase];
+  return current ? { step: current[0], detail: current[1] } : null;
+}
+
+async function setBackgroundTagSyncProgress(api, phase) {
+  // 普通的后台水合不应把已完成的用户设置重新标为 pending。
+  if (!nativeSyncActiveSettingId) return false;
+  const progress = nativeSyncProgressDetails(phase);
+  if (!progress || !(await canUpdateNativeSyncStatus(api))) return false;
+  try {
+    await api.storage.local.set({
+      [SYNC_STATUS_KEY]: {
+        lastError: '', at: Date.now(), pending: true, target: true,
+        requestId: nativeSyncActiveSettingId,
+        phase, step: progress.step, totalSteps: 5, detail: progress.detail
+      }
+    });
+    return true;
+  } catch (e) { return false; }
+}
+
+async function setBackgroundTagSyncDisabledStatus(api) {
+  try {
+    if (!(await canUpdateNativeSyncStatus(api))) return false;
+    const status = { lastError: '', at: Date.now(), disabled: true };
+    if (nativeSyncActiveSettingId) status.requestId = nativeSyncActiveSettingId;
+    await api.storage.local.set({ [SYNC_STATUS_KEY]: status });
+    return true;
+  } catch (e) { /* 关闭同步不应因状态提示写入失败而中断 */ }
+  return false;
+}
+
+async function setBackgroundTagSyncWaitingStatus(api, deviceIds) {
+  try {
+    if (!(await canUpdateNativeSyncStatus(api))) return false;
+    const status = {
+      lastError: '',
+      at: Date.now(),
+      waitingForData: true,
+      waitingDeviceCount: Array.isArray(deviceIds) ? deviceIds.length : 0,
+      phase: 'waiting-for-data', step: 4, totalSteps: 5,
+      directoryReady: true
+    };
+    if (nativeSyncActiveSettingId) status.requestId = nativeSyncActiveSettingId;
+    await api.storage.local.set({ [SYNC_STATUS_KEY]: status });
+    return true;
+  } catch (e) { /* 等待状态写入失败不应中断后续水合 */ }
+  return false;
+}
+
+function nativeSyncPendingSettingId(status) {
+  if (!status || status.pending !== true) return '';
+  if (status.requestId) return String(status.requestId);
+  // 升级前已落盘的 pending 没有请求 ID，使用原有字段生成稳定兼容标识。
+  return 'legacy-' + String(status.at || '') + '-' + (status.target === false ? 'off' : 'on');
+}
+
+function nativeSyncRequestedSetting(stored) {
+  const request = stored && stored[NATIVE_SYNC_REQUEST_KEY];
+  if (request && typeof request === 'object' && request.id && typeof request.target === 'boolean') {
+    return { id: String(request.id), target: request.target };
+  }
+  const status = stored && stored[SYNC_STATUS_KEY];
+  const id = nativeSyncPendingSettingId(status);
+  return id ? { id, target: stored[NATIVE_SYNC_ENABLED_KEY] === true } : null;
+}
+
+async function completeNativeSyncSetting(api, settingId) {
+  if (!settingId) return false;
+  const stored = await api.storage.local.get([
+    NATIVE_SYNC_REQUEST_KEY, NATIVE_SYNC_ENABLED_KEY, SYNC_STATUS_KEY
+  ]);
+  const current = nativeSyncRequestedSetting(stored);
+  if (!current || current.id !== settingId) return false;
+  await api.storage.local.set({ [NATIVE_SYNC_COMPLETED_REQUEST_KEY]: settingId });
+  return true;
+}
+
+async function isCurrentNativeSyncSetting(api) {
+  if (!nativeSyncActiveSettingId) return true;
+  const stored = await api.storage.local.get([
+    NATIVE_SYNC_REQUEST_KEY, NATIVE_SYNC_COMPLETED_REQUEST_KEY,
+    NATIVE_SYNC_ENABLED_KEY, SYNC_STATUS_KEY
+  ]);
+  const current = nativeSyncRequestedSetting(stored);
+  return !!current && current.id === nativeSyncActiveSettingId &&
+    stored[NATIVE_SYNC_COMPLETED_REQUEST_KEY] !== current.id;
+}
+
+async function canUpdateNativeSyncStatus(api) {
+  const stored = await api.storage.local.get([
+    NATIVE_SYNC_REQUEST_KEY, NATIVE_SYNC_COMPLETED_REQUEST_KEY,
+    NATIVE_SYNC_ENABLED_KEY, SYNC_STATUS_KEY
+  ]);
+  const current = nativeSyncRequestedSetting(stored);
+  if (!current || stored[NATIVE_SYNC_COMPLETED_REQUEST_KEY] === current.id) return true;
+  return !!nativeSyncActiveSettingId && current.id === nativeSyncActiveSettingId;
+}
+
+async function runPendingNativeSyncSetting(api) {
+  const stored = await api.storage.local.get([
+    NATIVE_SYNC_REQUEST_KEY, NATIVE_SYNC_COMPLETED_REQUEST_KEY,
+    NATIVE_SYNC_ENABLED_KEY, SYNC_STATUS_KEY
+  ]);
+  const current = nativeSyncRequestedSetting(stored);
+  if (!current || stored[NATIVE_SYNC_COMPLETED_REQUEST_KEY] === current.id) return false;
+  let completed = false;
+  try {
+    const result = await setNativeSyncEnabled(api, current.target, current.id);
+    if (result && result.retry) {
+      scheduleNativeSyncSettingRetry(api);
+      return result;
+    }
+    completed = true;
+    return result;
+  } catch (error) {
+    const previousSettingId = nativeSyncActiveSettingId;
+    nativeSyncActiveSettingId = current.id;
+    try {
+      await setBackgroundTagSyncStatus(api, error && error.message || error);
+    } finally {
+      nativeSyncActiveSettingId = previousSettingId;
+    }
+    scheduleNativeSyncSettingRetry(api);
+    throw error;
+  } finally {
+    if (completed) await completeNativeSyncSetting(api, current.id);
+  }
+}
+
+function resumePendingNativeSyncSetting(api = chrome) {
+  if (!api.storage || !api.storage.local) return;
+  api.storage.local.get([
+    NATIVE_SYNC_REQUEST_KEY, NATIVE_SYNC_COMPLETED_REQUEST_KEY,
+    NATIVE_SYNC_ENABLED_KEY, SYNC_STATUS_KEY
+  ])
+    .then(stored => {
+      const current = nativeSyncRequestedSetting(stored);
+      if (!current || stored[NATIVE_SYNC_COMPLETED_REQUEST_KEY] === current.id) return false;
+      // 闹钟与启动恢复可能同时排队；实际执行前再次读取 pending，确保只执行一次。
+      return nativeQueue(() => runPendingNativeSyncSetting(api));
+    })
+    .catch(error => {
+      setBackgroundTagSyncStatus(api, error && error.message || error)
+        .catch(statusError => console.warn('[书签管家] 原生标签同步错误状态写入失败', statusError));
+      console.warn('[书签管家] 恢复原生标签同步设置失败', error);
+    });
+}
+
+async function clearBackgroundTransportSyncError(api, expected) {
+  if (!expected || !CLOSED_NATIVE_SYNC_CHANNEL.test(String(expected.lastError || ''))) return false;
+  const stored = await api.storage.local.get(SYNC_STATUS_KEY);
+  const current = stored[SYNC_STATUS_KEY];
+  const explicitTransport = expected.errorKind === 'transport' && current && current.errorKind === 'transport';
+  const legacyTransport = expected.errorKind === 'legacy-transport' && current && current.errorKind == null &&
+    LEGACY_CLOSED_NATIVE_SYNC_CHANNEL.test(String(expected.lastError));
+  if ((!explicitTransport && !legacyTransport) || current.lastError !== expected.lastError ||
+    current.at !== expected.at) return false;
+  const { errorKind: _errorKind, ...status } = current;
+  await api.storage.local.set({
+    [SYNC_STATUS_KEY]: { ...status, lastError: '', at: Date.now() }
+  });
+  return true;
 }
 
 if (chrome.storage && chrome.storage.onChanged) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
+    // 设置页只写入持久化请求，避免等待 MV3 消息通道；storage 事件会唤醒后台立即执行。
+    if (changes[NATIVE_SYNC_REQUEST_KEY]) {
+      nativeQueue(() => runPendingNativeSyncSetting(chrome))
+        .catch(error => {
+          setBackgroundTagSyncStatus(chrome, error && error.message || error)
+            .catch(statusError => console.warn('[书签管家] 原生标签同步错误状态写入失败', statusError));
+          console.warn('[书签管家] 原生标签同步设置失败', error);
+        });
+    }
     if (changes[TAGS_KEY] && !consumeIgnoredNativeTagChange(changes[TAGS_KEY].newValue)) {
       nativeQueue(() => recordNativeTagChanges(chrome, changes[TAGS_KEY]))
         .catch(async error => {
@@ -1494,18 +1955,41 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message) return;
   if (message.type === NATIVE_SYNC_MESSAGE) {
     const action = message.action;
+    if (action === NATIVE_SYNC_WAKE_ACTION) {
+      // 只确认后台已被唤醒，实际书签读写留在队列中异步进行，避免重现 MV3 消息通道超时。
+      nativeQueue(() => runPendingNativeSyncSetting(chrome))
+        .catch(error => console.warn('[书签管家] 原生标签同步唤醒失败', error));
+      sendResponse({ ok: true, accepted: true });
+      return;
+    }
     let task;
     if (action === 'setEnabled') task = nativeQueue(() => setNativeSyncEnabled(chrome, !!message.enabled));
-    else if (action === 'hydrate') task = nativeQueue(() => hydrateNativeSync(chrome));
+    else if (action === 'hydrate') task = nativeQueue(() => hydrateNativeSyncResult(chrome));
     else if (action === 'publish') task = nativeQueue(() => publishNativeSync(chrome, null, !!message.includeConfig));
+    else if (action === 'clearTransportError') {
+      task = nativeQueue(() => clearBackgroundTransportSyncError(chrome, message.status));
+    }
     else if (action === 'migrateUrl') {
       task = nativeQueue(() => recordNativeBookmarkUrlMigration(chrome, message.id, message.oldUrl, message.newUrl));
     }
-    else task = nativeQueue(() => hydrateNativeSync(chrome));
-    task.then(changed => sendResponse({ ok: true, changed: !!changed }))
-      .catch(async error => {
-        await setBackgroundTagSyncStatus(chrome, error && error.message || error);
+    else task = nativeQueue(() => hydrateNativeSyncResult(chrome));
+    task.then(result => {
+      const changed = result && typeof result === 'object' ? result.changed : result;
+      sendResponse({ ok: true, changed: !!changed });
+      if (result && typeof result === 'object' && result.retry) {
+        try { scheduleNativeHydration(chrome, 1); }
+        catch (scheduleError) { console.warn('[书签管家] 原生标签同步重试调度失败', scheduleError); }
+      }
+    })
+      .catch(error => {
+        // 必须先关闭消息请求；诊断写入或重试调度失败不能让调用方永远等待响应。
         sendResponse({ ok: false, error: error.message || String(error) });
+        if (action === 'hydrate' || (action === 'setEnabled' && message.enabled)) {
+          try { scheduleNativeHydration(chrome, 1); }
+          catch (scheduleError) { console.warn('[书签管家] 原生标签同步重试调度失败', scheduleError); }
+        }
+        setBackgroundTagSyncStatus(chrome, error && error.message || error)
+          .catch(statusError => console.warn('[书签管家] 原生标签同步错误状态写入失败', statusError));
       });
     return true;
   }
@@ -1564,7 +2048,7 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
     if (!fromNativeImport) {
       try {
         const hydration = await hydrateNativeSyncBeforeAutoTag(chrome);
-        nativeSyncReady = hydration.ready;
+        nativeSyncReady = hydration.ready && !hydration.awaitingDeviceData;
       }
       catch (e) { console.warn('[书签管家] 收藏前读取原生标签同步失败', e); }
     }
@@ -1904,11 +2388,29 @@ async function purgeExpiredTrash() {
 }
 chrome.alarms.create('bm-trash-purge', { periodInMinutes: 60 * 24 });
 chrome.alarms.onAlarm.addListener(alarm => {
+  if (alarm.name === NATIVE_SYNC_SETTING_ALARM) {
+    nativeQueue(() => runPendingNativeSyncSetting(chrome))
+      .catch(error => {
+        setBackgroundTagSyncStatus(chrome, error && error.message || error)
+          .catch(statusError => console.warn('[书签管家] 原生标签同步错误状态写入失败', statusError));
+        console.warn('[书签管家] 原生标签同步设置失败', error);
+      });
+    return;
+  }
+  const hydrationRetryAttempt = nativeHydrationAlarmAttempt(alarm.name);
+  if (hydrationRetryAttempt) {
+    runScheduledNativeHydration(chrome, hydrationRetryAttempt);
+    return;
+  }
   if (alarm.name !== 'bm-trash-purge') return;
   purgeExpiredTrash()
     .then(n => { if (n) console.log('[书签管家] 回收站已自动清理 ' + n + ' 条过期项'); })
     .catch(err => console.warn('[书签管家] 回收站定时清理失败', err));
 });
+
+// 设置页先持久化意图，再由闹钟触发实际书签写入。若扩展重载丢失闹钟，
+// 任意一次 Service Worker 启动都从 pending 状态补跑，避免留下空设备目录。
+resumePendingNativeSyncSetting();
 
 // 保留极简后台：书签读写都在侧边栏内通过 chrome.bookmarks API 完成。
 chrome.runtime.onStartup.addListener(() => {

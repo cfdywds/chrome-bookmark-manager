@@ -18,6 +18,12 @@ let activeLlmProfileId = '';
 let nextProfileId = 0;
 let profileWriteQueue = Promise.resolve();
 const pendingOwnProfileWrites = [];
+let tagSyncPersistIntent = 0;
+let tagSyncRequest = null;
+let completedTagSyncRequestId = '';
+let pendingTagSyncRequestId = '';
+let pendingTagSyncTarget = true;
+let tagSyncStatus = null;
 
 function setMsg(text, cls, autohide) {
   const el = $('#settingsMsg');
@@ -90,18 +96,110 @@ async function persistNtAppearance(msg) {
 function renderTagSyncStatus(status) {
   const msg = $('#tagSyncMsg');
   if (!msg) return;
-  if (status && status.lastError) {
+  const progress = $('#tagSyncProgress');
+  const progressTrack = progress && progress.querySelector('.tag-sync-progress-track');
+  const progressBar = $('#tagSyncProgressBar');
+  const progressText = $('#tagSyncProgressText');
+  const setProgress = (step, total, text) => {
+    if (!progress) return;
+    const maximum = Math.max(1, Number(total) || 5);
+    const current = Math.max(0, Math.min(maximum, Number(step) || 0));
+    progress.hidden = false;
+    if (progressTrack) {
+      progressTrack.setAttribute('aria-valuemax', String(maximum));
+      progressTrack.setAttribute('aria-valuenow', String(current));
+    }
+    if (progressBar) progressBar.style.width = (current / maximum * 100) + '%';
+    if (progressText) progressText.textContent = text || ('初始化 ' + current + '/' + maximum);
+  };
+  const clearProgress = () => {
+    if (progress) progress.hidden = true;
+  };
+  const statusProgress = (fallbackStep, fallbackText) => {
+    const phaseLabels = {
+      queued: '请求已保存，正在启动同步服务',
+      'reading-bookmarks': '正在读取本机书签',
+      'creating-directory': '正在创建同步目录',
+      'checking-remote-data': '同步目录已发现，正在读取已有数据',
+      'preparing-local-data': '同步目录已创建，正在整理标签数据',
+      'writing-sync-data': '正在写入同步数据',
+      'waiting-for-data': '本机同步目录已就绪，等待其他设备数据'
+    };
+    const step = Number(status && status.step) || fallbackStep;
+    const total = Number(status && status.totalSteps) || 5;
+    const text = status && status.detail || phaseLabels[status && status.phase] || fallbackText;
+    setProgress(step, total, text);
+    return text;
+  };
+  const pendingRequestId = typeof pendingTagSyncRequestId === 'string' ? pendingTagSyncRequestId : '';
+  const pendingTarget = typeof pendingTagSyncTarget === 'boolean' ? pendingTagSyncTarget : true;
+  const isCurrentPendingStatus = !pendingRequestId ||
+    (status && status.requestId === pendingRequestId);
+  if (status && status.lastError && isCurrentPendingStatus) {
+    clearProgress();
     msg.textContent = '上次同步失败：' + status.lastError;
     msg.className = 'settings-msg err';
     return;
   }
+  if (pendingRequestId && !isCurrentPendingStatus) {
+    setProgress(1, 5, pendingTarget === false ? '正在启动关闭同步任务' : '请求已保存，正在启动同步服务');
+    msg.textContent = pendingTarget === false
+      ? '正在关闭同步：后台将停止读写同步目录'
+      : '已开启：正在初始化同步目录';
+    msg.className = 'settings-msg';
+    return;
+  }
+  if (status && status.lastError) {
+    clearProgress();
+    msg.textContent = '上次同步失败：' + status.lastError;
+    msg.className = 'settings-msg err';
+    return;
+  }
+  if (status && status.waitingForData) {
+    const count = Number(status.waitingDeviceCount) || 0;
+    msg.textContent = count
+      ? '本机同步目录已就绪，正在等待 ' + count + ' 台其他设备数据'
+      : '本机同步目录已就绪，正在等待其他设备数据';
+    statusProgress(4, msg.textContent);
+    msg.className = 'settings-msg';
+    return;
+  }
+  if (status && status.pending) {
+    const text = statusProgress(1, status.target === false
+      ? '正在关闭同步：后台将停止读写同步目录'
+      : '已开启：正在初始化同步目录');
+    msg.textContent = status.target === false
+      ? '正在关闭同步：后台将停止读写同步目录'
+      : '已开启：' + text;
+    msg.className = 'settings-msg';
+    return;
+  }
+  if (status && status.disabled) {
+    clearProgress();
+    msg.textContent = '已关闭：不再读写同步目录；已有数据保留，随时可重新开启';
+    msg.className = 'settings-msg';
+    return;
+  }
   if (status && status.lastSuccessAt) {
+    setProgress(Number(status.step) || 5, Number(status.totalSteps) || 5, '同步目录和本机标签数据已就绪');
     msg.textContent = '上次同步成功：' + new Date(status.lastSuccessAt).toLocaleString();
     msg.className = 'settings-msg ok';
     return;
   }
+  clearProgress();
   msg.textContent = '';
   msg.className = 'settings-msg';
+}
+
+function updateTagSyncRequestState(request, completedId) {
+  tagSyncRequest = request && typeof request === 'object' ? request : null;
+  completedTagSyncRequestId = String(completedId || '');
+  if (!tagSyncRequest || !tagSyncRequest.id || tagSyncRequest.id === completedTagSyncRequestId) {
+    pendingTagSyncRequestId = '';
+    return;
+  }
+  pendingTagSyncRequestId = String(tagSyncRequest.id);
+  pendingTagSyncTarget = tagSyncRequest.target !== false;
 }
 
 function renderTagSyncDiagnostics() {
@@ -478,7 +576,8 @@ async function load() {
     try { await BM.initializeSyncedTagConfiguration(); } catch (e) { /* 保留本地标签配置 */ }
     const r = await chrome.storage.local.get([
       'bmSettings', LLM_PROFILES_KEY, ACTIVE_LLM_PROFILE_KEY,
-      'bmFixedTags', 'bmTagRules', 'bmStarHook', 'bmAutoAiTag', BM.SYNC_ENABLED_KEY, BM.SYNC_STATUS_KEY,
+      'bmFixedTags', 'bmTagRules', 'bmStarHook', 'bmAutoAiTag', BM.NATIVE_SYNC_ENABLED_KEY, BM.SYNC_STATUS_KEY,
+      BM.NATIVE_SYNC_REQUEST_KEY, BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY,
       NT_APPEARANCE_KEY
     ]);
     llmProfiles = normalizeLlmProfiles(r[LLM_PROFILES_KEY], r.bmSettings);
@@ -497,7 +596,12 @@ async function load() {
     // 标签原生同步开关：默认关闭（隐私权衡，需主动开启）
     const syncEl = $('#setTagSync');
     if (syncEl) syncEl.checked = await BM.getTagSyncEnabled();
-    renderTagSyncStatus(r[BM.SYNC_STATUS_KEY]);
+    tagSyncStatus = r[BM.SYNC_STATUS_KEY];
+    updateTagSyncRequestState(
+      r[BM.NATIVE_SYNC_REQUEST_KEY],
+      r[BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY]
+    );
+    renderTagSyncStatus(tagSyncStatus);
     renderTagSyncDiagnostics();
     fillNtAppearance(r[NT_APPEARANCE_KEY]);
   } catch (e) {
@@ -531,28 +635,22 @@ async function persistAutoAiTag() {
 
 // 标签原生同步开关：开启时创建或读取内部书签目录；关闭时停止读写但保留数据。
 async function persistTagSync() {
+  const intent = ++tagSyncPersistIntent;
   try {
     const on = $('#setTagSync').checked;
     await BM.setTagSyncEnabled(on);
-    const msg = $('#tagSyncMsg');
-    if (on) {
-      msg.textContent = '已开启：已创建同步目录，标签将随 Chrome 书签同步';
-      msg.className = 'settings-msg ok';
-      try {
-        await BM.initializeSyncedTagConfiguration();
-        await BM.pullTagsFromCloud();
-        msg.textContent = '已开启 · 标签与规则会随 Chrome 书签同步';
-      } catch (e) {
-        try { $('#setTagSync').checked = await BM.getTagSyncEnabled(); } catch (ignored) { /* 保留当前状态 */ }
-        msg.textContent = '已开启 · 同步失败：' + (e.message || e);
-        msg.className = 'settings-msg err';
-      }
-    } else {
-      msg.textContent = '已关闭：不再读写同步目录；已有数据保留，随时可重新开启';
-      msg.className = 'settings-msg';
-    }
+    if (intent !== tagSyncPersistIntent) return;
+    // 后台可能已在本次调用期间完成。重新读取持久化状态，不能用“初始化中”覆盖完成或失败状态。
+    const stored = await chrome.storage.local.get(BM.SYNC_STATUS_KEY);
+    if (intent !== tagSyncPersistIntent) return;
+    tagSyncStatus = stored[BM.SYNC_STATUS_KEY] || null;
+    renderTagSyncStatus(tagSyncStatus || {
+      lastError: '', pending: true, target: on, phase: 'queued', step: 1, totalSteps: 5
+    });
   } catch (e) {
+    if (intent !== tagSyncPersistIntent) return;
     try { $('#setTagSync').checked = await BM.getTagSyncEnabled(); } catch (ignored) { /* 保留当前状态 */ }
+    if (intent !== tagSyncPersistIntent) return;
     const msg = $('#tagSyncMsg');
     msg.textContent = '同步设置失败：' + (e.message || e);
     msg.className = 'settings-msg err';
@@ -587,8 +685,20 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes.bmTagRules && !ownProfileChange) {
     fillTagRules(changes.bmTagRules.newValue);
   }
+  if (changes[BM.NATIVE_SYNC_REQUEST_KEY] || changes[BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY]) {
+    updateTagSyncRequestState(
+      changes[BM.NATIVE_SYNC_REQUEST_KEY]
+        ? changes[BM.NATIVE_SYNC_REQUEST_KEY].newValue : tagSyncRequest,
+      changes[BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY]
+        ? changes[BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY].newValue : completedTagSyncRequestId
+    );
+  }
   if (changes[BM.SYNC_STATUS_KEY]) {
-    renderTagSyncStatus(changes[BM.SYNC_STATUS_KEY].newValue);
+    tagSyncStatus = changes[BM.SYNC_STATUS_KEY].newValue;
+  }
+  if (changes[BM.NATIVE_SYNC_REQUEST_KEY] || changes[BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY] ||
+    changes[BM.SYNC_STATUS_KEY]) {
+    renderTagSyncStatus(tagSyncStatus);
   }
   if (changes[NT_APPEARANCE_KEY] && $('#setNtWidth')) {
     // 另一窗口（新标签页 / 另一设置页）改外观时同步到本页表单

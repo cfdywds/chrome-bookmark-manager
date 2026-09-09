@@ -53,6 +53,255 @@ describe('urlKey（精确重复判定键）', () => {
 });
 
 describe('标签原生同步', () => {
+  it('并发初始化与拉取共享同一个后台水合请求', async () => {
+    const previousChrome = globalThis.chrome;
+    let resolveHydration;
+    const sendMessage = vi.fn(() => new Promise(resolve => { resolveHydration = resolve; }));
+    globalThis.chrome = {
+      storage: {
+        local: { get: vi.fn().mockResolvedValue({ bmNativeTagSyncEnabled: true }) }
+      },
+      runtime: { sendMessage }
+    };
+
+    try {
+      const initialization = BM.initializeSyncedTagConfiguration();
+      const pull = BM.pullTagsFromCloud();
+      await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
+      expect(sendMessage).toHaveBeenCalledWith({ type: 'bmNativeTagSync', action: 'hydrate' });
+
+      resolveHydration({ ok: true, changed: false });
+      await expect(Promise.all([initialization, pull])).resolves.toEqual([false, false]);
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('后台消息通道关闭时不记录伪同步失败', async () => {
+    const previousChrome = globalThis.chrome;
+    const localSet = vi.fn();
+    const closed = new Error(
+      'A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received'
+    );
+    globalThis.chrome = {
+      storage: {
+        local: {
+          get: vi.fn().mockResolvedValue({ bmNativeTagSyncEnabled: true }),
+          set: localSet
+        }
+      },
+      runtime: { sendMessage: vi.fn().mockRejectedValue(closed) }
+    };
+
+    try {
+      await expect(BM.initializeSyncedTagConfiguration()).resolves.toBe(false);
+      await expect(BM.pullTagsFromCloud()).resolves.toBe(false);
+      expect(localSet).not.toHaveBeenCalled();
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('没有闹钟 API 时会发送无等待唤醒信号', async () => {
+    const previousChrome = globalThis.chrome;
+    const localSet = vi.fn();
+    const sendMessage = vi.fn();
+    globalThis.chrome = {
+      storage: { local: { set: localSet } },
+      runtime: { sendMessage }
+    };
+
+    try {
+      await expect(BM.setTagSyncEnabled(true)).resolves.toBe(true);
+      expect(localSet).toHaveBeenCalledWith(expect.objectContaining({
+        bmNativeTagSyncEnabled: true,
+        bmNativeTagSyncRequest: expect.objectContaining({ id: expect.any(String), target: true }),
+        bmTagSyncStatus: expect.objectContaining({ pending: true, target: true, phase: 'queued', step: 1 })
+      }));
+      expect(sendMessage).toHaveBeenCalledWith({ type: 'bmNativeTagSync', action: 'wakePendingSetting' });
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('支持闹钟时由后台异步初始化同步目录，不等待书签读写响应', async () => {
+    const previousChrome = globalThis.chrome;
+    const localSet = vi.fn();
+    const create = vi.fn();
+    const sendMessage = vi.fn();
+    globalThis.chrome = {
+      storage: { local: { set: localSet } },
+      alarms: { create },
+      runtime: { sendMessage }
+    };
+
+    try {
+      await expect(BM.setTagSyncEnabled(true)).resolves.toBe(true);
+      expect(localSet).toHaveBeenCalledWith(expect.objectContaining({
+        bmNativeTagSyncEnabled: true,
+        bmNativeTagSyncRequest: expect.objectContaining({ id: expect.any(String), target: true }),
+        bmTagSyncStatus: expect.objectContaining({
+          lastError: '', pending: true, target: true, requestId: expect.any(String)
+        })
+      }));
+      expect(create).toHaveBeenCalledWith('bm-native-sync-setting', { when: expect.any(Number) });
+      expect(sendMessage).toHaveBeenLastCalledWith({ type: 'bmNativeTagSync', action: 'wakePendingSetting' });
+
+      await expect(BM.setTagSyncEnabled(false)).resolves.toBe(false);
+      expect(localSet).toHaveBeenLastCalledWith(expect.objectContaining({
+        bmNativeTagSyncEnabled: false,
+        bmNativeTagSyncRequest: expect.objectContaining({ id: expect.any(String), target: false }),
+        bmTagSyncStatus: expect.objectContaining({
+          lastError: '', pending: true, target: false, requestId: expect.any(String)
+        })
+      }));
+      expect(sendMessage).toHaveBeenLastCalledWith({ type: 'bmNativeTagSync', action: 'wakePendingSetting' });
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('初始化时清除历史消息通道错误且不伪造成功时间', async () => {
+    const previousChrome = globalThis.chrome;
+    const closedMessage =
+      'A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received';
+    const localData = {
+      bmTagSyncStatus: { lastError: closedMessage, at: 1, errorKind: 'transport' }
+    };
+    const localSet = vi.fn(async values => { Object.assign(localData, values); });
+    globalThis.chrome = {
+      storage: {
+        local: {
+          get: vi.fn(async key => ({ [key]: localData[key] })),
+          set: localSet
+        }
+      },
+      runtime: {
+        sendMessage: vi.fn(async message => {
+          if (message.action === 'clearTransportError') {
+            localData.bmTagSyncStatus = { lastError: '', at: Date.now() };
+            return { ok: true, changed: true };
+          }
+          return { ok: true, changed: false };
+        })
+      }
+    };
+
+    try {
+      await expect(BM.initializeSyncedTagConfiguration()).resolves.toBe(false);
+      expect(localData.bmTagSyncStatus).toMatchObject({ lastError: '', at: expect.any(Number) });
+      expect(localData.bmTagSyncStatus).not.toHaveProperty('lastSuccessAt');
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('初始化时迁移并清除旧版本留下的 Chrome 固定通道错误', async () => {
+    const previousChrome = globalThis.chrome;
+    const closedMessage =
+      'A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received';
+    const localData = { bmTagSyncStatus: { lastError: closedMessage, at: 1 } };
+    const sendMessage = vi.fn(async message => {
+      if (message.action === 'clearTransportError') {
+        expect(message.status).toEqual({ lastError: closedMessage, at: 1, errorKind: 'legacy-transport' });
+      }
+      return { ok: true, changed: false };
+    });
+    globalThis.chrome = {
+      storage: { local: { get: vi.fn(async key => ({ [key]: localData[key] })), set: vi.fn() } },
+      runtime: { sendMessage }
+    };
+
+    try {
+      await expect(BM.initializeSyncedTagConfiguration()).resolves.toBe(false);
+      expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'clearTransportError' }));
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('初始化不会清除文案相同的历史业务错误', async () => {
+    const previousChrome = globalThis.chrome;
+    const closedMessage =
+      'A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received';
+    const localData = {
+      bmTagSyncStatus: { lastError: closedMessage, at: 1, errorKind: 'sync' }
+    };
+    const sendMessage = vi.fn().mockResolvedValue({ ok: true, changed: false });
+    globalThis.chrome = {
+      storage: {
+        local: {
+          get: vi.fn(async key => ({ [key]: localData[key] })),
+          set: vi.fn()
+        }
+      },
+      runtime: { sendMessage }
+    };
+
+    try {
+      await expect(BM.initializeSyncedTagConfiguration()).resolves.toBe(false);
+      expect(localData.bmTagSyncStatus).toEqual({ lastError: closedMessage, at: 1, errorKind: 'sync' });
+      expect(sendMessage).toHaveBeenCalledWith({ type: 'bmNativeTagSync', action: 'hydrate' });
+      expect(sendMessage).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'clearTransportError' }));
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('发布消息通道关闭时不持久化同步失败', async () => {
+    const previousChrome = globalThis.chrome;
+    const localSet = vi.fn();
+    const closed = new Error(
+      'A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received'
+    );
+    globalThis.chrome = {
+      storage: {
+        local: {
+          get: vi.fn(async key => ({ [key]: key === 'bmNativeTagSyncEnabled' ? true : undefined })),
+          set: localSet
+        }
+      },
+      runtime: { sendMessage: vi.fn().mockRejectedValue(closed) }
+    };
+
+    try {
+      await expect(BM.pushTagsToCloud()).resolves.toBe(false);
+      expect(localSet).not.toHaveBeenCalled();
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('后台明确返回同文案错误时不会误判为传输中断', async () => {
+    const previousChrome = globalThis.chrome;
+    const closedMessage =
+      'A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received';
+    globalThis.chrome = {
+      storage: {
+        local: {
+          get: vi.fn().mockResolvedValue({ bmNativeTagSyncEnabled: true }),
+          set: vi.fn()
+        }
+      },
+      runtime: { sendMessage: vi.fn().mockResolvedValue({ ok: false, error: closedMessage }) }
+    };
+
+    try {
+      await expect(BM.initializeSyncedTagConfiguration()).rejects.toThrow(closedMessage);
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
   it('通过后台请求原生书签目录拉取标签', async () => {
     const previousChrome = globalThis.chrome;
     const sendMessage = vi.fn().mockResolvedValue({ ok: true, changed: true });

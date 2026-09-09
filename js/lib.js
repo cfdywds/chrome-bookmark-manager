@@ -785,12 +785,18 @@
   // UI 仅通过消息请求后台同步，避免扩展 ID 和存储配额限制。
   const SYNC_STATUS_KEY = 'bmTagSyncStatus';
   const NATIVE_SYNC_ENABLED_KEY = 'bmNativeTagSyncEnabled';
+  const NATIVE_SYNC_REQUEST_KEY = 'bmNativeTagSyncRequest';
+  const NATIVE_SYNC_COMPLETED_REQUEST_KEY = 'bmNativeTagSyncCompletedRequest';
   const NATIVE_SYNC_MESSAGE = 'bmNativeTagSync';
+  const NATIVE_SYNC_WAKE_ACTION = 'wakePendingSetting';
+  const NATIVE_SYNC_SETTING_ALARM = 'bm-native-sync-setting';
   const NATIVE_SYNC_ROOT_TITLE = '书签管家同步数据（请勿修改）';
 
   function isNativeSyncRoot(node) {
     return !!node && !node.url && node.title === NATIVE_SYNC_ROOT_TITLE;
   }
+
+  class NativeSyncResponseError extends Error {}
 
   async function requestNativeTagSync(action, payload) {
     if (!chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') return { ok: false, changed: false };
@@ -799,8 +805,56 @@
       action,
       ...(payload || {})
     });
-    if (!result || !result.ok) throw new Error(result && result.error || '原生标签同步失败');
+    if (!result || !result.ok) {
+      throw new NativeSyncResponseError(result && result.error || '原生标签同步失败');
+    }
     return result;
+  }
+
+  const CLOSED_NATIVE_SYNC_CHANNEL = /(?:message (?:channel|port) closed|asynchronous response.*channel closed)/i;
+  const LEGACY_CLOSED_NATIVE_SYNC_CHANNEL =
+    /^A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received\.?$/i;
+  let nativeHydrationRequest = null;
+  let nativeSyncSettingIntent = 0;
+
+  function isClosedNativeSyncChannel(error) {
+    return !(error instanceof NativeSyncResponseError) &&
+      CLOSED_NATIVE_SYNC_CHANNEL.test(String(error && (error.message || error)));
+  }
+
+  function nativeSyncTransportErrorKind(status) {
+    if (!status || !CLOSED_NATIVE_SYNC_CHANNEL.test(String(status.lastError || ''))) return '';
+    if (status.errorKind === 'transport') return 'transport';
+    // 旧版本未记录错误来源；只迁移 Chrome 固定的原始文案，避免误清业务错误。
+    if (status.errorKind == null && LEGACY_CLOSED_NATIVE_SYNC_CHANNEL.test(String(status.lastError))) {
+      return 'legacy-transport';
+    }
+    return '';
+  }
+
+  async function clearClosedNativeSyncStatus() {
+    try {
+      const stored = await chrome.storage.local.get(SYNC_STATUS_KEY);
+      const status = stored[SYNC_STATUS_KEY];
+      const errorKind = nativeSyncTransportErrorKind(status);
+      if (!errorKind) return false;
+      const result = await requestNativeTagSync('clearTransportError', {
+        status: { lastError: status.lastError, at: status.at, errorKind }
+      });
+      return !!result.changed;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function requestNativeTagHydration() {
+    if (nativeHydrationRequest) return nativeHydrationRequest;
+    const request = requestNativeTagSync('hydrate');
+    nativeHydrationRequest = request;
+    request.finally(() => {
+      if (nativeHydrationRequest === request) nativeHydrationRequest = null;
+    }).catch(() => {});
+    return request;
   }
 
   function normalizeConfigFixedTags(tags) {
@@ -821,12 +875,21 @@
   }
 
   async function initializeSyncedTagConfiguration() {
-    const result = await requestNativeTagSync('hydrate');
-    if (result.changed) {
-      invalidateFixedTags();
-      invalidateTagRules();
+    try {
+      await clearClosedNativeSyncStatus();
+      const result = await requestNativeTagHydration();
+      if (result.changed) {
+        invalidateFixedTags();
+        invalidateTagRules();
+      }
+      return !!result.changed;
+    } catch (e) {
+      if (isClosedNativeSyncChannel(e)) {
+        await clearClosedNativeSyncStatus();
+        return false;
+      }
+      throw e;
     }
-    return !!result.changed;
   }
 
   function watchTagConfiguration(onChange) {
@@ -840,6 +903,18 @@
 
   let syncTimer = null;
 
+  function wakePendingNativeSyncSetting() {
+    try {
+      if (!chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') return;
+      const pending = chrome.runtime.sendMessage({
+        type: NATIVE_SYNC_MESSAGE,
+        action: NATIVE_SYNC_WAKE_ACTION
+      });
+      // 此消息仅用于唤醒后台，后台会同步确认接收；绝不等待书签读写结果。
+      if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+    } catch (e) { /* storage 事件和闹钟仍会补跑持久化请求 */ }
+  }
+
   async function getTagSyncEnabled() {
     try {
       const local = await chrome.storage.local.get(NATIVE_SYNC_ENABLED_KEY);
@@ -850,8 +925,27 @@
   }
 
   async function setTagSyncEnabled(enabled) {
-    const result = await requestNativeTagSync('setEnabled', { enabled: !!enabled });
-    return !!result.changed || !!enabled;
+    const target = !!enabled;
+    const requestId = globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function'
+      ? 'setting-' + globalThis.crypto.randomUUID()
+      : 'setting-' + Date.now().toString(36) + '-' + (++nativeSyncSettingIntent).toString(36);
+    const at = Date.now();
+    // 设置页不等待书签读写完成。请求先持久化，再用无等待唤醒、storage 事件和闹钟三路触发后台。
+    await chrome.storage.local.set({
+      [NATIVE_SYNC_ENABLED_KEY]: target,
+      [NATIVE_SYNC_REQUEST_KEY]: { id: requestId, target, at },
+      [SYNC_STATUS_KEY]: {
+        lastError: '', at, pending: true, target, requestId,
+        phase: 'queued', step: 1, totalSteps: 5
+      }
+    });
+    wakePendingNativeSyncSetting();
+    try {
+      if (chrome.alarms && typeof chrome.alarms.create === 'function') {
+        await chrome.alarms.create(NATIVE_SYNC_SETTING_ALARM, { when: Date.now() + 100 });
+      }
+    } catch (e) { /* storage 事件和 Service Worker 启动恢复仍会处理该持久化请求 */ }
+    return target;
   }
 
   async function migrateTagSyncUrl(id, oldUrl, newUrl) {
@@ -862,7 +956,7 @@
   async function setTagSyncStatus(lastError) {
     const at = Date.now();
     const status = lastError
-      ? { lastError: String(lastError), at }
+      ? { lastError: String(lastError), at, errorKind: 'sync' }
       : { lastError: '', at, lastSuccessAt: at };
     try {
       await chrome.storage.local.set({ [SYNC_STATUS_KEY]: status });
@@ -875,6 +969,10 @@
       const result = await requestNativeTagSync('publish', { includeConfig: true });
       return !!result.changed;
     } catch (e) {
+      if (isClosedNativeSyncChannel(e)) {
+        await clearClosedNativeSyncStatus();
+        return false;
+      }
       await setTagSyncStatus((e && e.message) || e);
       throw e;
     }
@@ -894,9 +992,13 @@
   async function pullTagsFromCloud() {
     try {
       if (!await getTagSyncEnabled()) return false;
-      const result = await requestNativeTagSync('hydrate');
+      const result = await requestNativeTagHydration();
       return !!result.changed;
     } catch (e) {
+      if (isClosedNativeSyncChannel(e)) {
+        await clearClosedNativeSyncStatus();
+        return false;
+      }
       await setTagSyncStatus((e && e.message) || e);
       return false;
     }
@@ -1996,6 +2098,8 @@
     inferDomainTags,
     inferHighConfidenceTags,
     NATIVE_SYNC_ENABLED_KEY,
+    NATIVE_SYNC_REQUEST_KEY,
+    NATIVE_SYNC_COMPLETED_REQUEST_KEY,
     NATIVE_SYNC_ROOT_TITLE,
     isNativeSyncRoot,
     getTagSyncEnabled,

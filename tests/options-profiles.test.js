@@ -78,6 +78,8 @@ describe('LLM 多配置', () => {
   });
 
   it('设置页会显示持久化的标签同步失败，文档说明标签可选同步', () => {
+    expect(optionsSource).toContain('BM.NATIVE_SYNC_ENABLED_KEY');
+    expect(optionsSource).not.toContain('BM.SYNC_ENABLED_KEY');
     expect(optionsSource).toContain('BM.SYNC_STATUS_KEY');
     expect(optionsSource).toContain('renderTagSyncStatus');
     expect(readme).toContain('固定标签池和自定义标签规则');
@@ -107,10 +109,168 @@ describe('LLM 多配置', () => {
     expect(elements['#tagSyncMsg'].className).toBe('settings-msg ok');
   });
 
+  it('空设备目录等待数据时不显示为同步失败', () => {
+    const elements = { '#tagSyncMsg': { textContent: '', className: '' } };
+    const $ = selector => elements[selector];
+    const renderTagSyncStatus = eval(`(${getFunctionSource('renderTagSyncStatus')})`);
+
+    renderTagSyncStatus({ lastError: '', waitingForData: true, waitingDeviceCount: 1 });
+
+    expect(elements['#tagSyncMsg']).toMatchObject({
+      textContent: '本机同步目录已就绪，正在等待 1 台其他设备数据',
+      className: 'settings-msg'
+    });
+  });
+
+  it('标签同步初始化会显示真实阶段进度', () => {
+    const progress = {
+      hidden: true,
+      querySelector: vi.fn(() => ({ setAttribute: vi.fn() }))
+    };
+    const bar = { style: { width: '' } };
+    const progressText = { textContent: '' };
+    const elements = {
+      '#tagSyncMsg': { textContent: '', className: '' },
+      '#tagSyncProgress': progress,
+      '#tagSyncProgressBar': bar,
+      '#tagSyncProgressText': progressText
+    };
+    const $ = selector => elements[selector];
+    const renderTagSyncStatus = eval(`(${getFunctionSource('renderTagSyncStatus')})`);
+
+    renderTagSyncStatus({
+      lastError: '', pending: true, target: true,
+      phase: 'creating-directory', step: 3, totalSteps: 5
+    });
+
+    expect(elements['#tagSyncMsg'].textContent).toBe('已开启：正在创建同步目录');
+    expect(progress.hidden).toBe(false);
+    expect(bar.style.width).toBe('60%');
+    expect(progressText.textContent).toBe('正在创建同步目录');
+  });
+
+  it('标签同步关闭时不误显示为上次同步成功', () => {
+    const elements = { '#tagSyncMsg': { textContent: '', className: '' } };
+    const $ = selector => elements[selector];
+    const renderTagSyncStatus = eval(`(${getFunctionSource('renderTagSyncStatus')})`);
+
+    renderTagSyncStatus({ lastError: '', disabled: true, at: 1767225600000 });
+
+    expect(elements['#tagSyncMsg']).toMatchObject({
+      textContent: '已关闭：不再读写同步目录；已有数据保留，随时可重新开启',
+      className: 'settings-msg'
+    });
+  });
+
+  it('正在关闭同步时不误显示为正在开启', () => {
+    const elements = { '#tagSyncMsg': { textContent: '', className: '' } };
+    const $ = selector => elements[selector];
+    const renderTagSyncStatus = eval(`(${getFunctionSource('renderTagSyncStatus')})`);
+
+    renderTagSyncStatus({ lastError: '', pending: true, target: false });
+
+    expect(elements['#tagSyncMsg']).toMatchObject({
+      textContent: '正在关闭同步：后台将停止读写同步目录',
+      className: 'settings-msg'
+    });
+  });
+
+  it('未完成的新同步请求会忽略旧请求写入的成功状态', () => {
+    const elements = { '#tagSyncMsg': { textContent: '', className: '' } };
+    const $ = selector => elements[selector];
+    const renderTagSyncStatus = eval(`(() => {
+      let pendingTagSyncRequestId = 'new-request';
+      let pendingTagSyncTarget = true;
+      return (${getFunctionSource('renderTagSyncStatus')});
+    })()`);
+
+    renderTagSyncStatus({ lastError: '', lastSuccessAt: 1767225600000, requestId: 'old-request' });
+
+    expect(elements['#tagSyncMsg']).toMatchObject({
+      textContent: '已开启：正在初始化同步目录',
+      className: 'settings-msg'
+    });
+  });
+
+  it('未完成请求的当前失败状态保持可见，供后台继续重试', () => {
+    const elements = { '#tagSyncMsg': { textContent: '', className: '' } };
+    const $ = selector => elements[selector];
+    const renderTagSyncStatus = eval(`(() => {
+      let pendingTagSyncRequestId = 'retry-request';
+      let pendingTagSyncTarget = true;
+      return (${getFunctionSource('renderTagSyncStatus')});
+    })()`);
+
+    renderTagSyncStatus({ lastError: '书签 API 暂不可用', requestId: 'retry-request' });
+
+    expect(elements['#tagSyncMsg']).toMatchObject({
+      textContent: '上次同步失败：书签 API 暂不可用',
+      className: 'settings-msg err'
+    });
+  });
+
 
   it('读取本地标签配置前先采用较新的云端配置', () => {
     expect(getFunctionSource('load')).toContain('await BM.initializeSyncedTagConfiguration();');
     expect(optionsSource).toContain('BM.watchTagConfiguration');
+  });
+
+  it('同步开关的旧异步操作不会覆盖新操作的提示', async () => {
+    const previousChrome = globalThis.chrome;
+    const elements = {
+      '#setTagSync': { checked: true },
+      '#tagSyncMsg': { textContent: '', className: '' }
+    };
+    const $ = selector => elements[selector];
+    let tagSyncPersistIntent = 0;
+    let tagSyncStatus = null;
+    let resolveFirst;
+    let storedStatus = { lastError: '', disabled: true };
+    globalThis.chrome = { storage: { local: {
+      get: vi.fn(async () => ({ bmTagSyncStatus: storedStatus }))
+    } } };
+    const renderTagSyncStatus = status => {
+      const msg = elements['#tagSyncMsg'];
+      if (status && status.disabled) {
+        msg.textContent = '已关闭：不再读写同步目录；已有数据保留，随时可重新开启';
+        msg.className = 'settings-msg';
+      } else {
+        msg.textContent = '已开启：正在初始化同步目录';
+        msg.className = 'settings-msg';
+      }
+    };
+    const BM = {
+      SYNC_STATUS_KEY: 'bmTagSyncStatus',
+      setTagSyncEnabled: vi.fn(enabled => enabled
+        ? new Promise(resolve => { resolveFirst = resolve; })
+        : Promise.resolve(false)),
+      initializeSyncedTagConfiguration: vi.fn(),
+      pullTagsFromCloud: vi.fn(),
+      getTagSyncEnabled: vi.fn()
+    };
+    const persistTagSync = eval(`(${getFunctionSource('persistTagSync')})`);
+
+    try {
+      const first = persistTagSync();
+      elements['#setTagSync'].checked = false;
+      await persistTagSync();
+      expect(elements['#tagSyncMsg']).toMatchObject({
+        textContent: '已关闭：不再读写同步目录；已有数据保留，随时可重新开启',
+        className: 'settings-msg'
+      });
+
+      resolveFirst(true);
+      await first;
+      expect(elements['#tagSyncMsg']).toMatchObject({
+        textContent: '已关闭：不再读写同步目录；已有数据保留，随时可重新开启',
+        className: 'settings-msg'
+      });
+      expect(BM.initializeSyncedTagConfiguration).not.toHaveBeenCalled();
+      expect(globalThis.chrome.storage.local.get).toHaveBeenCalledWith(BM.SYNC_STATUS_KEY);
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
   });
 
   it('解析并展示域名与标题路径自定义规则', () => {
@@ -132,7 +292,8 @@ describe('LLM 多配置', () => {
     expect(optionsSource).not.toContain('chrome.storage.sync.set({ bmSettings');
     expect(optionsSource).toContain("$('#setDomainTagRules').addEventListener('change', persistTagRules)");
     expect(optionsSource).toContain("$('#setKeywordTagRules').addEventListener('change', persistTagRules)");
-    expect(getFunctionSource('persistTagSync')).toContain('await BM.initializeSyncedTagConfiguration();');
+    expect(getFunctionSource('persistTagSync')).toContain('renderTagSyncStatus(tagSyncStatus');
+    expect(getFunctionSource('persistTagSync')).not.toContain('await BM.initializeSyncedTagConfiguration();');
     expect(optionsSource).not.toContain("$('#setDomainTagRules').addEventListener('input', persistTagRules)");
   });
 
