@@ -195,6 +195,38 @@ beforeEach(() => {
 });
 
 describe('原生书签标签同步', () => {
+  it.each([
+    ['压缩', 'CompressionStream', 'nativeCompress'],
+    ['解压', 'DecompressionStream', 'nativeDecompress']
+  ])('%s流存在输出背压时仍能完成读写', async (_label, streamName, functionName) => {
+    const source = createHarness(createTree([]), {});
+    const originalStream = globalThis[streamName];
+    globalThis.chrome = source.chrome;
+    // 标准 TransformStream 在无人消费输出时阻塞写入，复现 Chrome 的流背压。
+    globalThis[streamName] = class {
+      constructor() { return new TransformStream(); }
+    };
+    let timeout;
+    try {
+      const codec = new Function(backgroundCode + '\nreturn { nativeCompress, nativeDecompress };')();
+      const input = new Uint8Array([0, 1, 127, 128, 255]);
+      const result = await Promise.race([
+        codec[functionName](input),
+        new Promise((_resolve, reject) => {
+          timeout = setTimeout(() => reject(new Error('流写入与读取发生死锁')), 1000);
+        })
+      ]);
+      expect(result).toEqual(input);
+    } finally {
+      clearTimeout(timeout);
+      if (originalStream === undefined) delete globalThis[streamName];
+      else globalThis[streamName] = originalStream;
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+
   it('消息处理失败时先响应调用方，再异步记录诊断信息', async () => {
     vi.useFakeTimers();
     const source = createHarness(createTree([]));

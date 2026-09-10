@@ -160,20 +160,15 @@ function nativeBase64UrlDecode(value) {
 
 async function nativeCompress(bytes) {
   if (typeof CompressionStream !== 'function') return null;
-  const stream = new CompressionStream('gzip');
-  const writer = stream.writable.getWriter();
-  await writer.write(bytes);
-  await writer.close();
-  return new Uint8Array(await new Response(stream.readable).arrayBuffer());
+  // Chrome 会在输出尚未被读取时施加背压，必须同时消费输出，不能先等待写入结束。
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
 async function nativeDecompress(bytes) {
   if (typeof DecompressionStream !== 'function') return null;
-  const stream = new DecompressionStream('gzip');
-  const writer = stream.writable.getWriter();
-  await writer.write(bytes);
-  await writer.close();
-  return new Uint8Array(await new Response(stream.readable).arrayBuffer());
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
 async function encodeNativePayload(value) {
