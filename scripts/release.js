@@ -3,7 +3,7 @@
  * 交互式发布向导：npm run release [版本号] [--push] [--yes] [--allow-legacy-invalid-tags]
  *
  * 未提供版本号时会交互询问；--yes 需同时提供版本号。
- * 发布前执行 diff、单测和 lint，提交后只给 HEAD 打 annotated tag，并校验 tag 内版本。
+ * 发布前执行 diff、单测和 lint，提交后给 HEAD 打 annotated tag；推送后 GitHub Actions 负责创建 Release。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -244,10 +244,10 @@ function verifyTag(tag, expectedVersion, expectedCommit) {
   return commit;
 }
 
-function githubReleaseUrl(tag) {
+function githubActionsUrl() {
   const origin = tryRun('git', ['remote', 'get-url', 'origin']) || '';
   const match = origin.match(/github\.com[:/]([^/]+\/[^/.]+)(?:\.git)?$/i);
-  return match ? 'https://github.com/' + match[1] + '/releases/new?tag=' + tag : '';
+  return match ? 'https://github.com/' + match[1] + '/actions/workflows/release.yml' : '';
 }
 
 function checkReleaseState() {
@@ -496,8 +496,8 @@ async function release() {
     print('warn', 'ℹ 尚未推送：git push origin ' + branch + ' && git push origin ' + tag);
   }
 
-  const releaseUrl = githubReleaseUrl(tag);
-  if (releaseUrl) console.log('下一步：' + releaseUrl);
+  const actionsUrl = githubActionsUrl();
+  if (shouldPush && actionsUrl) console.log('GitHub Actions 正在创建 Release：' + actionsUrl);
 }
 
 function showHelp() {

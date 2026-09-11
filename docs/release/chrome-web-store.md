@@ -45,6 +45,23 @@
 - 若回收站容量不足，恢复会失败，不会静默删除现有回收站记录。
 - 备份与标签原生同步均不包含 API Key、LLM 配置、端点、模型或可选主机权限；标签原生同步也不包含隐藏状态和回收站。
 
+## GitHub Release 自动发布
+
+推送格式正确的 `vX.Y.Z` annotated tag 后，`.github/workflows/release.yml` 会自动执行以下操作：
+
+1. 校验 tag 与 `manifest.json`、`package.json`、`package-lock.json` 的版本完全一致。
+2. 安装依赖并运行单测和 Lint。
+3. 只打包扩展运行所需的 `css/`、`icons/`、`js/`、`manifest.json` 和三个 HTML 页面，生成 `bookmark-manager-X.Y.Z.zip`。
+4. 创建对应的 GitHub Release，并上传 ZIP 作为附件；重跑工作流时会覆盖同名附件。
+
+发布前先更新 `CHANGELOG.md`，然后运行：
+
+```sh
+npm run release -- 1.1.0 --push
+```
+
+该命令会创建并推送 `v1.1.0`，随后由 GitHub Actions 自动发布。若 Release job 因 `403` 失败，仓库管理员需在 GitHub 仓库的 Settings > Actions > General 中允许工作流使用 `Read and write permissions`；工作流本身不需要额外密钥。
+
 ## Chrome Web Store 发布（可选）
 
 本节仅面向维护公开或不公开列出商店版本的维护者。发布到 Chrome Web Store 后，Chrome 可以在符合其同步设置的其他设备自动安装和更新该扩展；本地解压扩展仍必须手动加载和更新。标签数据仍由本节前述的 Chrome 书签同步承载，不依赖扩展 ID。
@@ -58,7 +75,7 @@
 ### 生产发布
 
 1. 在权威设备使用当前版本导出 V4 书签 JSON 备份，并妥善保存，不提交到 Git。
-2. 从已审阅的仓库根目录创建 Chrome Web Store 上传 ZIP。上传前确认 ZIP 不包含 API Key、书签备份或 `node_modules`。
+2. 从对应 GitHub Release 下载自动生成的 ZIP。上传前确认 ZIP 不包含 API Key、书签备份或 `node_modules`。
 3. 将 ZIP 上传到一个 Chrome Web Store 条目，完成审核或发布为不公开列出。
 4. 在两个 Chrome 配置文件安装同一个商店条目，并确认两个配置文件登录同一 Google 账号且已开启书签同步。
 5. 只在权威配置文件导入备份，启用标签原生同步并确认成功状态；目标配置文件打开侧边栏或新标签页，确认标签、固定标签池和自定义规则到达。

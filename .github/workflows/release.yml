@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      - name: Verify release tag and versions
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+
+          const tag = process.env.TAG || '';
+          const version = tag.replace(/^v/, '');
+          const segments = version.split('.');
+          const validVersion =
+            segments.length === 3 &&
+            segments.every(segment => /^(0|[1-9]\d*)$/.test(segment) && Number(segment) <= 65535) &&
+            segments.some(segment => Number(segment) > 0);
+
+          if (!/^v/.test(tag) || !validVersion) {
+            throw new Error(`发布 tag 必须为 vX.Y.Z，实际为 ${tag || '(空)'}`);
+          }
+
+          if (execFileSync('git', ['cat-file', '-t', `refs/tags/${tag}`], { encoding: 'utf8' }).trim() !== 'tag') {
+            throw new Error(`发布 tag 必须是 annotated tag：${tag}`);
+          }
+
+          const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          const versions = {
+            'manifest.json': manifest.version,
+            'package.json': pkg.version,
+            'package-lock.json': lock.version,
+            'package-lock.json packages[""]': lock.packages?.['']?.version
+          };
+          const mismatches = Object.entries(versions)
+            .filter(([, actual]) => actual !== version)
+            .map(([file, actual]) => `${file}=${actual ?? '(缺失)'}`);
+
+          if (mismatches.length) {
+            throw new Error(`tag ${tag} 与版本文件不一致：${mismatches.join('，')}`);
+          }
+          NODE
+      - name: Package extension
+        id: package
+        run: |
+          set -euo pipefail
+          archive="bookmark-manager-${GITHUB_REF_NAME#v}.zip"
+          zip -r "$archive" css icons js manifest.json newtab.html options.html popup.html
+          unzip -t "$archive"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ARCHIVE" --clobber
+          else
+            gh release create "$TAG" "$ARCHIVE" --title "$TAG" --generate-notes
+          fi
