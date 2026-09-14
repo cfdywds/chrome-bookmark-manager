@@ -29,7 +29,7 @@ const SELF_CREATION_MESSAGE = 'bmSelfCreatingBookmark';
 
 // ---- LLM 设置：服务商预设统一来自 lib.js（DRY，与 options.js 共享同一份配置）----
 const PROVIDERS = BM.PROVIDERS;
-let SETTINGS = { provider: 'deepseek', baseUrl: '', apiKey: '', model: 'deepseek-chat' };
+let SETTINGS = { provider: 'deepseek', baseUrl: '', apiKey: '', model: '' };
 let settingsReady = Promise.resolve();
 let tagConfigurationReady = Promise.resolve();
 let tagConfigurationSyncFailed = false;
@@ -1993,7 +1993,6 @@ async function init() {
           SETTINGS = Object.assign({ provider: 'deepseek', baseUrl: '', apiKey: '', model: '' }, v);
           const p = PROVIDERS[SETTINGS.provider];
           if (p && !SETTINGS.baseUrl) SETTINGS.baseUrl = p.base;
-          if (p && !SETTINGS.model) SETTINGS.model = p.model;
         }
       }
       if (area === 'local' && changes.bmFixedTags) {
@@ -2047,7 +2046,6 @@ async function loadSettings() {
       SETTINGS = Object.assign({ provider: 'deepseek', baseUrl: '', apiKey: '', model: '' }, r.bmSettings);
       const p = PROVIDERS[SETTINGS.provider];
       if (p && !SETTINGS.baseUrl) SETTINGS.baseUrl = p.base;
-      if (p && !SETTINGS.model) SETTINGS.model = p.model;
     }
   } catch (e) { console.warn('[书签管家] 读取设置失败', e); }
 }

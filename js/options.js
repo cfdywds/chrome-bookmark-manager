@@ -27,6 +27,7 @@ let tagSyncStatus = null;
 let tagSyncEnabledVersion = 0;
 let tagConfigurationEditVersion = 0;
 let pendingTagConfigurationSaveCount = 0;
+let modelFetchIntent = 0;
 
 function setMsg(text, cls, autohide) {
   const el = $('#settingsMsg');
@@ -257,7 +258,7 @@ function normalizeLlmSettings(raw) {
     provider,
     baseUrl: String(raw.baseUrl || preset.base || '').trim(),
     apiKey: String(raw.apiKey || '').trim(),
-    model: String(raw.model || preset.model || '').trim()
+    model: String(raw.model || '').trim()
   };
 }
 
@@ -398,12 +399,11 @@ function mergeActiveLlmSettings(settings) {
   return profile;
 }
 
-// 选中服务商时，自动带出预设 Base URL / 模型（仅在用户尚未手填时）
+// 选中服务商时，仅带出预设 Base URL；模型由用户明确选择或手动填写。
 function applyProviderPreset() {
   const p = PROVIDERS[$('#setProvider').value];
   if (!p) return;
   if (!$('#setBase').value.trim()) $('#setBase').value = p.base || '';
-  if (!$('#setModel').value.trim()) $('#setModel').value = p.model || '';
 }
 
 // 实时保存（静默，不弹提示）
@@ -482,12 +482,18 @@ async function persistTagRules() {
 
 // 用活动配置填充表单（provider 缺失时回退 DeepSeek 预设）
 function fillForm(profile) {
+  modelFetchIntent++;
+  const modelsBtn = $('#modelsFetch');
+  if (modelsBtn) { modelsBtn.disabled = false; modelsBtn.textContent = '获取模型列表'; }
   const settings = profileSettings(profile);
   $('#setProfileName').value = profile && profile.name || defaultProfileName(settings);
   $('#setProvider').value = settings.provider;
   $('#setBase').value = settings.baseUrl;
   $('#setModel').value = settings.model;
+  renderModelOptions(settings.model ? [settings.model] : []);
   $('#setKey').value = settings.apiKey;
+  const modelsMsg = $('#modelsMsg');
+  if (modelsMsg) { modelsMsg.textContent = ''; modelsMsg.className = 'settings-msg'; }
 }
 
 async function ensureBackgroundAiPermission(settings) {
@@ -801,6 +807,54 @@ async function testConnection() {
   }
 }
 
+function renderModelOptions(models) {
+  const input = $('#setModel');
+  if (!input) return;
+  const list = $('#setModelOptions');
+  if (!list) return;
+  const current = input.value.trim();
+  const values = [...new Set([...(models || []), current].filter(Boolean))];
+  list.replaceChildren();
+  values.forEach(model => {
+    const option = document.createElement('option');
+    option.value = model;
+    list.appendChild(option);
+  });
+}
+
+async function fetchModelList() {
+  const intent = ++modelFetchIntent;
+  const btn = $('#modelsFetch');
+  const msg = $('#modelsMsg');
+  const cfg = formSettings();
+  const profileId = activeLlmProfileId;
+  if (!cfg.baseUrl) {
+    if (btn) { btn.disabled = false; btn.textContent = '获取模型列表'; }
+    if (msg) { msg.textContent = '请先填写 Base URL'; msg.className = 'settings-msg err'; }
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = '获取中…'; }
+  if (msg) { msg.textContent = ''; msg.className = 'settings-msg'; }
+  try {
+    await BM.requestLlmHostPermission(cfg.baseUrl);
+    const models = await BM.listModels(cfg);
+    const currentCfg = formSettings();
+    if (intent !== modelFetchIntent || activeLlmProfileId !== profileId ||
+      currentCfg.provider !== cfg.provider || currentCfg.baseUrl !== cfg.baseUrl || currentCfg.apiKey !== cfg.apiKey) return;
+    renderModelOptions(models);
+    const current = $('#setModel').value.trim();
+    if (msg) {
+      msg.textContent = models.length + ' 个模型已加载' + (current && !models.includes(current) ? '；当前模型未出现在列表中，仍可继续使用' : '');
+      msg.className = 'settings-msg ok';
+    }
+  } catch (e) {
+    if (intent !== modelFetchIntent) return;
+    if (msg) { msg.textContent = '获取失败：' + (e.message || e); msg.className = 'settings-msg err'; }
+  } finally {
+    if (intent === modelFetchIntent && btn) { btn.disabled = false; btn.textContent = '获取模型列表'; }
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   $('#setProvider').addEventListener('change', () => { applyProviderPreset(); persist(); });
   $('#setBase').addEventListener('input', persist);
@@ -812,6 +866,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#profileDelete').addEventListener('click', deleteActiveLlmProfile);
   $('#settingsSave').addEventListener('click', saveWithLlmPermission);
   $('#settingsTest').addEventListener('click', testConnection);
+  $('#modelsFetch').addEventListener('click', fetchModelList);
   $('#setFixedTags').addEventListener('input', persistFixedTags);
   // 规则编辑完成并失焦后再保存，避免每次敲键都让已打开的侧边栏全量刷新。
   $('#setDomainTagRules').addEventListener('change', persistTagRules);

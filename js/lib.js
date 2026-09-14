@@ -1288,6 +1288,99 @@
     });
   }
 
+  function modelEndpointCandidates(rawBaseUrl, provider) {
+    const base = normalizeLlmBaseUrl(rawBaseUrl);
+    const endpoints = [];
+    const add = (url, auth) => {
+      const key = url + '|' + (auth || 'bearer');
+      if (!endpoints.some(item => item.key === key)) endpoints.push({ url, auth: auth || 'bearer', key });
+    };
+    let parsed;
+    try { parsed = new URL(base); } catch (e) { parsed = null; }
+
+    // Ollama exposes richer names through /api/tags; keep the OpenAI-compatible
+    // endpoint as a fallback for proxies and newer Ollama versions.
+    if (provider === 'ollama') {
+      if (parsed) add(new URL('/api/tags', parsed.origin).href, 'none');
+      add(base + '/models');
+    } else if (provider === 'gemini' && parsed) {
+      // Gemini's native endpoint returns models[].name while its OpenAI layer
+      // may not expose /models. The API key is sent in a header, not the URL.
+      const native = new URL(parsed.href);
+      native.pathname = native.pathname.replace(/\/openai\/?$/, '') + '/models';
+      native.search = '';
+      add(native.href, 'google');
+      add(base + '/models');
+    } else {
+      add(base + '/models');
+    }
+    if (base.endsWith('/v1')) add(base.replace(/\/v1$/, '') + '/models');
+    else add(base + '/v1/models');
+    return endpoints;
+  }
+
+  function modelNameFromEntry(entry) {
+    if (typeof entry === 'string') return entry.trim();
+    if (!entry || typeof entry !== 'object') return '';
+    const raw = entry.id || entry.name || entry.model || entry.model_name || '';
+    return String(raw).trim().replace(/^models\//i, '');
+  }
+
+  function parseModelList(data) {
+    const entries = Array.isArray(data) ? data
+      : (data && Array.isArray(data.data) ? data.data
+        : (data && Array.isArray(data.models) ? data.models : []));
+    return [...new Set(entries.map(modelNameFromEntry).filter(Boolean))]
+      .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+  }
+
+  async function fetchModelsOnce(endpoint, cfg) {
+    const headers = { Accept: 'application/json' };
+    if (endpoint.auth === 'google') {
+      if (cfg.apiKey) headers['x-goog-api-key'] = cfg.apiKey;
+    } else if (endpoint.auth !== 'none' && cfg.apiKey) {
+      headers.Authorization = 'Bearer ' + cfg.apiKey;
+    }
+    return fetch(endpoint.url, { method: 'GET', headers });
+  }
+
+  // 拉取服务商模型列表。优先兼容 OpenAI /models，同时支持 Ollama 和 Gemini 原生格式。
+  async function listModels(cfg) {
+    if (!cfg || !cfg.baseUrl) throw new Error('请先填写 Base URL');
+    const base = normalizeLlmBaseUrl(cfg.baseUrl);
+    const endpoints = modelEndpointCandidates(base, cfg.provider);
+    let lastError = null;
+    for (const endpoint of endpoints) {
+      let resp;
+      try {
+        resp = await fetchModelsOnce(endpoint, cfg);
+      } catch (e) {
+        lastError = e;
+        continue;
+      }
+      if (!resp.ok) {
+        let detail = '';
+        try {
+          const errorData = await resp.json();
+          detail = errorData && errorData.error && (errorData.error.message || errorData.error);
+        } catch (e) { /* 非 JSON 错误响应 */ }
+        lastError = new Error('端点 ' + endpoint.url + ' 返回 HTTP ' + resp.status + (detail ? '：' + detail : ''));
+        if (resp.status === 401 || resp.status === 403) break;
+        continue;
+      }
+      try {
+        const data = await parseJsonResp(resp, '模型列表', base);
+        const models = parseModelList(data);
+        if (models.length) return models;
+        lastError = new Error('端点 ' + endpoint.url + ' 未返回可用模型');
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    if (!lastError) throw new Error('模型列表请求失败');
+    throw new Error('获取模型列表失败：' + (lastError.message || lastError));
+  }
+
   function isAiEligibleItem(item) {
     if (!item || !isHttpUrl(item.url)) return false;
     return !getBookmarkMetadata(item.url, item.title).sensitive.some(hit => hit.sev === 'high');
@@ -1670,8 +1763,16 @@
 
   // 清理过期项（超过 TTL 天数的记录直接丢弃），返回清理条数
   async function purgeExpiredTrash() {
-    const remote = await requestTrashMutation('purge');
-    return remote.purged || 0;
+    try {
+      const remote = await requestTrashMutation('purge');
+      return remote.purged || 0;
+    } catch (e) {
+      // Popup 初始化可能与 MV3 Service Worker 重启同时发生。清理是惰性优化，
+      // 后台 alarm 会再次执行，不能因此污染用户日志或阻断书签扫描。
+      if (/Receiving end does not exist|message (?:channel|port) closed|asynchronous response.*channel closed/i
+        .test(String(e && (e.message || e)))) return 0;
+      throw e;
+    }
   }
 
   // ---- 书签备份 / 恢复（JSON 导出 / 导入） ----
@@ -2163,6 +2264,7 @@
     aiClassify,
     aiClassifyBatched,
     testLLM,
+    listModels,
     TRASH_TTL_DAYS,
     TRASH_MAX,
     getTrash,

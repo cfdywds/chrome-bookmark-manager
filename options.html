@@ -68,7 +68,12 @@
           </div>
           <div class="form-row">
             <label>🤖 模型名</label>
-            <input id="setModel" type="text" placeholder="deepseek-chat" autocomplete="off" spellcheck="false" />
+            <div class="model-fetch-row">
+              <input id="setModel" type="text" list="setModelOptions" placeholder="请输入模型名" autocomplete="off" spellcheck="false" />
+              <datalist id="setModelOptions"></datalist>
+              <button id="modelsFetch" type="button" class="btn ghost">获取模型列表</button>
+            </div>
+            <span id="modelsMsg" class="settings-msg"></span>
           </div>
         </div>
         <div class="opt-foot">

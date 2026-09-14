@@ -35,6 +35,8 @@ describe('LLM 多配置', () => {
     const createProfile = eval(`(${getFunctionSource('createProfile')})`);
     const normalizeLlmProfiles = eval(`(${getFunctionSource('normalizeLlmProfiles')})`);
 
+    expect(normalizeLlmSettings({ provider: 'deepseek' }).model).toBe('');
+
     const profiles = normalizeLlmProfiles([
       { id: 'kimi', name: '公司 Kimi', provider: 'custom', baseUrl: 'https://kimi.example/v1', apiKey: 'key-kimi', model: 'kimi-k3' },
       { id: 'openai', name: '个人 OpenAI', provider: 'openai', baseUrl: 'https://proxy.example/v1', apiKey: 'key-openai', model: 'gpt-5' }
@@ -75,6 +77,37 @@ describe('LLM 多配置', () => {
     expect(optionsSource).toContain("const LLM_PROFILES_KEY = 'bmLlmProfiles'");
     expect(optionsSource).toContain("const ACTIVE_LLM_PROFILE_KEY = 'bmActiveLlmProfileId'");
     expect(optionsSource).toContain('bmSettings: normalizeLlmSettings');
+  });
+
+  it('设置页提供模型列表拉取入口，并保留自由输入模型名', () => {
+    expect(optionsHtml).toContain('id="modelsFetch"');
+    expect(optionsHtml).toContain('id="setModel"');
+    expect(optionsHtml).toContain('id="setModelOptions"');
+    expect(optionsHtml).toContain('list="setModelOptions"');
+    expect(optionsSource).toContain('async function fetchModelList');
+    expect(optionsSource).toContain('BM.listModels(cfg)');
+    expect(optionsSource).toContain('当前模型未出现在列表中，仍可继续使用');
+    expect(optionsSource).not.toContain("$('#setModel').value = models[0]");
+  });
+
+  it('刷新模型列表时保留当前手动选择的模型', () => {
+    const options = [];
+    const input = { value: 'private-model' };
+    const list = {
+      value: 'private-model',
+      replaceChildren() { options.length = 0; this.value = ''; },
+      appendChild(option) { options.push(option); }
+    };
+    const $ = selector => selector === '#setModel' ? input
+      : selector === '#setModelOptions' ? list : null;
+    const document = {
+      createElement() { return { value: '', textContent: '' }; }
+    };
+    const renderModelOptions = eval(`(${getFunctionSource('renderModelOptions')})`);
+
+    renderModelOptions(['remote-model']);
+    expect(options.map(option => option.value)).toEqual(['remote-model', 'private-model']);
+    expect(input.value).toBe('private-model');
   });
 
   it('设置页会显示持久化的标签同步失败，文档说明标签可选同步', () => {

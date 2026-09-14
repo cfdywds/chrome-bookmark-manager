@@ -893,6 +893,92 @@ describe('LLM 端点边界', () => {
   });
 });
 
+describe('LLM 模型列表', () => {
+  const jsonResponse = (payload, status = 200) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: () => 'application/json' },
+    json: async () => payload
+  });
+
+  it('读取 OpenAI 兼容 /models，并发送 Bearer API Key', async () => {
+    const previousFetch = globalThis.fetch;
+    const fetch = vi.fn().mockResolvedValue(jsonResponse({
+      data: [{ id: 'gpt-4o-mini' }, { id: 'gpt-4.1' }, { id: 'gpt-4o-mini' }]
+    }));
+    globalThis.fetch = fetch;
+
+    try {
+      await expect(BM.listModels({
+        provider: 'openai', baseUrl: 'https://api.example.com/v1', apiKey: 'secret'
+      })).resolves.toEqual(['gpt-4.1', 'gpt-4o-mini']);
+      expect(fetch).toHaveBeenCalledWith('https://api.example.com/v1/models', expect.objectContaining({
+        method: 'GET',
+        headers: { Accept: 'application/json', Authorization: 'Bearer secret' }
+      }));
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('支持 Ollama /api/tags，且不强制要求 API Key', async () => {
+    const previousFetch = globalThis.fetch;
+    const fetch = vi.fn().mockResolvedValue(jsonResponse({
+      models: [{ name: 'llama3:latest' }, { model: 'qwen2.5:7b' }]
+    }));
+    globalThis.fetch = fetch;
+
+    try {
+      await expect(BM.listModels({
+        provider: 'ollama', baseUrl: 'http://localhost:11434/v1', apiKey: ''
+      })).resolves.toEqual(['llama3:latest', 'qwen2.5:7b']);
+      expect(fetch).toHaveBeenCalledWith('http://localhost:11434/api/tags', expect.objectContaining({
+        method: 'GET', headers: { Accept: 'application/json' }
+      }));
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('读取 Gemini 原生 models[].name，并使用 x-goog-api-key', async () => {
+    const previousFetch = globalThis.fetch;
+    const fetch = vi.fn().mockResolvedValue(jsonResponse({
+      models: [{ name: 'models/gemini-2.0-flash' }, { name: 'models/gemini-1.5-pro' }]
+    }));
+    globalThis.fetch = fetch;
+
+    try {
+      await expect(BM.listModels({
+        provider: 'gemini',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+        apiKey: 'secret'
+      })).resolves.toEqual(['gemini-1.5-pro', 'gemini-2.0-flash']);
+      expect(fetch).toHaveBeenCalledWith('https://generativelanguage.googleapis.com/v1beta/models', expect.objectContaining({
+        headers: { Accept: 'application/json', 'x-goog-api-key': 'secret' }
+      }));
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('模型端点失败后回退到 /v1/models', async () => {
+    const previousFetch = globalThis.fetch;
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: { message: 'not found' } }, 404))
+      .mockResolvedValueOnce(jsonResponse({ data: [{ id: 'proxy-model' }] }));
+    globalThis.fetch = fetch;
+
+    try {
+      await expect(BM.listModels({
+        provider: 'custom', baseUrl: 'https://proxy.example.com', apiKey: 'secret'
+      })).resolves.toEqual(['proxy-model']);
+      expect(fetch.mock.calls[1][0]).toBe('https://proxy.example.com/v1/models');
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+});
+
 describe('sanitizeUrlForAI（LLM 数据最小化）', () => {
   it('移除所有 query 与 fragment，而不依赖敏感参数名单', () => {
     expect(BM.sanitizeUrlForAI('https://example.com/path?email=a%40b.com&token=secret#section'))
