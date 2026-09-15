@@ -26,11 +26,12 @@
       </div>
     </header>
 
-    <!-- 搜索 -->
-    <div class="nt-search">
+    <!-- 搜索（滚动时悬浮固定在最顶部） -->
+    <div class="nt-search" id="ntSearchBar">
       <svg class="nt-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="ntSearch" type="text" placeholder="搜索标题、网址、域名、标签" autocomplete="off" spellcheck="false" />
       <button class="help-dot" type="button" data-tip="多个词会同时匹配；以 #标签名开头可按标签精确筛选。" aria-label="多个词会同时匹配；以标签名开头可按标签精确筛选。">?</button>
+      <span id="ntResultCount" class="nt-result-count hidden"></span>
       <button id="ntClear" class="nt-clear hidden" title="清空">✕</button>
     </div>
 
@@ -39,6 +40,17 @@
 
     <!-- 书签卡片网格 -->
     <main class="nt-main">
+      <!-- 首屏骨架屏：初始化期间展示，首次渲染后隐藏 -->
+      <div class="nt-loading" id="ntLoading" aria-hidden="true">
+        <div class="nt-skeleton"></div>
+        <div class="nt-skeleton"></div>
+        <div class="nt-skeleton"></div>
+        <div class="nt-skeleton"></div>
+        <div class="nt-skeleton"></div>
+        <div class="nt-skeleton"></div>
+        <div class="nt-skeleton"></div>
+        <div class="nt-skeleton"></div>
+      </div>
       <div class="nt-grid" id="ntGrid"></div>
       <div class="nt-more" id="ntMore"></div>
       <div class="nt-empty hidden" id="ntEmpty">

@@ -28,6 +28,11 @@ let tagSyncEnabledVersion = 0;
 let tagConfigurationEditVersion = 0;
 let pendingTagConfigurationSaveCount = 0;
 let modelFetchIntent = 0;
+// 模型下拉（自定义 combobox）：按 (provider|baseUrl|apiKey) 会话内缓存已拉取模型列表
+const modelListCache = new Map();
+let modelComboOpen = false;
+let modelComboActiveIndex = -1;
+let modelAutoFetchTimer = null;
 
 function setMsg(text, cls, autohide) {
   const el = $('#settingsMsg');
@@ -490,7 +495,15 @@ function fillForm(profile) {
   $('#setProvider').value = settings.provider;
   $('#setBase').value = settings.baseUrl;
   $('#setModel').value = settings.model;
-  renderModelOptions(settings.model ? [settings.model] : []);
+  // 模型列表缓存按 (provider|baseUrl|apiKey) 隔离：确保当前模型出现在候选里，
+  // 但不覆盖已拉取的远端列表（切换配置后旧列表不再适用）。
+  const key = modelListKey(settings);
+  if (!modelListCache.has(key)) modelListCache.set(key, []);
+  const cached = modelListCache.get(key);
+  if (settings.model && !cached.includes(settings.model)) cached.push(settings.model);
+  // 已加载过模型列表的配置切换为「仅选择」模式；未加载的允许手动输入
+  setModelReadonly(cached.length > 0);
+  closeModelList();
   $('#setKey').value = settings.apiKey;
   const modelsMsg = $('#modelsMsg');
   if (modelsMsg) { modelsMsg.textContent = ''; modelsMsg.className = 'settings-msg'; }
@@ -807,59 +820,238 @@ async function testConnection() {
   }
 }
 
-function renderModelOptions(models) {
-  const input = $('#setModel');
-  if (!input) return;
-  const list = $('#setModelOptions');
-  if (!list) return;
-  const current = input.value.trim();
-  const values = [...new Set([...(models || []), current].filter(Boolean))];
-  list.replaceChildren();
-  values.forEach(model => {
-    const option = document.createElement('option');
-    option.value = model;
-    list.appendChild(option);
-  });
+function modelListKey(cfg) {
+  return [cfg && cfg.provider, cfg && cfg.baseUrl, cfg && cfg.apiKey].join('|');
 }
 
-async function fetchModelList() {
+// 加载模型列表后切换为「仅选择」模式：禁止手动输入，只能从下拉选择
+function setModelReadonly(on) {
+  const input = $('#setModel');
+  if (!input) return;
+  input.readOnly = !!on;
+  input.setAttribute('aria-readonly', on ? 'true' : 'false');
+  input.placeholder = on ? '从列表中选择模型' : '输入或从下拉选择模型';
+}
+
+// 已拉取列表 ∪ 当前手动输入：远端模型与自由输入名都能出现在候选中
+function mergeModelOptions(models, current) {
+  const out = [];
+  (models || []).forEach(model => {
+    const v = String(model == null ? '' : model).trim();
+    if (v && !out.includes(v)) out.push(v);
+  });
+  const cur = String(current == null ? '' : current).trim();
+  if (cur && !out.includes(cur)) out.push(cur);
+  return out;
+}
+
+// 下拉过滤：大小写不敏感的子串匹配；空查询返回全部
+function filterModelOptions(models, query) {
+  const q = String(query == null ? '' : query).trim().toLowerCase();
+  return (models || []).filter(model => !q || String(model).toLowerCase().includes(q));
+}
+
+function openModelList() {
+  const combo = $('#modelCombo');
+  const input = $('#setModel');
+  const list = $('#modelComboList');
+  if (!combo || !list) return;
+  modelComboOpen = true;
+  list.hidden = false;
+  combo.dataset.open = 'true';
+  input.setAttribute('aria-expanded', 'true');
+  renderModelList();
+}
+
+function closeModelList() {
+  const combo = $('#modelCombo');
+  const input = $('#setModel');
+  const list = $('#modelComboList');
+  modelComboOpen = false;
+  modelComboActiveIndex = -1;
+  if (list) list.hidden = true;
+  if (combo) delete combo.dataset.open;
+  if (input) {
+    input.setAttribute('aria-expanded', 'false');
+    input.setAttribute('aria-activedescendant', '');
+  }
+}
+
+function renderModelList() {
+  const list = $('#modelComboList');
+  const input = $('#setModel');
+  if (!list || !input) return;
+  const models = modelListCache.get(modelListKey(formSettings())) || [];
+  // 「仅选择」（readonly）模式下无法输入关键词：打开下拉展示全部模型，当前项打勾；
+  // 自由输入模式仍按输入内容实时过滤。
+  const q = input.readOnly ? '' : input.value.trim();
+  const matches = filterModelOptions(models, q);
+  const current = input.value.trim();
+  list.replaceChildren();
+  const setActiveDescendant = () => {
+    input.setAttribute('aria-activedescendant', modelComboActiveIndex >= 0 ? 'modelOpt-' + modelComboActiveIndex : '');
+  };
+  if (!models.length) {
+    const li = document.createElement('li');
+    li.className = 'model-combo-empty';
+    li.textContent = formSettings().baseUrl
+      ? '尚未获取模型列表，可点击右侧「获取模型列表」'
+      : '请先填写 Base URL 后再获取模型列表';
+    list.appendChild(li);
+    modelComboActiveIndex = -1;
+    setActiveDescendant();
+    return;
+  }
+  if (!matches.length) {
+    const li = document.createElement('li');
+    li.className = 'model-combo-empty';
+    li.textContent = '没有匹配「' + q + '」的模型，可继续手动输入';
+    list.appendChild(li);
+    modelComboActiveIndex = -1;
+    setActiveDescendant();
+    return;
+  }
+  if (modelComboActiveIndex >= matches.length) modelComboActiveIndex = matches.length - 1;
+  matches.forEach((model, index) => {
+    const selected = model === current;
+    const li = document.createElement('li');
+    li.className = 'model-combo-item' + (index === modelComboActiveIndex ? ' active' : '') + (selected ? ' is-selected' : '');
+    li.id = 'modelOpt-' + index;
+    li.setAttribute('role', 'option');
+    li.setAttribute('aria-selected', String(selected));
+    li.dataset.model = model;
+    const check = document.createElement('span');
+    check.className = 'mc-check';
+    check.textContent = selected ? '✓' : '';
+    li.appendChild(check);
+    const label = document.createElement('span');
+    label.className = 'mc-label';
+    const qi = q ? model.toLowerCase().indexOf(q.toLowerCase()) : -1;
+    if (qi >= 0) {
+      label.append(document.createTextNode(model.slice(0, qi)));
+      const mark = document.createElement('mark');
+      mark.textContent = model.slice(qi, qi + q.length);
+      label.appendChild(mark);
+      label.append(document.createTextNode(model.slice(qi + q.length)));
+    } else {
+      label.textContent = model;
+    }
+    li.appendChild(label);
+    li.addEventListener('mousedown', event => {
+      event.preventDefault();   // 保持输入框焦点，避免 blur 先于点击关闭
+      commitModel(model);
+    });
+    list.appendChild(li);
+  });
+  const active = list.querySelector('.model-combo-item.active');
+  if (active) active.scrollIntoView({ block: 'nearest' });
+  setActiveDescendant();
+}
+
+// 提交选择/输入值：写入输入框并触发既有 input 监听（自动保存），随后收起下拉
+function commitModel(value) {
+  const input = $('#setModel');
+  if (!input) return;
+  input.value = value;
+  if (modelComboOpen) renderModelList();   // 更新 ✓ 标记
+  input.dispatchEvent(new Event('input', { bubbles: true }));  // 触发持久化
+  closeModelList();
+}
+
+function onModelKeydown(event) {
+  const list = $('#modelComboList');
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    if (!modelComboOpen) {
+      modelComboActiveIndex = event.key === 'ArrowDown' ? 0 : 999999;  // render 时收敛到末项
+      openModelList();
+      return;
+    }
+    const count = list ? list.querySelectorAll('.model-combo-item').length : 0;
+    if (count) {
+      modelComboActiveIndex = (modelComboActiveIndex + (event.key === 'ArrowDown' ? 1 : -1) + count) % count;
+      renderModelList();
+    }
+    return;
+  }
+  if (!modelComboOpen) return;
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    const item = list && list.querySelector('.model-combo-item.active');
+    if (item) commitModel(item.dataset.model);
+    else closeModelList();
+  } else if (event.key === 'Escape' || event.key === 'Tab') {
+    closeModelList();
+  }
+}
+
+// 服务商 / Base URL / API Key 变化后，若已授予主机权限则静默预取模型列表（不弹权限询问）。
+function maybeAutoFetchModels() {
+  clearTimeout(modelAutoFetchTimer);
+  const cfg = formSettings();
+  if (!cfg.baseUrl || !cfg.apiKey) { setModelReadonly(false); return; }
+  const key = modelListKey(cfg);
+  const cached = modelListCache.get(key);
+  if (cached && cached.length) { setModelReadonly(true); return; }
+  // 新配置还没有模型列表：先恢复手动输入，静默获取成功后再切回「仅选择」。
+  setModelReadonly(false);
+  Promise.resolve(typeof BM.hasLlmHostPermission === 'function'
+    ? BM.hasLlmHostPermission(cfg.baseUrl) : false)
+    .then(granted => {
+      if (!granted) return;
+      modelAutoFetchTimer = setTimeout(() => fetchModelList({ silent: true }).catch(() => {}), 700);
+    })
+    .catch(() => {});
+}
+
+async function fetchModelList(opts) {
+  opts = opts || {};
   const intent = ++modelFetchIntent;
   const btn = $('#modelsFetch');
   const msg = $('#modelsMsg');
   const cfg = formSettings();
   const profileId = activeLlmProfileId;
   if (!cfg.baseUrl) {
-    if (btn) { btn.disabled = false; btn.textContent = '获取模型列表'; }
-    if (msg) { msg.textContent = '请先填写 Base URL'; msg.className = 'settings-msg err'; }
+    if (msg && !opts.silent) { msg.textContent = '请先填写 Base URL'; msg.className = 'settings-msg err'; }
     return;
   }
-  if (btn) { btn.disabled = true; btn.textContent = '获取中…'; }
-  if (msg) { msg.textContent = ''; msg.className = 'settings-msg'; }
+  if (!opts.silent && btn) { btn.disabled = true; btn.textContent = '获取中…'; }
+  if (msg && !opts.silent) { msg.textContent = ''; msg.className = 'settings-msg'; }
   try {
     await BM.requestLlmHostPermission(cfg.baseUrl);
     const models = await BM.listModels(cfg);
     const currentCfg = formSettings();
     if (intent !== modelFetchIntent || activeLlmProfileId !== profileId ||
       currentCfg.provider !== cfg.provider || currentCfg.baseUrl !== cfg.baseUrl || currentCfg.apiKey !== cfg.apiKey) return;
-    renderModelOptions(models);
+    modelListCache.set(modelListKey(cfg), mergeModelOptions(models, $('#setModel').value.trim()));
+    setModelReadonly(true);   // 列表已就绪：只能从列表中选择模型
+    if (modelComboOpen) renderModelList();
     const current = $('#setModel').value.trim();
-    if (msg) {
-      msg.textContent = models.length + ' 个模型已加载' + (current && !models.includes(current) ? '；当前模型未出现在列表中，仍可继续使用' : '');
+    if (msg && !opts.silent) {
+      msg.textContent = '已加载 ' + models.length + ' 个模型' +
+        (current && !models.includes(current) ? '；当前模型未出现在列表中，仍可继续使用' : '');
       msg.className = 'settings-msg ok';
     }
   } catch (e) {
     if (intent !== modelFetchIntent) return;
-    if (msg) { msg.textContent = '获取失败：' + (e.message || e); msg.className = 'settings-msg err'; }
+    if (msg && !opts.silent) { msg.textContent = '获取失败：' + (e.message || e); msg.className = 'settings-msg err'; }
   } finally {
-    if (intent === modelFetchIntent && btn) { btn.disabled = false; btn.textContent = '获取模型列表'; }
+    if (intent === modelFetchIntent && btn && !opts.silent) { btn.disabled = false; btn.textContent = '获取模型列表'; }
   }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  $('#setProvider').addEventListener('change', () => { applyProviderPreset(); persist(); });
-  $('#setBase').addEventListener('input', persist);
+  $('#setProvider').addEventListener('change', () => { applyProviderPreset(); persist(); maybeAutoFetchModels(); });
+  $('#setBase').addEventListener('input', () => { persist(); maybeAutoFetchModels(); });
   $('#setModel').addEventListener('input', persist);
-  $('#setKey').addEventListener('input', persist);
+  $('#setModel').addEventListener('input', event => {
+    if (event.isTrusted) { modelComboActiveIndex = 0; openModelList(); }
+    else if (modelComboOpen) renderModelList();
+  });
+  $('#setModel').addEventListener('focus', () => openModelList());
+  $('#setModel').addEventListener('blur', () => closeModelList());
+  $('#setModel').addEventListener('keydown', onModelKeydown);
+  $('#setKey').addEventListener('input', () => { persist(); maybeAutoFetchModels(); });
   $('#setProfileName').addEventListener('input', persist);
   $('#setProfile').addEventListener('change', event => { switchLlmProfile(event.target.value); });
   $('#profileNew').addEventListener('click', createLlmProfile);
@@ -867,6 +1059,15 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#settingsSave').addEventListener('click', saveWithLlmPermission);
   $('#settingsTest').addEventListener('click', testConnection);
   $('#modelsFetch').addEventListener('click', fetchModelList);
+  // 点击下拉外部（含「获取模型列表」按钮）时不关闭；其余区域点击则收起下拉
+  document.addEventListener('mousedown', event => {
+    if (!modelComboOpen) return;
+    const combo = $('#modelCombo');
+    const fetchBtn = $('#modelsFetch');
+    if (combo && combo.contains(event.target)) return;
+    if (fetchBtn && fetchBtn.contains(event.target)) return;
+    closeModelList();
+  });
   $('#setFixedTags').addEventListener('input', persistFixedTags);
   // 规则编辑完成并失焦后再保存，避免每次敲键都让已打开的侧边栏全量刷新。
   $('#setDomainTagRules').addEventListener('change', persistTagRules);

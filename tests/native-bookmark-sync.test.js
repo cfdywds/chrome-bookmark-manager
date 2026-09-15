@@ -596,7 +596,8 @@ describe('原生书签标签同步', () => {
         domain: { local: ['刚保存的本地配置'] }, keyword: {}
       });
       expect(target.localData.bmTags).toEqual({ target: ['远端标签'] });
-      expect(target.localData.bmNativeTagSyncConfigRequest).toBeUndefined();
+      // 请求被消费（清除）是配置落盘后的独立一步；等待其完成，避免并行负载下的时序抖动
+      await vi.waitFor(() => expect(target.localData.bmNativeTagSyncConfigRequest).toBeUndefined());
       expect(target.chrome.storage.local.set).not.toHaveBeenCalledWith(expect.objectContaining({
         bmFixedTags: ['远端配置']
       }));

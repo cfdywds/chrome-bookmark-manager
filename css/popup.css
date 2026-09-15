@@ -877,6 +877,45 @@ mark { background: #fde68a; color: inherit; border-radius: 3px; padding: 0 1px; 
 .profile-actions .btn { min-height: 40px; white-space: nowrap; }
 .model-fetch-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .model-fetch-row .btn { min-height: 40px; white-space: nowrap; padding: 9px 14px; }
+/* 模型下拉选择（options 页自定义 combobox，替代原生 datalist） */
+.model-combo { position: relative; min-width: 0; }
+.model-fetch-row .model-combo input { padding-right: 34px; }
+.model-fetch-row .model-combo input[readonly] { cursor: pointer; }
+.model-combo-caret {
+  position: absolute; right: 11px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; color: var(--muted); pointer-events: none;
+  transition: transform .15s ease;
+}
+.model-combo-caret svg { width: 14px; height: 14px; }
+.model-combo[data-open="true"] .model-combo-caret { transform: translateY(-50%) rotate(180deg); }
+.model-combo-list {
+  display: block; position: absolute; z-index: 60;
+  left: 0; right: 0; top: calc(100% + 5px);
+  margin: 0; padding: 5px; list-style: none;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px;
+  box-shadow: var(--shadow-lg); max-height: 248px; overflow-y: auto;
+}
+.model-combo-list[hidden] { display: none; }
+.model-combo-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  font-size: 13px; color: var(--ink); line-height: 1.4; user-select: none;
+}
+.model-combo-item.active, .model-combo-item:hover { background: var(--primary-soft); }
+.model-combo-item .mc-check {
+  flex-shrink: 0; width: 16px;
+  color: var(--ok); font-size: 13px; font-weight: 800;
+  text-align: center; line-height: 1;
+}
+/* 当前选中的模型：勾选标记 + 左侧强调条，与键盘导航高亮（active）区分 */
+.model-combo-item.is-selected {
+  background: var(--primary-soft);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+.model-combo-item.is-selected .mc-check { color: var(--primary); font-weight: 900; }
+.model-combo-item .mc-label { min-width: 0; word-break: break-all; }
+.model-combo-item mark { background: transparent; color: var(--primary); font-weight: 700; }
+.model-combo-empty { padding: 10px 12px; font-size: 12px; color: var(--muted); line-height: 1.5; }
 .form-row > .settings-msg { display: block; margin-top: 5px; font-size: 11px; }
 .opt-tip {
   font-size: 11.5px; color: var(--muted); margin-top: 24px; line-height: 1.7; text-align: center;

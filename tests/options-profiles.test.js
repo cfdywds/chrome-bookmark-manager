@@ -79,35 +79,33 @@ describe('LLM 多配置', () => {
     expect(optionsSource).toContain('bmSettings: normalizeLlmSettings');
   });
 
-  it('设置页提供模型列表拉取入口，并保留自由输入模型名', () => {
+  it('设置页提供模型列表拉取入口与可搜索下拉，加载列表后只能选择不能手输', () => {
     expect(optionsHtml).toContain('id="modelsFetch"');
     expect(optionsHtml).toContain('id="setModel"');
-    expect(optionsHtml).toContain('id="setModelOptions"');
-    expect(optionsHtml).toContain('list="setModelOptions"');
+    expect(optionsHtml).toContain('id="modelCombo"');
+    expect(optionsHtml).toContain('id="modelComboList"');
+    expect(optionsHtml).toContain('role="combobox"');
+    expect(optionsHtml).not.toContain('list="setModelOptions"');
+    expect(optionsHtml).not.toContain('datalist');
     expect(optionsSource).toContain('async function fetchModelList');
     expect(optionsSource).toContain('BM.listModels(cfg)');
     expect(optionsSource).toContain('当前模型未出现在列表中，仍可继续使用');
     expect(optionsSource).not.toContain("$('#setModel').value = models[0]");
+    // 获取模型列表后仅可从列表选择：输入框切换为只读
+    expect(optionsSource).toContain('function setModelReadonly(');
+    expect(optionsSource).toContain('input.readOnly = !!on;');
+    expect(optionsSource).toContain('setModelReadonly(true);   // 列表已就绪：只能从列表中选择模型');
   });
 
-  it('刷新模型列表时保留当前手动选择的模型', () => {
-    const options = [];
-    const input = { value: 'private-model' };
-    const list = {
-      value: 'private-model',
-      replaceChildren() { options.length = 0; this.value = ''; },
-      appendChild(option) { options.push(option); }
-    };
-    const $ = selector => selector === '#setModel' ? input
-      : selector === '#setModelOptions' ? list : null;
-    const document = {
-      createElement() { return { value: '', textContent: '' }; }
-    };
-    const renderModelOptions = eval(`(${getFunctionSource('renderModelOptions')})`);
-
-    renderModelOptions(['remote-model']);
-    expect(options.map(option => option.value)).toEqual(['remote-model', 'private-model']);
-    expect(input.value).toBe('private-model');
+  it('刷新模型列表时保留当前手动选择的模型，下拉支持大小写不敏感过滤', () => {
+    const mergeModelOptions = eval(`(${getFunctionSource('mergeModelOptions')})`);
+    const filterModelOptions = eval(`(${getFunctionSource('filterModelOptions')})`);
+    const merged = mergeModelOptions(['remote-model'], 'private-model');
+    expect(merged).toEqual(['remote-model', 'private-model']);
+    expect(mergeModelOptions(['a', 'a', ' b '], '')).toEqual(['a', 'b']);
+    expect(filterModelOptions(merged, 'priv')).toEqual(['private-model']);
+    expect(filterModelOptions(merged, 'MODEL')).toEqual(['remote-model', 'private-model']);
+    expect(filterModelOptions(merged, '')).toEqual(merged);
   });
 
   it('设置页会显示持久化的标签同步失败，文档说明标签可选同步', () => {

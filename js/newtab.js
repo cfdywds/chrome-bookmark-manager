@@ -244,6 +244,15 @@
     const grid = $('#ntGrid');
     const more = $('#ntMore');
     const empty = $('#ntEmpty');
+    const loading = $('#ntLoading');
+    if (loading) loading.classList.add('hidden');
+    // 搜索/标签筛选时在搜索框内实时显示结果数（吸顶区始终可见）
+    const resultCount = $('#ntResultCount');
+    if (resultCount) {
+      const filtering = Boolean(search.trim() || activeTag);
+      resultCount.classList.toggle('hidden', !filtering);
+      resultCount.textContent = filtering ? list.length + ' 个结果' : '';
+    }
     const tagged = DATA.items.filter(i => (i.tags || []).length).length;
     $('#ntCount').textContent = DATA.total + ' 个书签 · ' + tagged + ' 已打标';
     if (!list.length) {
@@ -323,6 +332,17 @@
     render();
   });
   $('#ntOpenPanel').addEventListener('click', openPanel);
+
+  // 搜索框滚动悬浮：越过顶栏后加深阴影提示已固定（IntersectionObserver，无滚动抖动）
+  const searchBar = $('.nt-search');
+  if (searchBar && typeof IntersectionObserver === 'function') {
+    const sentinel = document.createElement('div');
+    sentinel.className = 'nt-sticky-sentinel';
+    searchBar.parentNode.insertBefore(sentinel, searchBar);
+    new IntersectionObserver(entries => {
+      searchBar.classList.toggle('is-stuck', !(entries[0] && entries[0].isIntersecting));
+    }, { threshold: 0 }).observe(sentinel);
+  }
 
   $('#ntGrid').addEventListener('click', e => {
     suppressHoverAfterOpen(e.target.closest('.nt-card'));
@@ -511,6 +531,8 @@
       render();
       searchInput.focus();
     } catch (e) {
+      const loading = $('#ntLoading');
+      if (loading) loading.classList.add('hidden');
       $('#ntEmpty').classList.remove('hidden');
       $('#ntEmptyTitle').textContent = '读取书签失败';
       $('#ntEmptyDesc').textContent = (e && e.message) || String(e);

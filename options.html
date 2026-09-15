@@ -69,8 +69,14 @@
           <div class="form-row">
             <label>🤖 模型名</label>
             <div class="model-fetch-row">
-              <input id="setModel" type="text" list="setModelOptions" placeholder="请输入模型名" autocomplete="off" spellcheck="false" />
-              <datalist id="setModelOptions"></datalist>
+              <div class="model-combo" id="modelCombo">
+                <input id="setModel" type="text" placeholder="输入或从下拉选择模型" autocomplete="off" spellcheck="false"
+                  role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="modelComboList" aria-activedescendant="" />
+                <span class="model-combo-caret" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+                <ul id="modelComboList" class="model-combo-list" role="listbox" aria-label="模型列表" hidden></ul>
+              </div>
               <button id="modelsFetch" type="button" class="btn ghost">获取模型列表</button>
             </div>
             <span id="modelsMsg" class="settings-msg"></span>
