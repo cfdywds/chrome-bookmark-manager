@@ -3,10 +3,10 @@
 
 let DATA = null;
 let currentTab = 'overview';
-let overviewDetail = '';   // clean | trash；由概览待办项进入的工具视图
-let SEARCH = '';            // 全局搜索词
+let overviewDetail = ''; // clean | trash；由概览待办项进入的工具视图
+let SEARCH = ''; // 全局搜索词
 let searchTimer = null;
-let TAG_FILTER = '';        // 标签筛选：当前选中的标签（'' = 全部）
+let TAG_FILTER = ''; // 标签筛选：当前选中的标签（'' = 全部）
 let tabRenderToken = 0;
 let listRenderLimits = Object.create(null);
 let refreshInFlight = null;
@@ -35,13 +35,15 @@ let tagConfigurationReady = Promise.resolve();
 let tagConfigurationSyncFailed = false;
 
 // ---- SVG 图标助手（配合 popup.html 的 <symbol> sprite，替代 emoji）----
-const ICON = name => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-${name}"/></svg>`;
-const ICON_SM = name => `<svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-${name}"/></svg>`;
+const ICON = name =>
+  `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-${name}"/></svg>`;
+const ICON_SM = name =>
+  `<svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-${name}"/></svg>`;
 
 // ---- 统一方案引擎：删除整理操作走「预览 → 确认 → 执行」----
 let planMode = false;
-let PLAN = null;            // { type:'delete', groups:[...] }
-let EDITING = null;         // 编辑模式：正在编辑的书签项（null = 新增模式）
+let PLAN = null; // { type:'delete', groups:[...] }
+let EDITING = null; // 编辑模式：正在编辑的书签项（null = 新增模式）
 
 const $ = sel => document.querySelector(sel);
 const content = () => $('#content');
@@ -54,8 +56,11 @@ function getItemById(id) {
 
 function escapeHtml(s) {
   return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // 搜索命中高亮：把文本中所有匹配 q 的片段包 <mark>
@@ -64,10 +69,14 @@ function highlightHtml(text, q) {
   const low = s.toLowerCase();
   const ql = String(q).toLowerCase();
   if (!ql || !low.includes(ql)) return escapeHtml(s);
-  let out = '', i = 0;
+  let out = '',
+    i = 0;
   while (i < s.length) {
     const j = low.indexOf(ql, i);
-    if (j < 0) { out += escapeHtml(s.slice(i)); break; }
+    if (j < 0) {
+      out += escapeHtml(s.slice(i));
+      break;
+    }
     out += escapeHtml(s.slice(i, j)) + '<mark>' + escapeHtml(s.slice(j, j + ql.length)) + '</mark>';
     i = j + ql.length;
   }
@@ -80,6 +89,8 @@ function toast(msg, type, action) {
   const box = $('#toasts');
   const el = document.createElement('div');
   el.className = 'toast ' + type;
+  el.setAttribute('role', type === 'danger' || type === 'warn' ? 'alert' : 'status');
+  el.setAttribute('aria-live', type === 'danger' || type === 'warn' ? 'assertive' : 'polite');
   const txt = document.createElement('span');
   txt.textContent = msg;
   el.appendChild(txt);
@@ -87,21 +98,28 @@ function toast(msg, type, action) {
     const btn = document.createElement('button');
     btn.className = 'toast-act';
     btn.textContent = action.label;
-    btn.addEventListener('click', () => { el.remove(); action.onClick && action.onClick(); });
+    btn.addEventListener('click', () => {
+      el.remove();
+      action.onClick && action.onClick();
+    });
     el.appendChild(btn);
   }
   box.appendChild(el);
-  setTimeout(() => {
-    el.style.transition = 'opacity .3s, transform .3s';
-    el.style.opacity = '0';
-    el.style.transform = 'translateY(-8px)';
-    setTimeout(() => el.remove(), 320);
-  }, action ? 10000 : 2600); // 可撤销操作给足 10s 窗口
+  setTimeout(
+    () => {
+      el.style.transition = 'opacity .3s, transform .3s';
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(-8px)';
+      setTimeout(() => el.remove(), 320);
+    },
+    action ? 10000 : 2600
+  ); // 可撤销操作给足 10s 窗口
 }
 
 function showPersistentError(title, detail, action) {
   $('#operationNoticeTitle').textContent = title;
   $('#operationNoticeDetail').textContent = detail;
+  $('#operationNoticeTitle').id = 'operationNoticeTitle';
   const actionButton = $('#operationNoticeAction');
   if (actionButton) {
     if (action) {
@@ -141,7 +159,7 @@ function getAiTagTargets(force) {
 }
 
 function getCustomRuleCount() {
-  const rules = BM.getTagRules ? (BM.getTagRules() || {}) : {};
+  const rules = BM.getTagRules ? BM.getTagRules() || {} : {};
   return Object.keys(rules.domain || {}).length + Object.keys(rules.keyword || {}).length;
 }
 
@@ -150,7 +168,7 @@ function collectCustomRuleApplications(mode) {
   const tagsById = BM.getTags() || {};
   const groups = new Map();
   ((DATA && DATA.items) || []).forEach(item => {
-    const key = item.key || BM.urlKey(item.url || '') || ('bookmark:' + item.id);
+    const key = item.key || BM.urlKey(item.url || '') || 'bookmark:' + item.id;
     const list = groups.get(key);
     if (list) list.push(item);
     else groups.set(key, [item]);
@@ -159,10 +177,16 @@ function collectCustomRuleApplications(mode) {
   const changes = {};
   let matched = 0;
   groups.forEach(items => {
-    const ruleTags = BM.unionTagLists(items.map(item => {
-      const result = BM.matchCustomTagRules({ host: item.host, url: item.url, title: item.title });
-      return [...(result.domain || []), ...(result.keyword || [])];
-    }));
+    const ruleTags = BM.unionTagLists(
+      items.map(item => {
+        const result = BM.matchCustomTagRules({
+          host: item.host,
+          url: item.url,
+          title: item.title
+        });
+        return [...(result.domain || []), ...(result.keyword || [])];
+      })
+    );
     if (!ruleTags.length) return;
     matched += items.length;
 
@@ -189,7 +213,10 @@ async function applyCustomRules(trigger) {
   try {
     await Promise.all([BM.loadTags(), BM.loadFixedTags(), BM.loadTagRules()]);
     if (!getCustomRuleCount()) {
-      toast('还没有自定义规则：到「设置 → 标签体系」添加一条（如 github=代码），就能一键批量应用', 'warn');
+      toast(
+        '还没有自定义规则：到「设置 → 标签体系」添加一条（如 github=代码），就能一键批量应用',
+        'warn'
+      );
       return;
     }
 
@@ -206,14 +233,22 @@ async function applyCustomRules(trigger) {
     if (trigger) trigger.textContent = '选择策略…';
     const choice = await confirmDialog({
       title: '应用自定义规则',
-      message: `命中 <b>${matched}</b> 个书签；全程在本地处理，不调用 AI。<br>`
-        + `仅未标：${previews.untagged.changed} 项；追加：${previews.append.changed} 项；覆盖：${previews.replace.changed} 项。`,
+      message:
+        `命中 <b>${matched}</b> 个书签；全程在本地处理，不调用 AI。<br>` +
+        `仅未标：${previews.untagged.changed} 项；追加：${previews.append.changed} 项；覆盖：${previews.replace.changed} 项。`,
       confirmText: '追加',
       thirdText: '覆盖',
       fourthText: '仅未标',
       danger: false
     });
-    const mode = choice === true ? 'append' : choice === 'third' ? 'replace' : choice === 'fourth' ? 'untagged' : '';
+    const mode =
+      choice === true
+        ? 'append'
+        : choice === 'third'
+          ? 'replace'
+          : choice === 'fourth'
+            ? 'untagged'
+            : '';
     if (!mode) return;
 
     const result = collectCustomRuleApplications(mode);
@@ -228,7 +263,11 @@ async function applyCustomRules(trigger) {
     refresh();
   } catch (e) {
     toast('应用规则失败：' + (e.message || e), 'danger');
-    try { BM.logError('apply-custom-rules', e); } catch (e2) { /* ignore */ }
+    try {
+      BM.logError('apply-custom-rules', e);
+    } catch (e2) {
+      /* ignore */
+    }
   } finally {
     if (trigger && document.contains(trigger)) {
       trigger.disabled = false;
@@ -242,6 +281,7 @@ function confirmDialog(opts) {
   opts = opts || {};
   return new Promise(resolve => {
     const wrap = $('#confirmWrap');
+    const restoreFocusTo = document.activeElement;
     $('#confirmTitle').textContent = opts.title || '确认操作？';
     $('#confirmMsg').innerHTML = opts.message || '';
     const yes = $('#confirmYes');
@@ -262,12 +302,15 @@ function confirmDialog(opts) {
       fourth.classList.add('hidden');
     }
     wrap.classList.remove('hidden');
-    const onWrapClick = e => { if (e.target === wrap) done(false); };
+    const onWrapClick = e => {
+      if (e.target === wrap) done(false);
+    };
     const done = v => {
       wrap.classList.add('hidden');
       yes.onclick = no.onclick = third.onclick = fourth.onclick = null;
       wrap.removeEventListener('click', onWrapClick);
       document.removeEventListener('keydown', onKey);
+      if (restoreFocusTo && document.contains(restoreFocusTo)) restoreFocusTo.focus();
       resolve(v);
     };
     const no = $('#confirmNo');
@@ -275,15 +318,27 @@ function confirmDialog(opts) {
     // 弹层内 Tab 循环（与抽屉焦点陷阱一致），避免焦点跑到背景内容。
     const trapTab = e => {
       if (e.key !== 'Tab') return;
-      const list = [...wrap.querySelectorAll('button, input')]
-        .filter(x => !x.classList.contains('hidden') && !x.disabled && x.offsetParent !== null);
+      const list = [...wrap.querySelectorAll('button, input')].filter(
+        x => !x.classList.contains('hidden') && !x.disabled && x.offsetParent !== null
+      );
       if (!list.length) return;
-      if (e.shiftKey && document.activeElement === list[0]) { e.preventDefault(); list[list.length - 1].focus(); }
-      else if (!e.shiftKey && document.activeElement === list[list.length - 1]) { e.preventDefault(); list[0].focus(); }
+      if (e.shiftKey && document.activeElement === list[0]) {
+        e.preventDefault();
+        list[list.length - 1].focus();
+      } else if (!e.shiftKey && document.activeElement === list[list.length - 1]) {
+        e.preventDefault();
+        list[0].focus();
+      }
     };
     const onKey = e => {
-      if (e.key === 'Escape') { done(false); return; }
-      if (e.key === 'Enter' && !(e.target.closest && e.target.closest('button'))) { done(true); return; }
+      if (e.key === 'Escape') {
+        done(false);
+        return;
+      }
+      if (e.key === 'Enter' && !(e.target.closest && e.target.closest('button'))) {
+        done(true);
+        return;
+      }
       trapTab(e);
     };
     yes.onclick = () => done(true);
@@ -301,6 +356,7 @@ function promptDialog(opts) {
   opts = opts || {};
   return new Promise(resolve => {
     const wrap = $('#promptWrap');
+    const restoreFocusTo = document.activeElement;
     $('#promptTitle').textContent = opts.title || '输入';
     $('#promptMsg').textContent = opts.message || '';
     const input = $('#promptInput');
@@ -309,17 +365,26 @@ function promptDialog(opts) {
     wrap.classList.remove('hidden');
     const yes = $('#promptYes');
     const no = $('#promptNo');
-    const onWrapClick = e => { if (e.target === wrap) done(null); };
+    const onWrapClick = e => {
+      if (e.target === wrap) done(null);
+    };
     const done = v => {
       wrap.classList.add('hidden');
       yes.onclick = no.onclick = null;
       wrap.removeEventListener('click', onWrapClick);
       document.removeEventListener('keydown', onKey);
+      if (restoreFocusTo && document.contains(restoreFocusTo)) restoreFocusTo.focus();
       resolve(v);
     };
     const onKey = e => {
-      if (e.key === 'Escape') { done(null); return; }
-      if (e.key === 'Enter' && !(e.target.closest && e.target.closest('button'))) { done(input.value.trim() || null); return; }
+      if (e.key === 'Escape') {
+        done(null);
+        return;
+      }
+      if (e.key === 'Enter' && !(e.target.closest && e.target.closest('button'))) {
+        done(input.value.trim() || null);
+        return;
+      }
       trapTab(e);
     };
     yes.onclick = () => done(input.value.trim() || null);
@@ -356,6 +421,8 @@ function startProgress(label, opts) {
 }
 function updateProgress(pct, label) {
   $('#progressBar').style.width = pct + '%';
+  const bar = $('#progressBar').parentElement;
+  bar.setAttribute('aria-valuenow', String(Math.round(pct)));
   if (label) $('#progressLabel').textContent = label;
 }
 function endProgress() {
@@ -378,7 +445,10 @@ async function removeForIds(ids, label, opts) {
   let lastProgressAt = 0;
   const removedIds = [];
   const total = targets.length;
-  const concurrency = Math.max(1, Math.min(Math.floor(Number(opts.concurrency) || DELETE_CONCURRENCY), total));
+  const concurrency = Math.max(
+    1,
+    Math.min(Math.floor(Number(opts.concurrency) || DELETE_CONCURRENCY), total)
+  );
   const shouldClearTags = opts.clearTags !== false;
 
   const reportProgress = force => {
@@ -386,7 +456,7 @@ async function removeForIds(ids, label, opts) {
     const now = Date.now();
     if (!force && now - lastProgressAt < DELETE_PROGRESS_INTERVAL_MS) return;
     lastProgressAt = now;
-    updateProgress(Math.round(completed / total * 100), label + ' ' + completed + '/' + total);
+    updateProgress(Math.round((completed / total) * 100), label + ' ' + completed + '/' + total);
   };
   const worker = async () => {
     while (nextIndex < total) {
@@ -404,10 +474,7 @@ async function removeForIds(ids, label, opts) {
   };
 
   try {
-    await Promise.all(Array.from(
-      { length: concurrency },
-      () => worker()
-    ));
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
     // 只清理已实际删除的书签；分批写入避免逐条序列化整张标签映射。
     if (shouldClearTags) {
@@ -441,7 +508,7 @@ async function pruneDuplicateEmptyFolders(parentIds) {
   const stack = [];
   (tree || []).forEach(root => {
     if (root && root.id) protectedIds.add(root.id);
-    (root && root.children || []).forEach(child => {
+    ((root && root.children) || []).forEach(child => {
       if (child && child.id) protectedIds.add(child.id);
     });
     if (root) stack.push({ node: root, depth: 0 });
@@ -468,7 +535,7 @@ async function pruneDuplicateEmptyFolders(parentIds) {
   let removed = 0;
   const removedIds = new Set();
   const orderedCandidates = [...candidates].sort(
-    (left, right) => (nodesById.get(right).depth - nodesById.get(left).depth)
+    (left, right) => nodesById.get(right).depth - nodesById.get(left).depth
   );
   for (const candidateId of orderedCandidates) {
     if (removedIds.has(candidateId)) continue;
@@ -494,10 +561,14 @@ async function softDelete(ids, label, opts) {
     return { n: 0, items: [] };
   }
   if (!ids || !ids.length) return { n: 0, items: [] };
-  const items = ids.map(id => {
-    const it = getItemById(id);
-    return it ? { id: it.id, title: it.title, url: it.url, parentId: it.parentId, path: it.path } : null;
-  }).filter(Boolean);
+  const items = ids
+    .map(id => {
+      const it = getItemById(id);
+      return it
+        ? { id: it.id, title: it.title, url: it.url, parentId: it.parentId, path: it.path }
+        : null;
+    })
+    .filter(Boolean);
   try {
     const added = await BM.addToTrash(items, { deletionPending: true });
     if (added !== items.length) throw new Error('未能完整写入回收站');
@@ -542,7 +613,8 @@ async function undoDelete(items) {
   try {
     const result = await BM.restoreTrashItems(items);
     if (result.restored) toast('已撤销删除 ' + result.restored + ' 项 ✓', 'ok');
-    if (result.failed.length) toast('有 ' + result.failed.length + ' 项没能自动恢复，可到「概览 → 回收站」重试', 'warn');
+    if (result.failed.length)
+      toast('有 ' + result.failed.length + ' 项没能自动恢复，可到「概览 → 回收站」重试', 'warn');
   } catch (e) {
     console.warn('[书签管家] 撤销失败', e);
     toast('撤销失败：' + (e.message || e), 'danger');
@@ -566,15 +638,20 @@ function itemRow(it, opts) {
   // 多标签 chips（点切换筛选）：过滤掉 #其他 兜底（数据层保留但 UI 不显示，归并到"收敛"流程）
   const tags = (it.tags || [])
     .filter(t => t !== BM.FALLBACK_TAG)
-    .map(t => `<button class="tag-chip" data-action="filter-tag" data-tag="${escapeHtml(t)}" title="按标签筛选">#${escapeHtml(t)}</button>`).join('');
+    .map(
+      t =>
+        `<button class="tag-chip" data-action="filter-tag" data-tag="${escapeHtml(t)}" title="按标签筛选">#${escapeHtml(t)}</button>`
+    )
+    .join('');
   const deadDot = opts.dead
-    ? `<span class="dead-dot ${(it.dead || 'unknown')}" id="dot-${it.id}"></span>` : '';
+    ? `<span class="dead-dot ${it.dead || 'unknown'}" id="dot-${it.id}"></span>`
+    : '';
   const titleHtml = q ? highlightHtml(it.title, q) : escapeHtml(it.title);
   const urlHtml = q ? highlightHtml(it.url, q) : escapeHtml(it.url);
   const hiddenCls = it.hidden ? ' row-hidden' : '';
   const searchCls = opts.search ? ' search-result-row' : '';
   const eyeBtn = `<button class="row-eye" data-action="toggle-hidden" data-id="${it.id}" title="${it.hidden ? '取消隐藏' : '隐藏此书签（从日常视图排除）'}">${it.hidden ? ICON_SM('eye-off') : ICON_SM('eye')}</button>`;
-  return `<div class="row clickable draggable${hiddenCls}${searchCls}" draggable="true" data-id="${it.id}">
+  return `<div class="row clickable draggable${hiddenCls}${searchCls}" data-id="${it.id}" tabindex="0" aria-label="${escapeHtml(it.title)}">
     <label class="checkbox-slot"><input type="checkbox" class="checkbox sel" data-id="${it.id}" aria-label="选择 ${escapeHtml(it.title)}"></label>
     <div class="meta">
       <div class="title">${deadDot}${it.hidden ? '<span class="tag warn">已隐藏</span> ' : ''}${titleHtml}</div>
@@ -582,13 +659,14 @@ function itemRow(it, opts) {
       <div class="loc"><span>${ICON_SM('folder')} ${escapeHtml(it.path.join(' / '))}</span> ${cat} ${tags}</div>
     </div>
     ${eyeBtn}
-    <button class="row-edit" data-action="edit-item" data-id="${it.id}" title="编辑书签">${ICON_SM('edit')}</button>
+    <button class="row-edit" data-action="edit-item" data-id="${it.id}" title="编辑书签" aria-label="编辑 ${escapeHtml(it.title)}">${ICON_SM('edit')}</button>
+    <button class="row-drag" draggable="true" data-action="drag-handle" data-id="${it.id}" title="拖动排序 / 移动到其他分组" aria-label="拖动 ${escapeHtml(it.title)}">${ICON_SM('drag')}</button>
   </div>`;
 }
 
 function groupWrap(groupKey, icon, name, badgeCls, badgeText, actions, body) {
   return `<div class="group" data-group="${groupKey}">
-    <div class="group-head">
+    <div class="group-head" role="button" tabindex="0" aria-expanded="true">
       <div class="g-title">
         <span>${icon}</span>
         <span class="g-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
@@ -609,7 +687,10 @@ function emptyState(icon, title, desc) {
 }
 
 function helpDot(text) {
-  const tip = String(text || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  const tip = String(text || '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return `<button class="help-dot" type="button" data-tip="${escapeHtml(tip)}" aria-label="${escapeHtml(tip || '说明')}">?</button>`;
 }
 
@@ -624,9 +705,10 @@ function takeForRender(items, key, initial, step) {
   const count = Math.min(items.length, limit);
   return {
     items: items.slice(0, count),
-    more: count < items.length
-      ? `<button class="more-items" data-action="show-more" data-list="${escapeHtml(key)}" data-step="${step}">加载更多（已显示 ${count}/${items.length}）</button>`
-      : ''
+    more:
+      count < items.length
+        ? `<button class="more-items" data-action="show-more" data-list="${escapeHtml(key)}" data-step="${step}">加载更多（已显示 ${count}/${items.length}）</button>`
+        : ''
   };
 }
 
@@ -640,13 +722,38 @@ function renderOverview() {
   const d = DATA;
   const trashN = (d.trash || []).length;
   const stats = d.tagStats || {};
-  const entries = Object.entries(stats).sort((a, b) => b[1] - a[1]).slice(0, 24);
+  const entries = Object.entries(stats)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 24);
   const tagCount = entries.length;
   // 清理提醒（有待办项优先）
   const acts = [
-    { ico: ICON_SM('repeat'), name: '重复书签', n: d.exactDuplicates.length, jump: 'clean', sub: 'repeat', cls: 'danger', done: '✓ 无重复' },
-    { ico: ICON_SM('trash'), name: '空文件夹', n: d.emptyFolders.length, jump: 'clean', sub: 'empty', cls: 'warn', done: '✓ 无空夹' },
-    { ico: ICON_SM('archive'), name: '回收站', n: trashN, jump: 'trash', cls: 'info', done: '✓ 回收站为空' }
+    {
+      ico: ICON_SM('repeat'),
+      name: '重复书签',
+      n: d.exactDuplicates.length,
+      jump: 'clean',
+      sub: 'repeat',
+      cls: 'danger',
+      done: '✓ 无重复'
+    },
+    {
+      ico: ICON_SM('trash'),
+      name: '空文件夹',
+      n: d.emptyFolders.length,
+      jump: 'clean',
+      sub: 'empty',
+      cls: 'warn',
+      done: '✓ 无空夹'
+    },
+    {
+      ico: ICON_SM('archive'),
+      name: '回收站',
+      n: trashN,
+      jump: 'trash',
+      cls: 'info',
+      done: '✓ 回收站为空'
+    }
   ].sort((a, b) => (b.n > 0) - (a.n > 0));
 
   const actRow = a => {
@@ -661,7 +768,7 @@ function renderOverview() {
   };
 
   const tagChip = (t, n) => {
-    return `<button class="tag-cloud" data-action="filter-tag" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}<span class="cnt">${n}</span></button>`;
+    return `<button class="tag-cloud" data-action="filter-tag" data-tag="${escapeHtml(t)}" aria-pressed="false">#${escapeHtml(t)}<span class="cnt">${n}</span></button>`;
   };
 
   content().innerHTML = `
@@ -673,14 +780,18 @@ function renderOverview() {
     </div>
     <div class="search-hero">
       <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"/></svg>
-      <input id="heroSearch" type="text" placeholder="搜索书签" autocomplete="off" spellcheck="false" />
+      <input id="heroSearch" type="text" placeholder="搜索标题、网址、域名、标签" autocomplete="off" spellcheck="false" />
     </div>
-    ${tagCount ? `
+    ${
+      tagCount
+        ? `
     <div class="tag-cloud-card">
       <div class="cloud-head">${ICON_SM('tag')} 热门标签</div>
       <div class="tag-cloud-wrap">${entries.map(([t, n]) => tagChip(t, n)).join('')}</div>
-    </div>` : `
-    <div class="empty-state"><span class="emoji">${ICON('tag')}</span><div class="title">还没有标签</div></div>`}
+    </div>`
+        : `
+    <div class="empty-state"><span class="emoji">${ICON('tag')}</span><div class="title">还没有标签</div></div>`
+    }
     <div class="act-card">
       <div class="act-head">${ICON_SM('sparkles')} 待清理</div>
       ${acts.map(actRow).join('')}
@@ -696,15 +807,22 @@ function renderOverview() {
     </div>`;
   // 首页大搜索框联动顶部搜索
   const hero = $('#heroSearch');
-  if (hero) hero.addEventListener('input', () => {
-    const q = hero.value.trim();
-    if (!q) { clearSearch(); return; }
-    $('#searchInput').value = q;
-    SEARCH = q.toLowerCase();
-    $('#searchClear').classList.remove('hidden');
-    renderSearch();
-  });
-  hero && hero.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+  if (hero)
+    hero.addEventListener('input', () => {
+      const q = hero.value.trim();
+      if (!q) {
+        clearSearch();
+        return;
+      }
+      $('#searchInput').value = q;
+      SEARCH = q.toLowerCase();
+      $('#searchClear').classList.remove('hidden');
+      renderSearch();
+    });
+  hero &&
+    hero.addEventListener('keydown', e => {
+      if (e.key === 'Enter') e.preventDefault();
+    });
 }
 
 // ---------- 隐藏书签：仅列出从日常视图排除的书签 ----------
@@ -725,11 +843,15 @@ function renderExact(container) {
   const c = container || content();
   const sameUrlGroups = getSameUrlGroups();
   if (!DATA.exactDuplicates.length) {
-    c.innerHTML = emptyState(ICON('repeat'), '重复书签已清理干净', '没有发现 URL 完全相同的书签') + (sameUrlGroups.length ? `
+    c.innerHTML =
+      emptyState(ICON('repeat'), '重复书签已清理干净', '没有发现 URL 完全相同的书签') +
+      (sameUrlGroups.length
+        ? `
       <div class="section-toolbar" style="margin-top:14px;">
         <span class="sec-title">发现 <b>${sameUrlGroups.length}</b> 组归一化同址书签，可统一历史标签</span>
-        <button class="btn small" data-action="unify-exact-tags">🏷 统一同址标签</button>
-      </div>` : '');
+        <button class="btn small" data-action="unify-exact-tags">${ICON_SM('tag')} 统一同址标签</button>
+      </div>`
+        : '');
     return;
   }
   const total = DATA.exactDuplicates.reduce((s, g) => s + g.items.length - 1, 0);
@@ -737,15 +859,33 @@ function renderExact(container) {
     <div class="section-toolbar">
       <span class="sec-title">共 <b>${DATA.exactDuplicates.length}</b> 组完全相同 · 可一键清理 <b>${total}</b> 个多余项</span>
       <button class="btn small primary" data-action="bulk-exact">${ICON_SM('sparkles')} 一键去重</button>
-      <button class="btn small" data-action="unify-exact-tags">🏷 统一同址标签</button>
+      <button class="btn small" data-action="unify-exact-tags">${ICON_SM('tag')} 统一同址标签</button>
     </div>`;
-  const groups = takeForRender(DATA.exactDuplicates, 'exact-groups', FIRST_GROUP_COUNT, FIRST_GROUP_COUNT);
+  const groups = takeForRender(
+    DATA.exactDuplicates,
+    'exact-groups',
+    FIRST_GROUP_COUNT,
+    FIRST_GROUP_COUNT
+  );
   groups.items.forEach((g, groupIndex) => {
     const head = g.items[0].domain || g.items[0].host || '链接';
-    html += groupWrap('exact-' + groupIndex, ICON('repeat'), head, '', g.items.length + ' 个相同', `
+    html += groupWrap(
+      'exact-' + groupIndex,
+      ICON('repeat'),
+      head,
+      '',
+      g.items.length + ' 个相同',
+      `
       <button class="btn small" data-action="keepfirst" data-idx="${groupIndex}">保留首个</button>
       <button class="btn small ghost" data-action="selall" data-group="exact-${groupIndex}">全选</button>
-    `, renderItemRows(g.items, 'exact-items-' + groupIndex, FIRST_GROUP_ITEM_COUNT, FIRST_GROUP_ITEM_COUNT));
+    `,
+      renderItemRows(
+        g.items,
+        'exact-items-' + groupIndex,
+        FIRST_GROUP_ITEM_COUNT,
+        FIRST_GROUP_ITEM_COUNT
+      )
+    );
   });
   html += groups.more;
   c.innerHTML = html;
@@ -815,9 +955,17 @@ function buildTagViewFallback(items) {
 function tagGroupHtml(entry, index, itemsByTag) {
   const [tag, count] = entry;
   const items = itemsByTag.get(tag) || [];
-  return groupWrap('tag-' + index, ICON('tag'), '#' + tag, 'tag-badge', count + ' 个', `
+  return groupWrap(
+    'tag-' + index,
+    ICON('tag'),
+    '#' + tag,
+    'tag-badge',
+    count + ' 个',
+    `
     <button class="btn small ghost" data-action="filter-tag" data-tag="${escapeHtml(tag)}">只看此标签</button>
-  `, renderItemRows(items, 'tag-preview-' + tag, FIRST_TAG_PREVIEW_COUNT, FIRST_TAG_PREVIEW_COUNT));
+  `,
+    renderItemRows(items, 'tag-preview-' + tag, FIRST_TAG_PREVIEW_COUNT, FIRST_TAG_PREVIEW_COUNT)
+  );
 }
 
 function appendTagGroups(entries, itemsByTag, startIndex, more, token) {
@@ -857,68 +1005,92 @@ function renderTags() {
   // 固定标签池：标签条只显示池内标签（含「其他」）；池外标签统计为「散落标签」
   const pool = BM.getFixedTags() || [];
   const poolSet = new Set(pool);
-  const entriesAll = Object.entries(stats).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh'));
+  const entriesAll = Object.entries(stats).sort(
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh')
+  );
   const entries = entriesAll.filter(([t]) => poolSet.has(t));
   const looseCount = entriesAll.reduce((s, [t, n]) => s + (poolSet.has(t) ? 0 : n), 0);
   const untaggedCount = getAiTagTargets(false).length;
   const customRuleCount = getCustomRuleCount();
   if (!entries.length && !looseCount) {
-    content().innerHTML = emptyState(ICON('tag'), '还没有标签', '给书签打标签后即可按标签快速浏览（一个书签可多个标签）') + `
+    content().innerHTML =
+      emptyState(
+        ICON('tag'),
+        '还没有标签',
+        '给书签打标签后即可按标签快速浏览（一个书签可多个标签）'
+      ) +
+      `
       <div class="section-toolbar" style="margin-top:14px;">
         <span class="sec-title">${untaggedCount} 个书签未打标 ${helpDot('可在新增或编辑书签时填写标签，或使用 AI 批量打标。')}</span>
-        ${hiddenCount ? `<button class="btn small ghost" data-jump="hidden">👁 隐藏（${hiddenCount}）</button>` : ''}
-        ${customRuleCount ? `<button class="btn small ghost" data-action="apply-custom-rules">⚡ 应用规则</button>` : ''}
-        <button class="btn small primary" data-action="ai-tag-all">🤖 AI 批量打标</button>
+        ${hiddenCount ? `<button class="btn small ghost" data-jump="hidden">${ICON_SM('eye-off')} 隐藏（${hiddenCount}）</button>` : ''}
+        ${customRuleCount ? `<button class="btn small ghost" data-action="apply-custom-rules">${ICON_SM('sparkles')} 应用规则</button>` : ''}
+        <button class="btn small primary" data-action="ai-tag-all">${ICON_SM('sparkles')} AI 批量打标</button>
       </div>`;
     return;
   }
   const total = totalVisible;
-  const pct = total ? (taggedCount === total ? 100 : Math.floor(taggedCount / total * 100)) : 0;
+  const pct = total ? (taggedCount === total ? 100 : Math.floor((taggedCount / total) * 100)) : 0;
   // 数据摘要卡：3 个数字 + 进度条 + 散落警告
-  const looseKinds = entriesAll.length - entries.length;   // 池外标签种类数
+  const looseKinds = entriesAll.length - entries.length; // 池外标签种类数
   const summaryHtml = `<div class="tag-summary">
     <div class="tag-summary-row">
       <span class="big">${taggedCount}</span><span>/ ${total} 已打标</span><span class="pct">${pct}%</span>
       <span class="sep">|</span><span><b>${entries.length}</b> 个标签</span>${helpDot('标签后的数字表示书签数量。')}
       ${looseKinds ? `<span class="sep">|</span><span><span class="dot" style="background:var(--warn)"></span><b>${looseKinds}</b> 个散落标签</span>` : ''}
       <span style="margin-left:auto; display:flex; gap:6px;">
-        <button class="btn small ghost" data-jump="hidden" title="查看隐藏书签">👁 隐藏（${hiddenCount}）</button>
-        <button class="btn small primary" data-action="ai-tag-all" ${untaggedCount ? '' : 'disabled'}>🤖 打标未标（${untaggedCount}）</button>
-        <button class="btn small ghost" data-action="ai-tag-all-force">🔄 全量重打</button>
+        <button class="btn small ghost" data-jump="hidden" title="查看隐藏书签">${ICON_SM('eye-off')} 隐藏（${hiddenCount}）</button>
+        <button class="btn small primary" data-action="ai-tag-all" ${untaggedCount ? '' : 'disabled'}>${ICON_SM('sparkles')} 打标未标（${untaggedCount}）</button>
+        <button class="btn small ghost" data-action="ai-tag-all-force">${ICON_SM('refresh')} 全量重打</button>
       </span>
     </div>
     <div class="tag-summary-bar"><div class="tag-summary-bar-fill" style="width:${pct}%"></div></div>
-    ${customRuleCount ? `<div class="tag-summary-tip">
+    ${
+      customRuleCount
+        ? `<div class="tag-summary-tip">
       <span>已配置 <b>${customRuleCount}</b> 条自定义规则，可批量应用到已有书签，不调用 AI。</span>
-      <button class="btn small primary" data-action="apply-custom-rules">⚡ 应用规则</button>
-    </div>` : ''}
-    ${looseCount ? `<div class="tag-summary-tip">
+      <button class="btn small primary" data-action="apply-custom-rules">${ICON_SM('sparkles')} 应用规则</button>
+    </div>`
+        : ''
+    }
+    ${
+      looseCount
+        ? `<div class="tag-summary-tip">
       <span><span class="dot" style="background:var(--warn)"></span><b>${looseCount}</b> 个书签有散落标签（不在固定池内），池外会归到「其他」</span>
-      <button class="btn small primary" data-action="migrate-tags">🧹 立即收敛</button>
-    </div>` : ''}
-    ${(fallbackCount || hiddenFallbackCount) ? `<div class="tag-summary-tip">
-      <span><span class="dot" style="background:var(--muted)"></span>${hiddenFallbackCount
-        ? `<b>${fallbackCount}</b> 个当前可见书签含「#其他」兜底标签，另有 <b>${hiddenFallbackCount}</b> 个隐藏书签`
-        : `<b>${fallbackCount}</b> 个书签含「#其他」兜底标签`}${otherCount ? `；其中 <b>${otherCount}</b> 个仍未打标` : ''}</span>
-      <button class="btn small primary" data-action="migrate-tags">🧹 去收敛</button>
-    </div>` : ''}
+      <button class="btn small primary" data-action="migrate-tags">${ICON_SM('tag')} 立即收敛</button>
+    </div>`
+        : ''
+    }
+    ${
+      fallbackCount || hiddenFallbackCount
+        ? `<div class="tag-summary-tip">
+      <span><span class="dot" style="background:var(--muted)"></span>${
+        hiddenFallbackCount
+          ? `<b>${fallbackCount}</b> 个当前可见书签含「#其他」兜底标签，另有 <b>${hiddenFallbackCount}</b> 个隐藏书签`
+          : `<b>${fallbackCount}</b> 个书签含「#其他」兜底标签`
+      }${otherCount ? `；其中 <b>${otherCount}</b> 个仍未打标` : ''}</span>
+      <button class="btn small primary" data-action="migrate-tags">${ICON_SM('tag')} 去收敛</button>
+    </div>`
+        : ''
+    }
   </div>`;
 
   // 标签数量直接显示为数字，避免以字号或长度条重复表达同一信息。
   const chip = (t, n) => {
     const active = TAG_FILTER === t ? ' active' : '';
-    return `<button class="tag-cloud${active}" data-action="filter-tag" data-tag="${escapeHtml(t)}">
+    return `<button class="tag-cloud${active}" data-action="filter-tag" data-tag="${escapeHtml(t)}" aria-pressed="${active ? 'true' : 'false'}">
       <span>${t ? '#' + escapeHtml(t) : '全部'}</span><span class="cnt">${n}</span>
     </button>`;
   };
 
-  let html = summaryHtml + `
+  let html =
+    summaryHtml +
+    `
     <div class="tag-cloud-card">
       <div class="cloud-head">
         <span style="display:inline-flex;align-items:center;gap:6px;">${ICON_SM('tag')} 标签云</span>
         <span style="margin-left:auto;display:flex;gap:6px;">
-          <button class="btn small ghost" data-action="create-tag">＋ 新建标签</button>
-          <button class="btn small ghost" data-action="manage-tags">🏷 管理标签</button>
+          <button class="btn small ghost" data-action="create-tag">${ICON_SM('plus')} 新建标签</button>
+          <button class="btn small ghost" data-action="manage-tags">${ICON_SM('tag')} 管理标签</button>
         </span>
       </div>
       <div class="tag-cloud-wrap">
@@ -929,13 +1101,19 @@ function renderTags() {
       </div>
     </div>`;
   // 分组：标签索引已在上方单次扫描中建立，避免每个标签再遍历全部书签。
-  const filtered = TAG_FILTER ? (itemsByTag.get(TAG_FILTER) || []) : taggedItems;
+  const filtered = TAG_FILTER ? itemsByTag.get(TAG_FILTER) || [] : taggedItems;
   if (TAG_FILTER) {
     const items = filtered;
     html += `<div class="section-toolbar"><span class="sec-title">标签 <b>#${escapeHtml(TAG_FILTER)}</b> · ${items.length} 个书签</span>
       <button class="btn small ghost" data-action="clear-tag-filter">清除筛选</button></div>`;
     if (!items.length) html += emptyState(ICON('tag'), '该标签下没有书签', '');
-    else html += renderItemRows(items, 'tag-filter-' + TAG_FILTER, FIRST_TAG_FILTER_COUNT, FIRST_LIST_COUNT);
+    else
+      html += renderItemRows(
+        items,
+        'tag-filter-' + TAG_FILTER,
+        FIRST_TAG_FILTER_COUNT,
+        FIRST_LIST_COUNT
+      );
   } else {
     // 全部标签：按标签分组展示
     html += `<div class="section-toolbar"><span class="sec-title"><b>${entries.length}</b> 个标签 · ${taggedCount}/${total} 个书签已打标</span>
@@ -952,7 +1130,13 @@ function renderTags() {
   if (!TAG_FILTER) {
     const tagGroups = takeForRender(entries, 'tag-groups', FIRST_GROUP_COUNT, FIRST_GROUP_COUNT);
     if (FIRST_TAG_GROUP_COUNT < tagGroups.items.length) {
-      appendTagGroups(tagGroups.items, itemsByTag, FIRST_TAG_GROUP_COUNT, tagGroups.more, ++tagRenderToken);
+      appendTagGroups(
+        tagGroups.items,
+        itemsByTag,
+        FIRST_TAG_GROUP_COUNT,
+        tagGroups.more,
+        ++tagRenderToken
+      );
     } else {
       tagRenderToken++;
     }
@@ -962,16 +1146,22 @@ function renderTags() {
 }
 
 // ---------- 清理 tab：重复 / 空夹（子区块切换） ----------
-let cleanSub = 'repeat';   // repeat | empty
+let cleanSub = 'repeat'; // repeat | empty
 
 function cleanNav(label, key, icon, n) {
   const active = cleanSub === key ? ' active' : '';
-  return `<button class="subtab${active}" data-action="clean-sub" data-sub="${key}">${icon} ${label} <span class="cnt">${n}</span></button>`;
+  return `<button class="subtab${active}" data-action="clean-sub" data-sub="${key}" aria-pressed="${cleanSub === key ? 'true' : 'false'}">${icon} ${label} <span class="cnt">${n}</span></button>`;
 }
 
 function renderClean() {
   const d = DATA;
-  let html = overviewDetailHeader('清理书签') + pageHint(ICON('sparkles'), '<b>本页能做什么：</b>一次性处理完全重复的书签和空文件夹。每个区块可一键批量操作。') + `
+  let html =
+    overviewDetailHeader('清理书签') +
+    pageHint(
+      ICON('sparkles'),
+      '<b>本页能做什么：</b>一次性处理完全重复的书签和空文件夹。每个区块可一键批量操作。'
+    ) +
+    `
     <div class="subtab-bar">
       ${cleanNav('重复书签', 'repeat', ICON_SM('repeat'), d.exactDuplicates.length)}
       ${cleanNav('空文件夹', 'empty', ICON_SM('trash'), d.emptyFolders.length)}
@@ -990,7 +1180,10 @@ function renderCleanBody() {
 
 // ---------- 回收站工具视图 ----------
 function renderTrashView() {
-  const html = overviewDetailHeader('回收站') + pageHint(ICON('archive'), '<b>本页能做什么：</b>回收站保存删除的书签，30 天内可恢复。') + `
+  const html =
+    overviewDetailHeader('回收站') +
+    pageHint(ICON('archive'), '<b>本页能做什么：</b>回收站保存删除的书签，30 天内可恢复。') +
+    `
     <div id="trashBody"></div>`;
   content().innerHTML = html;
   renderTrash($('#trashBody'));
@@ -1002,13 +1195,21 @@ function overviewDetailHeader(title) {
 
 function renderEmpty(container) {
   const c = container || content();
-  if (!DATA.emptyFolders.length) { c.innerHTML = emptyState(ICON('trash'), '没有空文件夹', '书签结构很整洁，无需清理'); return; }
+  if (!DATA.emptyFolders.length) {
+    c.innerHTML = emptyState(ICON('trash'), '没有空文件夹', '书签结构很整洁，无需清理');
+    return;
+  }
   let html = `
     <div class="section-toolbar">
       <span class="sec-title">共 <b>${DATA.emptyFolders.length}</b> 个空文件夹</span>
       <button class="btn small danger" data-action="bulk-empty">${ICON_SM('trash')} 一键清空</button>
     </div>`;
-  const folders = takeForRender(DATA.emptyFolders, 'empty-folders', FIRST_LIST_COUNT, FIRST_LIST_COUNT);
+  const folders = takeForRender(
+    DATA.emptyFolders,
+    'empty-folders',
+    FIRST_LIST_COUNT,
+    FIRST_LIST_COUNT
+  );
   folders.items.forEach(f => {
     html += `<div class="row" data-id="${f.id}">
       <label class="checkbox-slot"><input type="checkbox" class="checkbox sel" data-id="${f.id}" data-type="folder"></label>
@@ -1028,7 +1229,11 @@ function renderTrash(container) {
   const c = container || content();
   const list = DATA.trash || [];
   if (!list.length) {
-    c.innerHTML = emptyState(ICON('archive'), '回收站是空的', '在「书签管家」中删除的书签会先进回收站，30 天内可恢复');
+    c.innerHTML = emptyState(
+      ICON('archive'),
+      '回收站是空的',
+      '在「书签管家」中删除的书签会先进回收站，30 天内可恢复'
+    );
     return;
   }
   const ttl = BM.TRASH_TTL_DAYS || 30;
@@ -1044,7 +1249,7 @@ function renderTrash(container) {
   const page = takeForRender(list, 'trash-items', FIRST_LIST_COUNT, FIRST_LIST_COUNT);
   page.items.forEach(t => {
     const remain = Math.max(0, Math.ceil((t.deletedAt + ttl * 86400000 - now) / 86400000));
-    const pathText = (t.path && t.path.length) ? t.path.join(' / ') : '书签栏';
+    const pathText = t.path && t.path.length ? t.path.join(' / ') : '书签栏';
     html += `<div class="row trash-row" data-id="${t.id}">
       <div class="meta">
         <div class="title">${escapeHtml(t.title)}</div>
@@ -1065,7 +1270,10 @@ function renderTrash(container) {
 async function doRestoreTrash(id) {
   if (trashRestoreInProgress) return;
   const t = (DATA.trash || []).find(x => x.id === id);
-  if (!t) { toast('这条回收站记录已不存在，重新扫描后再试', 'warn'); return; }
+  if (!t) {
+    toast('这条回收站记录已不存在，重新扫描后再试', 'warn');
+    return;
+  }
   trashRestoreInProgress = true;
   try {
     const r = await BM.restoreTrashItem(t);
@@ -1081,7 +1289,10 @@ async function doRestoreTrash(id) {
 async function doRestoreAllTrash() {
   if (trashRestoreInProgress) return;
   const items = (DATA.trash || []).slice();
-  if (!items.length) { toast('回收站是空的', 'warn'); return; }
+  if (!items.length) {
+    toast('回收站是空的', 'warn');
+    return;
+  }
   trashRestoreInProgress = true;
   let progressStarted = false;
   try {
@@ -1095,10 +1306,11 @@ async function doRestoreAllTrash() {
     startProgress('正在恢复书签，请稍候…');
     progressStarted = true;
     const result = await BM.restoreTrashItems(items, {
-      onProgress: progress => updateProgress(
-        Math.round(progress.done / progress.total * 100),
-        '正在恢复 ' + progress.done + '/' + progress.total
-      )
+      onProgress: progress =>
+        updateProgress(
+          Math.round((progress.done / progress.total) * 100),
+          '正在恢复 ' + progress.done + '/' + progress.total
+        )
     });
     if (result.persistenceError) {
       toast('恢复状态写入失败，已创建书签会在重试时自动核对', 'danger');
@@ -1143,10 +1355,38 @@ function renderSearch() {
   const q = SEARCH;
   const hiddenScope = currentTab === 'hidden';
   const sourceItems = hiddenScope ? DATA.items.filter(it => it.hidden) : DATA.items;
-  const hits = sourceItems.filter(it => {
-    const hay = it.searchText || ((it.title || '') + ' ' + (it.url || '') + ' ' + (it.host || '')).toLowerCase();
-    return hay.includes(q);
-  });
+  // 与标签页搜索口径一致：支持 #标签 前缀、空格多词 AND、并匹配标签。
+  const trimmed = String(q || '').trim();
+  let tagTerm = '';
+  let textTerms = [];
+  if (trimmed.startsWith('#')) {
+    const sp = trimmed.split(/\s+/);
+    tagTerm = (sp[0] || '').slice(1).toLowerCase();
+    textTerms = sp
+      .slice(1)
+      .map(t => t.toLowerCase())
+      .filter(Boolean);
+  } else {
+    textTerms = trimmed.split(/\s+/).filter(Boolean);
+  }
+  const hasTerm = Boolean(tagTerm || textTerms.length);
+  const hits = hasTerm
+    ? sourceItems.filter(it => {
+        const tagList = (it.tags || []).map(t => String(t).toLowerCase());
+        if (tagTerm && !tagList.includes(tagTerm)) return false;
+        if (!textTerms.length) return true;
+        const hay = (
+          (it.title || '') +
+          ' ' +
+          (it.url || '') +
+          ' ' +
+          (it.host || '') +
+          ' ' +
+          tagList.join(' ')
+        ).toLowerCase();
+        return textTerms.every(t => hay.includes(t));
+      })
+    : [];
   content().innerHTML = `
     <section class="search-results">
       <header class="search-results-head">
@@ -1207,9 +1447,17 @@ async function runRefresh() {
     }
     DATA = await BMAnalyzer.analyze();
     // storage 版本迁移钩子（预留 schema 变更）
-    try { await BM.migrateStorage(); } catch (e) { console.warn('[书签管家] storage 迁移失败', e); }
+    try {
+      await BM.migrateStorage();
+    } catch (e) {
+      console.warn('[书签管家] storage 迁移失败', e);
+    }
     // 先清理超过 30 天的过期项，再读入回收站（惰性清理，与后台 alarm 双保险）
-    try { await BM.purgeExpiredTrash(); } catch (e) { console.warn('[书签管家] 回收站清理失败', e); }
+    try {
+      await BM.purgeExpiredTrash();
+    } catch (e) {
+      console.warn('[书签管家] 回收站清理失败', e);
+    }
     DATA.trash = await BM.getTrash();
     render(currentTab);
     updateBulk();
@@ -1253,11 +1501,16 @@ function buildDeletePlan(kind) {
     groups = DATA.exactDuplicates.map(g => ({
       label: g.items[0].domain || g.items[0].host || '链接',
       keep: g.items[0],
-      items: g.items.slice(1).map(it => ({ id: it.id, title: it.title, url: it.url, host: it.host, included: true }))
+      items: g.items
+        .slice(1)
+        .map(it => ({ id: it.id, title: it.title, url: it.url, host: it.host, included: true }))
     }));
   }
   groups = groups.filter(g => g.items.length);
-  if (!groups.length) { toast('当前没有可一键清理的重复书签', 'warn'); return; }
+  if (!groups.length) {
+    toast('当前没有可一键清理的重复书签', 'warn');
+    return;
+  }
   PLAN = { type: 'delete', groups, prefix: '' };
   planMode = true;
   render(currentTab);
@@ -1284,7 +1537,9 @@ function renderPlan() {
         <span class="k-label">保留</span>
         <span class="k-title">${escapeHtml(g.keep.title)}</span>
       </div>
-      ${g.items.map(i => `
+      ${g.items
+        .map(
+          i => `
         <div class="row plan-item plan-del clickable" data-id="${i.id}">
           <input type="checkbox" class="plan-inc sel" data-id="${i.id}" ${i.included ? 'checked' : ''}>
           <div class="meta">
@@ -1292,12 +1547,22 @@ function renderPlan() {
             <div class="url">${escapeHtml(i.url)}</div>
           </div>
           <span class="d-label">删除</span>
-        </div>`).join('')}`;
+        </div>`
+        )
+        .join('')}`;
     const n = g.items.filter(i => i.included).length;
-    html += groupWrap('plan-' + idx, ICON('trash'), g.label, n ? 'danger' : '', n + ' 待删', `
+    html += groupWrap(
+      'plan-' + idx,
+      ICON('trash'),
+      g.label,
+      n ? 'danger' : '',
+      n + ' 待删',
+      `
       <label class="plan-grp-toggle">
         <input type="checkbox" class="sel plan-grp" data-idx="${idx}" ${n ? 'checked' : ''}> 整组</label>
-    `, body);
+    `,
+      body
+    );
   });
   content().innerHTML = html;
 }
@@ -1328,17 +1593,33 @@ async function applyPlan() {
   if (!PLAN) return;
   try {
     const ids = [];
-    PLAN.groups.forEach(g => g.items.forEach(i => { if (i.included) ids.push(i.id); }));
-    if (!ids.length) { toast('还没有勾选要删除的项', 'warn'); return; }
+    PLAN.groups.forEach(g =>
+      g.items.forEach(i => {
+        if (i.included) ids.push(i.id);
+      })
+    );
+    if (!ids.length) {
+      toast('还没有勾选要删除的项', 'warn');
+      return;
+    }
     const ok = await confirmDialog({
       title: '删除选中的 ' + ids.length + ' 个书签？',
-      message: '每组将保留 1 个。删除后 30 天内可在「回收站」恢复；本次产生的空文件夹将同步清理（文件夹不可恢复）。',
+      message:
+        '每组将保留 1 个。删除后 30 天内可在「回收站」恢复；本次产生的空文件夹将同步清理（文件夹不可恢复）。',
       confirmText: '删除'
     });
     if (!ok) return;
     const r = await softDelete(ids, '删除中', { pruneEmptyFolders: true });
-    toast('已删除 ' + r.n + ' 个重复书签' + (r.prunedFolders ? '，清理 ' + r.prunedFolders + ' 个空文件夹' : ''), 'ok', { label: '撤销', onClick: () => undoDelete(r.items) });
-    planMode = false; PLAN = null;
+    toast(
+      '已删除 ' +
+        r.n +
+        ' 个重复书签' +
+        (r.prunedFolders ? '，清理 ' + r.prunedFolders + ' 个空文件夹' : ''),
+      'ok',
+      { label: '撤销', onClick: () => undoDelete(r.items) }
+    );
+    planMode = false;
+    PLAN = null;
     refresh();
   } catch (e) {
     endProgress();
@@ -1364,17 +1645,28 @@ async function bulkCleanEmpty() {
 // 统一同址（urlKey 相同）书签的标签：对每一组，取全体标签的并集写回每个书签。
 // 用于修复历史遗留的同址不同标（例如 AI 分批打标 / 手动编辑造成的不一致）。
 async function unifyExactTags() {
-  try { await BM.loadTags(); await BM.loadFixedTags(); } catch (e) { /* noop */ }
+  try {
+    await BM.loadTags();
+    await BM.loadFixedTags();
+  } catch (e) {
+    /* noop */
+  }
   const currentMap = BM.getTags() || {};
   const groups = getSameUrlGroups();
-  if (!groups.length) { toast('当前没有同址（网址相同）的多个书签，无需统一', 'ok'); return; }
+  if (!groups.length) {
+    toast('当前没有同址（网址相同）的多个书签，无需统一', 'ok');
+    return;
+  }
   // 找出确实存在不一致的组（任一组的标签集合彼此不同）。
   const tagSig = tags => [...(tags || [])].sort().join('\u0000');
   const diverged = groups.filter(items => {
     const sigs = new Set(items.map(it => tagSig(currentMap[it.id] || [])));
     return sigs.size > 1;
   });
-  if (!diverged.length) { toast('同址书签的标签已一致 ✓', 'ok'); return; }
+  if (!diverged.length) {
+    toast('同址书签的标签已一致 ✓', 'ok');
+    return;
+  }
   const total = diverged.reduce((s, items) => s + items.length, 0);
   const ok = await confirmDialog({
     title: `统一 ${diverged.length} 组同址书签的标签？`,
@@ -1387,11 +1679,18 @@ async function unifyExactTags() {
   try {
     diverged.forEach(items => {
       const union = BM.unionTagLists(items.map(it => currentMap[it.id] || []));
-      items.forEach(it => { changes[it.id] = union.length ? union : null; });
+      items.forEach(it => {
+        changes[it.id] = union.length ? union : null;
+      });
     });
     saved = await BM.setTagsBatch(changes);
-  } catch (e) { saved = false; }
-  if (!saved) { toast('统一标签保存失败，请重试', 'danger'); return; }
+  } catch (e) {
+    saved = false;
+  }
+  if (!saved) {
+    toast('统一标签保存失败，请重试', 'danger');
+    return;
+  }
   toast(`已统一 ${diverged.length} 组同址书签的标签 ✓`, 'ok');
   refresh();
 }
@@ -1402,7 +1701,9 @@ async function ensureFolder(title) {
   const tree = await chrome.bookmarks.getTree();
   const bar = tree[0].children && tree[0].children[0];
   if (!bar) throw new Error('未找到书签栏根目录');
-  let folder = (await chrome.bookmarks.search({ title })).find(f => f.parentId === bar.id && !f.url);
+  let folder = (await chrome.bookmarks.search({ title })).find(
+    f => f.parentId === bar.id && !f.url
+  );
   if (!folder) folder = await chrome.bookmarks.create({ parentId: bar.id, title });
   return folder.id;
 }
@@ -1413,7 +1714,10 @@ function getSelectedIds() {
 }
 
 function updateBulk() {
-  if (planMode) { $('#bulkBar').classList.add('hidden'); return; }
+  if (planMode) {
+    $('#bulkBar').classList.add('hidden');
+    return;
+  }
   const checked = getSelectedIds();
   const bar = $('#bulkBar');
   if (checked.length) {
@@ -1426,19 +1730,29 @@ function updateBulk() {
 
 // ---------- 书签备份 / 恢复（JSON 导出 / 导入） ----------
 async function exportBackup() {
-  if (!DATA) { toast('书签还在扫描中，完成后就能导出', 'warn'); return; }
+  if (!DATA) {
+    toast('书签还在扫描中，完成后就能导出', 'warn');
+    return;
+  }
   try {
     const r = await BM.exportBookmarksJSON();
     const blob = new Blob([r.json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'bookmark-backup-' + new Date().toISOString().slice(0, 10) + '.json';
-    document.body.appendChild(a); a.click(); a.remove();
+    a.href = url;
+    a.download = 'bookmark-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
     toast('已导出 ' + r.count + ' 个书签备份 ✓', 'ok');
   } catch (e) {
     toast('导出失败：' + (e.message || e), 'danger');
-    try { BM.logError('backup-export', e); } catch (e2) { /* ignore */ }
+    try {
+      BM.logError('backup-export', e);
+    } catch (e2) {
+      /* ignore */
+    }
   }
 }
 
@@ -1460,11 +1774,12 @@ function ensureBackupInput() {
       const stats = await BM.importBookmarksJSON(text, { dryRun: true });
       const choice = await confirmDialog({
         title: '恢复书签备份？',
-        message: `备份将新增 <b>${stats.folders}</b> 个文件夹、<b>${stats.bookmarks}</b> 个书签`
-          + (stats.merged ? `，合并 <b>${stats.merged}</b> 个相同网址书签及其标签` : '')
-          + (stats.skipped ? `（跳过 ${stats.skipped} 个）` : '')
-          + (stats.merged ? '。单书签最多保留 6 个标签，已有标签优先。' : '。')
-          + '顶级同名文件夹会自动复用。',
+        message:
+          `备份将新增 <b>${stats.folders}</b> 个文件夹、<b>${stats.bookmarks}</b> 个书签` +
+          (stats.merged ? `，合并 <b>${stats.merged}</b> 个相同网址书签及其标签` : '') +
+          (stats.skipped ? `（跳过 ${stats.skipped} 个）` : '') +
+          (stats.merged ? '。单书签最多保留 6 个标签，已有标签优先。' : '。') +
+          '顶级同名文件夹会自动复用。',
         confirmText: stats.merged ? '合并并恢复' : '开始恢复',
         thirdText: stats.merged ? '保留副本' : '',
         danger: false
@@ -1472,12 +1787,20 @@ function ensureBackupInput() {
       if (!choice) return;
       const keepDuplicates = choice === 'third';
       const real = await BM.importBookmarksJSON(text, { dryRun: false, keepDuplicates });
-      toast(`恢复完成：新增 ${real.bookmarks} 个书签、${real.folders} 个文件夹`
-        + (real.merged ? `，合并 ${real.merged} 个相同网址书签` : '') + ' ✓', 'ok');
+      toast(
+        `恢复完成：新增 ${real.bookmarks} 个书签、${real.folders} 个文件夹` +
+          (real.merged ? `，合并 ${real.merged} 个相同网址书签` : '') +
+          ' ✓',
+        'ok'
+      );
       refresh();
     } catch (e) {
       toast('恢复失败：' + (e.message || e), 'danger');
-      try { BM.logError('backup-import', e); } catch (e2) { /* ignore */ }
+      try {
+        BM.logError('backup-import', e);
+      } catch (e2) {
+        /* ignore */
+      }
     }
   });
   return backupFileInput;
@@ -1486,10 +1809,15 @@ function ensureBackupInput() {
 // ---------- 标签切换与渲染分发 ----------
 function switchTab(tab) {
   const changed = currentTab !== tab;
-  planMode = false; PLAN = null;
+  planMode = false;
+  PLAN = null;
   currentTab = tab;
   overviewDetail = '';
-  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
+  document.querySelectorAll('.tab').forEach(x => {
+    const on = x.dataset.tab === tab;
+    x.classList.toggle('active', on);
+    x.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
   if (!DATA) return;
   const token = ++tabRenderToken;
   if (!changed) {
@@ -1504,8 +1832,14 @@ function switchTab(tab) {
 
 function render(tab) {
   currentTab = tab;
-  if (SEARCH) { renderSearch(); return; }
-  if (planMode) { renderPlan(); return; }
+  if (SEARCH) {
+    renderSearch();
+    return;
+  }
+  if (planMode) {
+    renderPlan();
+    return;
+  }
   if (tab === 'overview' && overviewDetail === 'clean') renderClean();
   else if (tab === 'overview' && overviewDetail === 'trash') renderTrashView();
   else if (tab === 'overview') renderOverview();
@@ -1519,9 +1853,14 @@ function openOverviewDetail(detail, sub) {
   tabRenderToken++;
   overviewDetail = detail;
   if (detail === 'clean') cleanSub = sub || 'repeat';
-  planMode = false; PLAN = null;
+  planMode = false;
+  PLAN = null;
   currentTab = 'overview';
-  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === 'overview'));
+  document.querySelectorAll('.tab').forEach(x => {
+    const on = x.dataset.tab === 'overview';
+    x.classList.toggle('active', on);
+    x.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
   if (DATA) render('overview');
 }
 
@@ -1530,17 +1869,25 @@ function applyCollapsed() {
   try {
     document.querySelectorAll('#content .group').forEach(g => {
       const key = 'bm-fold-' + g.dataset.group;
+      const body = g.querySelector('.group-body');
+      const head = g.querySelector('.group-head');
       if (sessionStorage.getItem(key) === '1') {
-        const body = g.querySelector('.group-body');
         if (body) body.style.display = 'none';
+        if (head) head.setAttribute('aria-expanded', 'false');
+      } else if (head) {
+        head.setAttribute('aria-expanded', 'true');
       }
     });
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    /* ignore */
+  }
 }
 
 // ---------- 键盘导航（j/k 移动高亮行，Enter 打开） ----------
 let kbRow = null;
-function kbRows() { return [...document.querySelectorAll('#content .row.clickable')]; }
+function kbRows() {
+  return [...document.querySelectorAll('#content .row.clickable')];
+}
 function kbHighlight(row) {
   kbRow = row;
   kbRows().forEach(r => r.classList.toggle('kb-focus', r === row));
@@ -1557,6 +1904,25 @@ function kbOpen(row) {
   const it = getItemById(row.dataset.id);
   if (it && it.url) openBookmarkUrl(it.url, false);
 }
+// Ctrl/⌘ + ↑/↓：在所在文件夹内上下移动当前高亮书签（键盘替代拖拽）
+async function kbMoveBookmark(dir) {
+  if (!kbRow || !kbRow.dataset.id) return;
+  const id = kbRow.dataset.id;
+  try {
+    const it = getItemById(id);
+    if (!it) return;
+    const children = await chrome.bookmarks.getChildren(it.parentId);
+    const index = children.findIndex(c => String(c.id) === String(id));
+    if (index < 0) return;
+    const next = index + dir;
+    if (next < 0 || next >= children.length) return;
+    await chrome.bookmarks.move(id, { parentId: it.parentId, index: next });
+    toast('已移动书签 ✓', 'ok');
+    refresh();
+  } catch (e) {
+    toast('移动失败：' + (e.message || e), 'danger');
+  }
+}
 
 // ---------- 拖拽排序 / 跨组移动（HTML5 drag & drop） ----------
 let dragState = null; // { id, fromParent }
@@ -1564,12 +1930,17 @@ let dragState = null; // { id, fromParent }
 function bindDrag() {
   const contentEl = content();
   contentEl.addEventListener('dragstart', e => {
-    const row = e.target.closest('.row.clickable.draggable');
+    const handle = e.target.closest('.row-drag');
+    const row = handle ? handle.closest('.row.clickable.draggable') : null;
     if (!row || !row.dataset.id) return;
     const it = getItemById(row.dataset.id);
     if (!it) return;
     dragState = { id: it.id, fromParent: it.parentId };
-    try { e.dataTransfer.setData('text/plain', it.id); } catch (err) { /* ignore */ }
+    try {
+      e.dataTransfer.setData('text/plain', it.id);
+    } catch (err) {
+      /* ignore */
+    }
     e.dataTransfer.effectAllowed = 'move';
     row.classList.add('dragging');
   });
@@ -1601,7 +1972,11 @@ function bindDrag() {
       else if (head) await dropOntoGroup(head);
     } catch (err) {
       toast('移动失败：' + (err.message || err), 'danger');
-      try { BM.logError('drag', err); } catch (e2) { /* ignore */ }
+      try {
+        BM.logError('drag', err);
+      } catch (e2) {
+        /* ignore */
+      }
     } finally {
       dragState = null;
       clearDragHints();
@@ -1611,7 +1986,8 @@ function bindDrag() {
 }
 
 function clearDragHints() {
-  document.querySelectorAll('#content .drop-before, #content .drop-after, #content .group.drag-target')
+  document
+    .querySelectorAll('#content .drop-before, #content .drop-after, #content .group.drag-target')
     .forEach(el => el.classList.remove('drop-before', 'drop-after', 'drag-target'));
 }
 
@@ -1625,7 +2001,10 @@ async function dropOntoRow(row) {
     const fromIndex = children.findIndex(c => c.id === dragState.id);
     if (fromIndex >= 0 && fromIndex < index) index -= 1;
   }
-  await chrome.bookmarks.move(dragState.id, { parentId: targetIt.parentId, index: index < 0 ? 0 : index });
+  await chrome.bookmarks.move(dragState.id, {
+    parentId: targetIt.parentId,
+    index: index < 0 ? 0 : index
+  });
   toast('已移动书签 ✓', 'ok');
 }
 const dsFromSameParent = (a, b) => String(a) === String(b);
@@ -1636,11 +2015,17 @@ async function dropOntoGroup(head) {
   const gkey = group.dataset.group;
   const gnameEl = head.querySelector('.g-name');
   const name = gnameEl ? gnameEl.textContent : '';
-  if (!gkey || !name) { toast('该分组不支持拖入', 'warn'); return; }
+  if (!gkey || !name) {
+    toast('该分组不支持拖入', 'warn');
+    return;
+  }
   let folderTitle;
   if (gkey.startsWith('exact-')) folderTitle = name;
   else if (gkey.startsWith('cat-')) folderTitle = '书签管家·' + name;
-  else { toast('该分组不支持拖入', 'warn'); return; }
+  else {
+    toast('该分组不支持拖入', 'warn');
+    return;
+  }
   const folderId = await ensureFolder(folderTitle);
   await chrome.bookmarks.move(dragState.id, { parentId: folderId });
   toast('已移动到「' + name + '」✓', 'ok');
@@ -1651,9 +2036,9 @@ async function init() {
   // 设置只影响 AI 操作；与首轮书签分析并行读取，避免首屏多等待一次 storage。
   tagConfigurationReady = BM.initializeSyncedTagConfiguration
     ? BM.initializeSyncedTagConfiguration().catch(() => {
-      tagConfigurationSyncFailed = true;
-      return false;
-    })
+        tagConfigurationSyncFailed = true;
+        return false;
+      })
     : Promise.resolve(false);
   settingsReady = loadSettings();
 
@@ -1670,7 +2055,8 @@ async function init() {
     searchClear.classList.toggle('hidden', !SEARCH);
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
-      if (SEARCH) renderSearch(); else render(currentTab);
+      if (SEARCH) renderSearch();
+      else render(currentTab);
     }, 180);
   });
   searchClear.addEventListener('click', () => {
@@ -1695,7 +2081,9 @@ async function init() {
         clearSearch();
       } else if (action === 'selall') {
         const g = btn.dataset.group;
-        document.querySelectorAll(`.group[data-group="${g}"] .sel`).forEach(c => { c.checked = true; });
+        document.querySelectorAll(`.group[data-group="${g}"] .sel`).forEach(c => {
+          c.checked = true;
+        });
         updateBulk();
       } else if (action === 'keepfirst') {
         const g = DATA.exactDuplicates[+btn.dataset.idx];
@@ -1707,7 +2095,15 @@ async function init() {
         }).then(ok => {
           if (!ok) return;
           softDelete(ids, '清理重复项', { pruneEmptyFolders: true }).then(r => {
-            if (r.n) toast('已清理 ' + r.n + ' 个重复项' + (r.prunedFolders ? '，清理 ' + r.prunedFolders + ' 个空文件夹' : ''), 'ok', { label: '撤销', onClick: () => undoDelete(r.items) });
+            if (r.n)
+              toast(
+                '已清理 ' +
+                  r.n +
+                  ' 个重复项' +
+                  (r.prunedFolders ? '，清理 ' + r.prunedFolders + ' 个空文件夹' : ''),
+                'ok',
+                { label: '撤销', onClick: () => undoDelete(r.items) }
+              );
             refresh();
           });
         });
@@ -1763,7 +2159,10 @@ async function init() {
         // 建议标签 chip：追加到标签输入框（去重）
         const t = btn.dataset.tag || '';
         if (!t) return;
-        const cur = ($('#addTags').value || '').split(/[,，]/).map(s => s.trim()).filter(Boolean);
+        const cur = ($('#addTags').value || '')
+          .split(/[,，]/)
+          .map(s => s.trim())
+          .filter(Boolean);
         if (!cur.includes(t)) {
           cur.push(t);
           $('#addTags').value = cur.join(', ');
@@ -1782,7 +2181,9 @@ async function init() {
           });
         });
       } else if (action === 'plan-back') {
-        planMode = false; PLAN = null; render(currentTab);
+        planMode = false;
+        PLAN = null;
+        render(currentTab);
       } else if (action === 'plan-apply') {
         applyPlan();
       } else if (action === 'trash-restore') {
@@ -1790,7 +2191,10 @@ async function init() {
       } else if (action === 'trash-restore-all') {
         doRestoreAllTrash();
       } else if (action === 'trash-discard') {
-        if (trashRestoreInProgress) { toast('回收站恢复中，请稍候', 'warn'); return; }
+        if (trashRestoreInProgress) {
+          toast('回收站恢复中，请稍候', 'warn');
+          return;
+        }
         confirmDialog({
           title: '永久删除该记录？',
           message: '书签本身早已删除，此操作仅清空回收站记录，<b>不可撤销</b>。',
@@ -1805,7 +2209,10 @@ async function init() {
             .catch(e => toast('永久删除失败：' + (e.message || e), 'danger'));
         });
       } else if (action === 'trash-clear') {
-        if (trashRestoreInProgress) { toast('回收站恢复中，请稍候', 'warn'); return; }
+        if (trashRestoreInProgress) {
+          toast('回收站恢复中，请稍候', 'warn');
+          return;
+        }
         confirmDialog({
           title: '清空回收站？',
           message: '所有待恢复书签将<b>永久丢失</b>，不可恢复。',
@@ -1831,7 +2238,14 @@ async function init() {
     }
     // 点击书签行打开链接（排除复选框/勾选区/标签/按钮/链接等控件）
     const row = e.target.closest('.row.clickable');
-    if (row && !e.target.closest('.checkbox-slot') && !e.target.closest('input') && !e.target.closest('select') && !e.target.closest('button') && !e.target.closest('a')) {
+    if (
+      row &&
+      !e.target.closest('.checkbox-slot') &&
+      !e.target.closest('input') &&
+      !e.target.closest('select') &&
+      !e.target.closest('button') &&
+      !e.target.closest('a')
+    ) {
       const it = getItemById(row.dataset.id);
       if (it && it.url) {
         openBookmarkUrl(it.url, !(e.ctrlKey || e.metaKey));
@@ -1840,32 +2254,54 @@ async function init() {
     }
     // 折叠/展开（点击 input/select 时不触发折叠；状态写入 sessionStorage 记忆）
     const head = e.target.closest('.group-head');
-    if (head && !e.target.closest('button') && !e.target.closest('input') && !e.target.closest('select')) {
+    if (
+      head &&
+      !e.target.closest('button') &&
+      !e.target.closest('input') &&
+      !e.target.closest('select')
+    ) {
       const body = head.parentElement.querySelector('.group-body');
       if (body) {
-        body.style.display = (body.style.display === 'none' ? '' : 'none');
+        body.style.display = body.style.display === 'none' ? '' : 'none';
+        head.setAttribute('aria-expanded', body.style.display !== 'none' ? 'true' : 'false');
         try {
-          sessionStorage.setItem('bm-fold-' + head.parentElement.dataset.group, body.style.display === 'none' ? '1' : '0');
-        } catch (err) { /* ignore */ }
+          sessionStorage.setItem(
+            'bm-fold-' + head.parentElement.dataset.group,
+            body.style.display === 'none' ? '1' : '0'
+          );
+        } catch (err) {
+          /* ignore */
+        }
       }
     }
   });
 
   // 复选框 / 下拉变化（含方案控件）
   content().addEventListener('change', e => {
-    if (e.target.id === 'planPrefix') { PLAN.prefix = e.target.value; return; }
+    if (e.target.id === 'planPrefix') {
+      PLAN.prefix = e.target.value;
+      return;
+    }
     if (e.target.classList.contains('plan-inc')) {
       const p = findPlanItem(e.target.dataset.id);
-      if (p) { p.included = e.target.checked; updatePlanSummary(); }
+      if (p) {
+        p.included = e.target.checked;
+        updatePlanSummary();
+      }
       return;
     }
     if (e.target.classList.contains('plan-grp')) {
       const g = PLAN.groups[+e.target.dataset.idx];
       if (g) {
-        g.items.forEach(i => { i.included = e.target.checked; });
+        g.items.forEach(i => {
+          i.included = e.target.checked;
+        });
         // 局部同步整组行的勾选状态，避免整页重渲染跳动
         const wrap = e.target.closest('.group');
-        if (wrap) wrap.querySelectorAll('.plan-inc').forEach(c => { c.checked = e.target.checked; });
+        if (wrap)
+          wrap.querySelectorAll('.plan-inc').forEach(c => {
+            c.checked = e.target.checked;
+          });
         updatePlanSummary();
       }
       return;
@@ -1889,28 +2325,39 @@ async function init() {
     const isMass = ids.length >= 50; // 危险操作二次确认
     confirmDialog({
       title: '删除选中的 ' + ids.length + ' 项？',
-      message: (isMass
-        ? `<div class="confirm-warn">⚠️ 你选择了 <b>${ids.length}</b> 项，属于大范围操作，请再次确认无误。</div>`
-        : '') + '删除后 30 天内可在「回收站」恢复，恢复时优先放回原位置。',
+      message:
+        (isMass
+          ? `<div class="confirm-warn">⚠️ 你选择了 <b>${ids.length}</b> 项，属于大范围操作，请再次确认无误。</div>`
+          : '') + '删除后 30 天内可在「回收站」恢复，恢复时优先放回原位置。',
       confirmText: isMass ? '确认删除 ' + ids.length + ' 项' : '删除'
     }).then(ok => {
       if (!ok) return;
       softDelete(ids, '删除中').then(r => {
-        if (r.n) toast('已删除 ' + r.n + ' 项', 'ok', { label: '撤销', onClick: () => undoDelete(r.items) });
+        if (r.n)
+          toast('已删除 ' + r.n + ' 项', 'ok', {
+            label: '撤销',
+            onClick: () => undoDelete(r.items)
+          });
         refresh();
       });
     });
   });
   $('#bulkAll').addEventListener('click', () => {
-    document.querySelectorAll('#content .sel').forEach(c => { c.checked = true; });
+    document.querySelectorAll('#content .sel').forEach(c => {
+      c.checked = true;
+    });
     updateBulk();
   });
   $('#bulkInvert').addEventListener('click', () => {
-    document.querySelectorAll('#content .sel').forEach(c => { c.checked = !c.checked; });
+    document.querySelectorAll('#content .sel').forEach(c => {
+      c.checked = !c.checked;
+    });
     updateBulk();
   });
   $('#bulkClear').addEventListener('click', () => {
-    document.querySelectorAll('#content .sel:checked').forEach(c => { c.checked = false; });
+    document.querySelectorAll('#content .sel:checked').forEach(c => {
+      c.checked = false;
+    });
     updateBulk();
   });
   // 批量打标签
@@ -1927,25 +2374,93 @@ async function init() {
 
   // 底部按钮
   $('#rescanBtn').addEventListener('click', () => refresh(true));
-  // 版本号在底部栏左侧；直接读 manifest，保证与实际安装版本一致
-  try { $('#appVersion').textContent = 'v' + chrome.runtime.getManifest().version; } catch (e) { /* noop */ }
 
   // ---------- 键盘快捷键：/ 搜索、? 帮助、Esc 关抽屉/退方案、Ctrl+K 搜索、j/k 导航 ----------
   document.addEventListener('keydown', e => {
     const tag = (e.target.tagName || '').toLowerCase();
-    const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
+    const typing =
+      tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
     if (e.key === 'Escape') {
-      if (!$('#drawerOverlay').classList.contains('hidden')) { closeDrawers(); return; }
-      if (planMode) { planMode = false; PLAN = null; render(currentTab); return; }
+      if (!$('#drawerOverlay').classList.contains('hidden')) {
+        closeDrawers();
+        return;
+      }
+      if (planMode) {
+        planMode = false;
+        PLAN = null;
+        render(currentTab);
+        return;
+      }
       return;
     }
     if (typing) return;
-    if (e.key === '/') { e.preventDefault(); $('#searchInput').focus(); return; }
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); $('#searchInput').focus(); return; }
-    if (e.key === '?') { e.preventDefault(); openHelp(); return; }
-    if (e.key === 'j' || e.key === 'J') { e.preventDefault(); kbMove(1); return; }
-    if (e.key === 'k' || e.key === 'K') { e.preventDefault(); kbMove(-1); return; }
-    if (e.key === 'Enter' && kbRow && tag !== 'button') { kbOpen(kbRow); }
+    if (e.key === '/') {
+      e.preventDefault();
+      $('#searchInput').focus();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+      e.preventDefault();
+      $('#searchInput').focus();
+      return;
+    }
+    if (e.key === '?') {
+      e.preventDefault();
+      openHelp();
+      return;
+    }
+    if (e.key === 'j' || e.key === 'J') {
+      e.preventDefault();
+      kbMove(1);
+      return;
+    }
+    if (e.key === 'k' || e.key === 'K') {
+      e.preventDefault();
+      kbMove(-1);
+      return;
+    }
+    if (e.key === 'Enter' && kbRow && tag !== 'button') {
+      kbOpen(kbRow);
+    }
+  });
+
+  // ---------- 内容区键盘操作：行打开 / 分组折叠 / 移动书签 ----------
+  content().addEventListener('keydown', e => {
+    const row = e.target.closest ? e.target.closest('.row.clickable') : null;
+    if (row && e.key === 'Enter') {
+      e.preventDefault();
+      const it = getItemById(row.dataset.id);
+      if (it && it.url) openBookmarkUrl(it.url, false);
+      return;
+    }
+    const head = e.target.closest ? e.target.closest('.group-head') : null;
+    if (head && (e.key === 'Enter' || e.key === ' ')) {
+      if (e.target === head || e.target.classList.contains('g-title')) {
+        e.preventDefault();
+        const body = head.parentElement.querySelector('.group-body');
+        if (body) {
+          body.style.display = body.style.display === 'none' ? '' : 'none';
+          head.setAttribute('aria-expanded', body.style.display !== 'none' ? 'true' : 'false');
+          try {
+            sessionStorage.setItem(
+              'bm-fold-' + head.parentElement.dataset.group,
+              body.style.display === 'none' ? '1' : '0'
+            );
+          } catch (err) {
+            /* ignore */
+          }
+        }
+      }
+      return;
+    }
+    if (!kbRow) return;
+    if ((e.ctrlKey || e.metaKey) && e.key === 'ArrowDown') {
+      e.preventDefault();
+      kbMoveBookmark(1);
+    } else if ((e.ctrlKey || e.metaKey) && e.key === 'ArrowUp') {
+      e.preventDefault();
+      kbMoveBookmark(-1);
+    }
   });
 
   // ---------- 抽屉焦点陷阱（Tab 循环）+ 关闭恢复焦点 ----------
@@ -1954,20 +2469,33 @@ async function init() {
     if (!el) return;
     el.addEventListener('keydown', e => {
       if (e.key !== 'Tab') return;
-      const list = [...el.querySelectorAll('button, input, select, textarea, a[href]')]
-        .filter(x => !x.disabled && x.offsetParent !== null);
+      const list = [...el.querySelectorAll('button, input, select, textarea, a[href]')].filter(
+        x => !x.disabled && x.offsetParent !== null
+      );
       if (!list.length) return;
-      if (e.shiftKey && document.activeElement === list[0]) { e.preventDefault(); list[list.length - 1].focus(); }
-      else if (!e.shiftKey && document.activeElement === list[list.length - 1]) { e.preventDefault(); list[0].focus(); }
+      if (e.shiftKey && document.activeElement === list[0]) {
+        e.preventDefault();
+        list[list.length - 1].focus();
+      } else if (!e.shiftKey && document.activeElement === list[list.length - 1]) {
+        e.preventDefault();
+        list[0].focus();
+      }
     });
   });
 
   // ---------- 拖拽排序 / 跨组移动 ----------
   bindDrag();
 
+  // 点击遮罩关闭抽屉
+  $('#drawerOverlay').addEventListener('click', closeDrawers);
+
   // 设置按钮 → 直接打开独立设置页（含 AI 分类 / 标签体系 / 浏览器集成 三大组）
   $('#settingsBtn').addEventListener('click', () => {
-    try { chrome.runtime.openOptionsPage(); } catch (e) { console.warn('[书签管家] 无法打开设置页', e); }
+    try {
+      chrome.runtime.openOptionsPage();
+    } catch (e) {
+      console.warn('[书签管家] 无法打开设置页', e);
+    }
   });
 
   // 操作指南抽屉
@@ -1980,8 +2508,14 @@ async function init() {
   $('#addSave').addEventListener('click', saveAdd);
   $('#addAiTag').addEventListener('click', aiTagSuggest);
   $('#addTags').addEventListener('input', renderTagSuggest);
-  $('#addUrl').addEventListener('input', () => { clearTimeout(addUrlTimer); addUrlTimer = setTimeout(suggestCat, 250); });
-  $('#addTitle').addEventListener('input', () => { clearTimeout(addUrlTimer); addUrlTimer = setTimeout(suggestCat, 250); });
+  $('#addUrl').addEventListener('input', () => {
+    clearTimeout(addUrlTimer);
+    addUrlTimer = setTimeout(suggestCat, 250);
+  });
+  $('#addTitle').addEventListener('input', () => {
+    clearTimeout(addUrlTimer);
+    addUrlTimer = setTimeout(suggestCat, 250);
+  });
 
   // 后台为浏览器原生收藏写入标签时，仅刷新当前视图，不打开新增抽屉。
   try {
@@ -1996,24 +2530,47 @@ async function init() {
         }
       }
       if (area === 'local' && changes.bmFixedTags) {
-        try { BM.invalidateFixedTags(); } catch (e) { /* noop */ }
         try {
-          if (BM.loadFixedTags) BM.loadFixedTags().then(() => {
-            const manager = $('#tagMgrWrap');
-            if (manager && !manager.classList.contains('hidden')) openTagManager();
-          }).catch(() => {});
-        } catch (e) { /* noop */ }
+          BM.invalidateFixedTags();
+        } catch (e) {
+          /* noop */
+        }
+        try {
+          if (BM.loadFixedTags)
+            BM.loadFixedTags()
+              .then(() => {
+                const manager = $('#tagMgrWrap');
+                if (manager && !manager.classList.contains('hidden')) openTagManager();
+              })
+              .catch(() => {});
+        } catch (e) {
+          /* noop */
+        }
       }
       if (area === 'local' && changes.bmTagRules) {
-        try { BM.invalidateTagRules(); } catch (e) { /* noop */ }
-        try { if (BM.loadTagRules) BM.loadTagRules().catch(() => {}); } catch (e) { /* noop */ }
+        try {
+          BM.invalidateTagRules();
+        } catch (e) {
+          /* noop */
+        }
+        try {
+          if (BM.loadTagRules) BM.loadTagRules().catch(() => {});
+        } catch (e) {
+          /* noop */
+        }
       }
       if (area === 'local' && changes.bmTags) {
-        try { BM.invalidateTags(); } catch (e) { /* noop */ }
+        try {
+          BM.invalidateTags();
+        } catch (e) {
+          /* noop */
+        }
         refresh();
       }
     });
-  } catch (e) { /* 存储事件不可用时忽略 */ }
+  } catch (e) {
+    /* 存储事件不可用时忽略 */
+  }
 
   await Promise.all([settingsReady, refresh(true)]);
 
@@ -2024,15 +2581,24 @@ async function init() {
       BM.invalidateTagRules();
       refresh(true);
     });
-    void tagConfigurationReady.then(async initialChanged => {
-      if (tagConfigurationSyncFailed) return;
-      // 首次水合可能在 storage 监听注册前完成，需主动重渲染以应用已落盘的云端标签。
-      if (initialChanged) { BM.invalidateTags(); await refresh(true); }
-      const changed = await BM.pullTagsFromCloud();
-      if (changed) { BM.invalidateTags(); await refresh(true); }
-    }).catch(() => {});
-  } catch (e) { /* 无 sync 权限等忽略 */ }
-
+    void tagConfigurationReady
+      .then(async initialChanged => {
+        if (tagConfigurationSyncFailed) return;
+        // 首次水合可能在 storage 监听注册前完成，需主动重渲染以应用已落盘的云端标签。
+        if (initialChanged) {
+          BM.invalidateTags();
+          await refresh(true);
+        }
+        const changed = await BM.pullTagsFromCloud();
+        if (changed) {
+          BM.invalidateTags();
+          await refresh(true);
+        }
+      })
+      .catch(() => {});
+  } catch (e) {
+    /* 无 sync 权限等忽略 */
+  }
 }
 
 // ---------- 设置：读取（设置 UI 已迁移至独立 options.html 选项页）----------
@@ -2043,11 +2609,16 @@ async function loadSettings() {
       BM.loadTagRules ? BM.loadTagRules() : Promise.resolve()
     ]);
     if (r.bmSettings) {
-      SETTINGS = Object.assign({ provider: 'deepseek', baseUrl: '', apiKey: '', model: '' }, r.bmSettings);
+      SETTINGS = Object.assign(
+        { provider: 'deepseek', baseUrl: '', apiKey: '', model: '' },
+        r.bmSettings
+      );
       const p = PROVIDERS[SETTINGS.provider];
       if (p && !SETTINGS.baseUrl) SETTINGS.baseUrl = p.base;
     }
-  } catch (e) { console.warn('[书签管家] 读取设置失败', e); }
+  } catch (e) {
+    console.warn('[书签管家] 读取设置失败', e);
+  }
 }
 
 // 操作指南抽屉
@@ -2056,6 +2627,7 @@ function openHelp() {
   lastFocus = document.activeElement;
   $('#drawerOverlay').classList.remove('hidden');
   $('#helpDrawer').classList.remove('hidden');
+  $('#helpClose').focus();
 }
 
 // 抽屉打开前的焦点（关闭后恢复）
@@ -2088,19 +2660,19 @@ function openAddDrawer(item) {
   EDITING = isEdit ? item : null;
   const tagsInput = $('#addTags');
   if (isEdit) {
-    $('#addDrawerTitle').textContent = '✏️ 编辑书签';
+    $('#addDrawerTitle').innerHTML = `${ICON_SM('edit')} 编辑书签`;
     $('#addUrl').value = item.url || '';
     $('#addTitle').value = item.title || '';
     tagsInput.value = (item.tags || []).join(', ');
     $('#addSave').textContent = '保存修改';
     setAddMsg('修改保存后立即生效', '');
   } else {
-    $('#addDrawerTitle').textContent = '➕ 新增书签';
+    $('#addDrawerTitle').innerHTML = `${ICON_SM('plus')} 新增书签`;
     $('#addUrl').value = (item && item.url) || '';
     $('#addTitle').value = (item && item.title) || '';
     tagsInput.value = '';
     $('#addSave').textContent = '保存书签';
-    setAddMsg((item && item.url) ? '' : '');
+    setAddMsg(item && item.url ? '' : '');
   }
   // 新增模式（无 id）且有 url：自动套用建议标签，用户可修改
   if (!isEdit && item && item.url) {
@@ -2108,11 +2680,15 @@ function openAddDrawer(item) {
     const title = String(item.title || '').trim();
     if (url) {
       let host = '';
-      try { host = new URL(/^https?:/i.test(url) ? url : 'https://' + url).hostname; } catch (e) { /* keep empty */ }
+      try {
+        host = new URL(/^https?:/i.test(url) ? url : 'https://' + url).hostname;
+      } catch (e) {
+        /* keep empty */
+      }
       const sugg = BM.suggestTags ? BM.suggestTags({ host, url, title }) : [];
       if (sugg.length) {
         tagsInput.value = sugg.join(', ');
-        setAddMsg('✨ 已自动建议标签：' + sugg.join('、') + '（可直接保存或修改）', '');
+        setAddMsg('已自动建议标签：' + sugg.join('、') + '（可直接保存或修改）', '');
       }
     }
   }
@@ -2155,7 +2731,10 @@ async function openAddDrawerForCurrentTab() {
       openAddDrawer({ url: tab.url, title: tab.title || '' });
       setAddMsg('正在保存当前页面', '');
     }
-  } catch (e) { console.warn('[书签管家] 打开新增抽屉失败', e); openAddDrawer(); }
+  } catch (e) {
+    console.warn('[书签管家] 打开新增抽屉失败', e);
+    openAddDrawer();
+  }
 }
 
 // 渲染「建议标签」chips：基于本地规则（分类/域名组/注册域名）+ 已有的标签输入
@@ -2164,19 +2743,33 @@ function renderTagSuggest() {
   if (!box) return;
   const url = $('#addUrl').value.trim();
   const title = $('#addTitle').value.trim();
-  const cur = ($('#addTags').value || '').split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  const cur = ($('#addTags').value || '')
+    .split(/[,，]/)
+    .map(s => s.trim())
+    .filter(Boolean);
   const sugg = [];
   if (url) {
     let host = '';
-    try { host = new URL(/^https?:/i.test(url) ? url : 'https://' + url).hostname; } catch (e) { /* keep empty */ }
+    try {
+      host = new URL(/^https?:/i.test(url) ? url : 'https://' + url).hostname;
+    } catch (e) {
+      /* keep empty */
+    }
     sugg.push(...(BM.suggestTags ? BM.suggestTags({ host, url, title }) : []));
   }
   // 已输入的标签去重展示
   const all = [...new Set([...cur, ...sugg])].slice(0, 10);
-  if (!all.length) { box.innerHTML = ''; return; }
-  box.innerHTML = all.map(t =>
-    `<button type="button" class="tag-chip" data-action="pick-tag" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</button>`
-  ).join('') + (sugg.length ? `<span class="tag-suggest-tip">（建议）</span>` : '');
+  if (!all.length) {
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML =
+    all
+      .map(
+        t =>
+          `<button type="button" class="tag-chip" data-action="pick-tag" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</button>`
+      )
+      .join('') + (sugg.length ? `<span class="tag-suggest-tip">（建议）</span>` : '');
 }
 
 // URL/标题变化时刷新建议标签 + 精确重复提示
@@ -2185,17 +2778,28 @@ function suggestCat() {
   const url = $('#addUrl').value.trim();
   const hint = $('#addDupHint');
   if (!hint) return;
-  if (!url) { hint.style.display = 'none'; return; }
+  if (!url) {
+    hint.style.display = 'none';
+    return;
+  }
   const duplicates = findExistingByUrl(url, EDITING && EDITING.id);
   if (duplicates.length) {
     const links = duplicates.slice(0, 3).map(it => {
       let href = '';
-      try { href = ` href="${escapeHtml(BM.normalizeHttpUrl(it.url).href)}" target="_blank" rel="noopener"`; } catch (e) { /* unsupported URL */ }
+      try {
+        href = ` href="${escapeHtml(BM.normalizeHttpUrl(it.url).href)}" target="_blank" rel="noopener"`;
+      } catch (e) {
+        /* unsupported URL */
+      }
       return `<a${href} style="color:inherit;text-decoration:underline;">${escapeHtml(it.title)}</a>`;
     });
     hint.style.display = 'block';
-    hint.innerHTML = '⚠️ 已有 <b>' + duplicates.length + '</b> 个相同网址书签：' +
-      links.join('、') + (duplicates.length > 3 ? '…' : '');
+    hint.innerHTML =
+      '⚠️ 已有 <b>' +
+      duplicates.length +
+      '</b> 个相同网址书签：' +
+      links.join('、') +
+      (duplicates.length > 3 ? '…' : '');
   } else {
     hint.style.display = 'none';
   }
@@ -2205,20 +2809,32 @@ function suggestCat() {
 async function aiTagSuggest() {
   const url = $('#addUrl').value.trim();
   const title = $('#addTitle').value.trim();
-  if (!url) { setAddMsg('请先填写网址', 'err'); return; }
+  if (!url) {
+    setAddMsg('请先填写网址', 'err');
+    return;
+  }
   const btn = $('#addAiTag');
   if (btn.disabled) return;
-  btn.disabled = true; btn.textContent = '准备中…';
+  btn.disabled = true;
+  btn.textContent = '准备中…';
   try {
     await settingsReady;
     if (!SETTINGS.apiKey || !SETTINGS.baseUrl || !SETTINGS.model) {
       setAddMsg('还没有配置 AI 服务，先到设置页填好接口地址、API Key 和模型名', 'err');
-      try { chrome.runtime.openOptionsPage(); } catch (e) { /* noop */ }
+      try {
+        chrome.runtime.openOptionsPage();
+      } catch (e) {
+        /* noop */
+      }
       return;
     }
-    if (!await BM.hasLlmHostPermission(SETTINGS.baseUrl)) {
+    if (!(await BM.hasLlmHostPermission(SETTINGS.baseUrl))) {
       setAddMsg('需要授权访问 AI 服务域名：到设置页点一次「保存配置」并在弹窗中允许', 'err');
-      try { chrome.runtime.openOptionsPage(); } catch (e) { /* noop */ }
+      try {
+        chrome.runtime.openOptionsPage();
+      } catch (e) {
+        /* noop */
+      }
       return;
     }
     const safeUrl = BM.normalizeHttpUrl(url).href;
@@ -2233,32 +2849,44 @@ async function aiTagSuggest() {
     if (tags.length) {
       $('#addTags').value = tags.join(', ');
       renderTagSuggest();
-      setAddMsg('🤖 已生成标签：' + tags.join('、'), 'ok');
+      setAddMsg('已生成标签：' + tags.join('、'), 'ok');
     } else {
-      setAddMsg('🤖 AI 未生成标签，请手动输入', 'warn');
+      setAddMsg('AI 未生成标签，请手动输入', 'warn');
     }
   } catch (e) {
     setAddMsg('AI 打标失败：' + (e.message || e), 'err');
   } finally {
-    btn.disabled = false; btn.textContent = '🤖 AI 打标';
+    btn.disabled = false;
+    btn.textContent = 'AI 打标';
   }
 }
 
 async function saveAdd() {
   const raw = $('#addUrl').value.trim();
-  if (!raw) { setAddMsg('请填写网址', 'err'); return; }
+  if (!raw) {
+    setAddMsg('请填写网址', 'err');
+    return;
+  }
   let u;
-  try { u = BM.normalizeHttpUrl(raw); }
-  catch (e) { setAddMsg(e.message || '网址格式不正确', 'err'); return; }
+  try {
+    u = BM.normalizeHttpUrl(raw);
+  } catch (e) {
+    setAddMsg(e.message || '网址格式不正确', 'err');
+    return;
+  }
   const title = $('#addTitle').value.trim() || u.hostname;
   // 标签：逗号分隔解析（可多个）
-  const tags = ($('#addTags').value || '').split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  const tags = ($('#addTags').value || '')
+    .split(/[,，]/)
+    .map(s => s.trim())
+    .filter(Boolean);
   const btn = $('#addSave');
   let selfCreationReserved = false;
   let selfCreationConfirmed = false;
   let selfCreationParentId = '';
   let created = null;
-  btn.disabled = true; btn.textContent = '保存中…';
+  btn.disabled = true;
+  btn.textContent = '保存中…';
   try {
     // ---- 编辑模式：改标题 / URL / 标签 ----
     if (EDITING) {
@@ -2280,8 +2908,9 @@ async function saveAdd() {
       const previousUrl = EDITING.url;
       await chrome.bookmarks.update(EDITING.id, { title, url: u.href });
       if (previousUrl !== u.href) await BM.migrateTagSyncUrl(EDITING.id, previousUrl, u.href);
-      if (!await BM.setTags(EDITING.id, tags)) throw new Error('标签保存失败，请重试');
-      if (!await unifySameUrlTags({ id: EDITING.id, url: u.href }, tags)) throw new Error('同址标签同步失败，请重试');
+      if (!(await BM.setTags(EDITING.id, tags))) throw new Error('标签保存失败，请重试');
+      if (!(await unifySameUrlTags({ id: EDITING.id, url: u.href }, tags)))
+        throw new Error('同址标签同步失败，请重试');
       toast('已保存修改 ✓' + (tags.length ? '（标签 ' + tags.length + ' 个）' : ''), 'ok');
       EDITING = null;
       closeDrawers();
@@ -2292,58 +2921,104 @@ async function saveAdd() {
     // 精确 URL 校验：仅在完整 URL 完全相同时二次确认。
     const duplicates = findExistingByUrl(u.href);
     if (duplicates.length) {
-      btn.disabled = false; btn.textContent = '保存书签';
+      btn.disabled = false;
+      btn.textContent = '保存书签';
       const ok = await confirmDialog({
         title: '已有相同网址的书签？',
-        message: `「${escapeHtml(u.href)}」与现有 <b>${duplicates.length}</b> 个书签网址相同：<br>` +
-          duplicates.slice(0, 5).map(it => `· ${escapeHtml(it.title)}<span style="color:var(--muted)"> — ${escapeHtml(it.url)}</span>`).join('<br>') +
+        message:
+          `「${escapeHtml(u.href)}」与现有 <b>${duplicates.length}</b> 个书签网址相同：<br>` +
+          duplicates
+            .slice(0, 5)
+            .map(
+              it =>
+                `· ${escapeHtml(it.title)}<span style="color:var(--muted)"> — ${escapeHtml(it.url)}</span>`
+            )
+            .join('<br>') +
           (duplicates.length > 5 ? `<br>… 等 ${duplicates.length} 个` : '') +
           `<br><br>可编辑已有书签的标签，或保留一个副本。`,
         confirmText: '保留副本',
         thirdText: '编辑已有',
         danger: false
       });
-      if (ok === 'third') { openAddDrawer(duplicates[0]); return; }
-      if (!ok) { setAddMsg('已取消：该书签与现有书签网址相同', 'warn'); return; }
-      btn.disabled = true; btn.textContent = '保存中…';
+      if (ok === 'third') {
+        openAddDrawer(duplicates[0]);
+        return;
+      }
+      if (!ok) {
+        setAddMsg('已取消：该书签与现有书签网址相同', 'warn');
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = '保存中…';
     }
     const tree = await chrome.bookmarks.getTree();
     const bar = tree[0].children && tree[0].children[0];
-    if (!bar) { setAddMsg('没有找到书签栏，无法保存书签（请检查浏览器的书签功能）', 'err'); return; }
+    if (!bar) {
+      setAddMsg('没有找到书签栏，无法保存书签（请检查浏览器的书签功能）', 'err');
+      return;
+    }
     // 标签兜底：用户没填 → 自动套用本地规则建议（可保存后编辑修改）
     let finalTags = tags;
     if (!finalTags.length) {
       let host = '';
-      try { host = u.hostname; } catch (e) { /* keep empty */ }
+      try {
+        host = u.hostname;
+      } catch (e) {
+        /* keep empty */
+      }
       finalTags = (BM.suggestTags ? BM.suggestTags({ host, url: u.href, title }) : []) || [];
     }
     // 先向后台登记精确创建令牌，创建返回 id 后再确认，避免同 URL 的原生收藏被误跳过。
     try {
       selfCreationParentId = bar.id;
       const reserved = await chrome.runtime.sendMessage({
-        type: SELF_CREATION_MESSAGE, action: 'reserve', parentId: bar.id, url: u.href
+        type: SELF_CREATION_MESSAGE,
+        action: 'reserve',
+        parentId: bar.id,
+        url: u.href
       });
       selfCreationReserved = !!(reserved && reserved.ok);
-    } catch (e) { /* 后台重启时允许继续保存，随后由默认规则兜底 */ }
+    } catch (e) {
+      /* 后台重启时允许继续保存，随后由默认规则兜底 */
+    }
     created = await chrome.bookmarks.create({ parentId: bar.id, title, url: u.href });
     if (selfCreationReserved) {
       try {
         const confirmed = await chrome.runtime.sendMessage({
-          type: SELF_CREATION_MESSAGE, action: 'confirm', parentId: bar.id, url: u.href, bookmarkId: created.id
+          type: SELF_CREATION_MESSAGE,
+          action: 'confirm',
+          parentId: bar.id,
+          url: u.href,
+          bookmarkId: created.id
         });
         selfCreationConfirmed = !!(confirmed && confirmed.ok);
-      } catch (e) { /* noop */ }
+      } catch (e) {
+        /* noop */
+      }
     }
-    if (finalTags.length && !await BM.setTags(created.id, finalTags)) throw new Error('标签保存失败，请重试');
-    if (!await unifySameUrlTags({ id: created.id, url: u.href }, finalTags)) throw new Error('同址标签同步失败，请重试');
-    toast('已新增书签 ✓' + (finalTags.length ? '（自动标签：' + finalTags.join('、') + '，可在编辑中修改）' : ''), 'ok');
+    if (finalTags.length && !(await BM.setTags(created.id, finalTags)))
+      throw new Error('标签保存失败，请重试');
+    if (!(await unifySameUrlTags({ id: created.id, url: u.href }, finalTags)))
+      throw new Error('同址标签同步失败，请重试');
+    toast(
+      '已新增书签 ✓' +
+        (finalTags.length ? '（自动标签：' + finalTags.join('、') + '，可在编辑中修改）' : ''),
+      'ok'
+    );
     closeDrawers();
     refresh();
   } catch (e) {
     if (selfCreationReserved && !selfCreationConfirmed) {
       try {
-        await chrome.runtime.sendMessage({ type: SELF_CREATION_MESSAGE, action: 'cancel', parentId: selfCreationParentId, url: u.href });
-      } catch (e2) { /* noop */ }
+        await chrome.runtime.sendMessage({
+          type: SELF_CREATION_MESSAGE,
+          action: 'cancel',
+          parentId: selfCreationParentId,
+          url: u.href
+        });
+      } catch (e2) {
+        /* noop */
+      }
     }
     if (created) {
       closeDrawers();
@@ -2353,14 +3028,15 @@ async function saveAdd() {
     }
     setAddMsg('保存失败：' + (e.message || e), 'err');
   } finally {
-    btn.disabled = false; btn.textContent = EDITING ? '保存修改' : '保存书签';
+    btn.disabled = false;
+    btn.textContent = EDITING ? '保存修改' : '保存书签';
   }
 }
 
 // ---------- AI 批量打标：force=false 只打未打标；force=true 全量重打（覆盖） ----------
 let aiTagRunning = false;
-let aiTagCancel = false;   // 终止标志：为 true 时停止发起新批次，已成功的结果保留
-let aiResumeState = null;  // 失败后仅保留尚未成功写入的代表书签，避免从头请求
+let aiTagCancel = false; // 终止标志：为 true 时停止发起新批次，已成功的结果保留
+let aiResumeState = null; // 失败后仅保留尚未成功写入的代表书签，避免从头请求
 let aiTagStarting = false; // 权限检查与确认期间也占用启动锁，避免重复点击续打
 
 function claimAiTagStart() {
@@ -2372,154 +3048,203 @@ function claimAiTagStart() {
 async function aiTagAll(force, resumeItems) {
   if (!claimAiTagStart()) return;
   try {
-  await settingsReady;
-  if (aiTagRunning) return;
-  aiTagCancel = false;
-  const isResume = Array.isArray(resumeItems);
-  // 选择目标书签：force=true → 全部；否则与标签页“未打标”计数保持同一口径。
-  const targets = isResume ? resumeItems : getAiTagTargets(force);
-  if (!targets.length) { toast(isResume || force ? '没有待处理书签' : '所有书签都已打标 ✓', 'ok'); return; }
-  if (!SETTINGS.apiKey || !SETTINGS.baseUrl || !SETTINGS.model) {
-    toast('还没有配置 AI 服务：在设置页填好接口地址、API Key 和模型名即可开始', 'warn');
-    try { chrome.runtime.openOptionsPage(); } catch (e) { /* noop */ }
-    return;
-  }
-  let hasLlmPermission;
-  try {
-    hasLlmPermission = await BM.hasLlmHostPermission(SETTINGS.baseUrl);
-  } catch (e) {
-    toast('LLM 配置无效：' + (e.message || e), 'warn');
-    try { chrome.runtime.openOptionsPage(); } catch (e2) { /* noop */ }
-    return;
-  }
-  if (!hasLlmPermission) {
-    toast('请先在 ⚙️ 设置中保存配置并授予该 LLM 服务访问权限', 'warn');
-    try { chrome.runtime.openOptionsPage(); } catch (e) { /* noop */ }
-    return;
-  }
-  const protectedTargets = targets.filter(it => {
-    const meta = BM.getBookmarkMetadata ? BM.getBookmarkMetadata(it.url, it.title) : it;
-    return (meta.sensitive || []).some(item => item.sev === 'high');
-  });
-  const unsupportedTargets = targets.filter(it => !BM.isHttpUrl(it.url));
-  const batch = targets.filter(it => !protectedTargets.includes(it) && !unsupportedTargets.includes(it));
-  if (!batch.length) {
-    toast('这些书签都不适合发给 AI（仅支持普通网页；登录、银行等敏感站点已自动保护）', 'warn');
-    return;
-  }
+    await settingsReady;
+    if (aiTagRunning) return;
+    aiTagCancel = false;
+    const isResume = Array.isArray(resumeItems);
+    // 选择目标书签：force=true → 全部；否则与标签页“未打标”计数保持同一口径。
+    const targets = isResume ? resumeItems : getAiTagTargets(force);
+    if (!targets.length) {
+      toast(isResume || force ? '没有待处理书签' : '所有书签都已打标 ✓', 'ok');
+      return;
+    }
+    if (!SETTINGS.apiKey || !SETTINGS.baseUrl || !SETTINGS.model) {
+      toast('还没有配置 AI 服务：在设置页填好接口地址、API Key 和模型名即可开始', 'warn');
+      try {
+        chrome.runtime.openOptionsPage();
+      } catch (e) {
+        /* noop */
+      }
+      return;
+    }
+    let hasLlmPermission;
+    try {
+      hasLlmPermission = await BM.hasLlmHostPermission(SETTINGS.baseUrl);
+    } catch (e) {
+      toast('LLM 配置无效：' + (e.message || e), 'warn');
+      try {
+        chrome.runtime.openOptionsPage();
+      } catch (e2) {
+        /* noop */
+      }
+      return;
+    }
+    if (!hasLlmPermission) {
+      toast('请先在设置中保存配置并授予该 LLM 服务访问权限', 'warn');
+      try {
+        chrome.runtime.openOptionsPage();
+      } catch (e) {
+        /* noop */
+      }
+      return;
+    }
+    const protectedTargets = targets.filter(it => {
+      const meta = BM.getBookmarkMetadata ? BM.getBookmarkMetadata(it.url, it.title) : it;
+      return (meta.sensitive || []).some(item => item.sev === 'high');
+    });
+    const unsupportedTargets = targets.filter(it => !BM.isHttpUrl(it.url));
+    const batch = targets.filter(
+      it => !protectedTargets.includes(it) && !unsupportedTargets.includes(it)
+    );
+    if (!batch.length) {
+      toast('这些书签都不适合发给 AI（仅支持普通网页；登录、银行等敏感站点已自动保护）', 'warn');
+      return;
+    }
 
-  // 同址去重：同一地址（urlKey 相同）只请求一次 AI，结果回填给该地址的全部书签，
-  // 避免 LLM 对相同地址给出不同标签（同址不同标）。
-  const { representatives, siblingsByKey } = collectAiTagGroups(batch);
-  const aiBatch = [...representatives.values()];
-  const affectedCount = new Set([...siblingsByKey.values()].flatMap(items => items.map(it => it.id))).size;
-  const representativeById = new Map(aiBatch.map(it => [String(it.id), it]));
+    // 同址去重：同一地址（urlKey 相同）只请求一次 AI，结果回填给该地址的全部书签，
+    // 避免 LLM 对相同地址给出不同标签（同址不同标）。
+    const { representatives, siblingsByKey } = collectAiTagGroups(batch);
+    const aiBatch = [...representatives.values()];
+    const affectedCount = new Set(
+      [...siblingsByKey.values()].flatMap(items => items.map(it => it.id))
+    ).size;
+    const representativeById = new Map(aiBatch.map(it => [String(it.id), it]));
 
-  const ok = isResume || await confirmDialog({
-    title: force ? `全量重新打标 ${affectedCount} 个书签？` : `AI 批量打标 ${affectedCount} 个书签？`,
-    message: (force
-      ? `⚠️ 将<b>覆盖</b> ${affectedCount} 个书签的现有标签，重新生成 1-3 个标签。`
-      : `将为 <b>${affectedCount}</b> 个书签生成 1-3 个标签。`) +
-      (protectedTargets.length ? `<br>AI 隐私保护已跳过 <b>${protectedTargets.length}</b> 个高风险书签。` : '') +
-      (unsupportedTargets.length ? `<br>已跳过 <b>${unsupportedTargets.length}</b> 个非 HTTP(S) 书签。` : '') +
-      `<br>· 隐私保护：仅发送标题与 URL 的域名、路径；query 和 fragment 不发送<br>· 可随时点「终止打标」停止：已成功的结果保留，剩余不再请求<br>· 结果实时写入本地，可在「标签」页查看`,
-    confirmText: force ? '全量重打' : '开始打标'
-  });
-  if (!ok) return;
+    const ok =
+      isResume ||
+      (await confirmDialog({
+        title: force
+          ? `全量重新打标 ${affectedCount} 个书签？`
+          : `AI 批量打标 ${affectedCount} 个书签？`,
+        message:
+          (force
+            ? `⚠️ 将<b>覆盖</b> ${affectedCount} 个书签的现有标签，重新生成 1-3 个标签。`
+            : `将为 <b>${affectedCount}</b> 个书签生成 1-3 个标签。`) +
+          (protectedTargets.length
+            ? `<br>AI 隐私保护已跳过 <b>${protectedTargets.length}</b> 个高风险书签。`
+            : '') +
+          (unsupportedTargets.length
+            ? `<br>已跳过 <b>${unsupportedTargets.length}</b> 个非 HTTP(S) 书签。`
+            : '') +
+          `<br>· 隐私保护：仅发送标题与 URL 的域名、路径；query 和 fragment 不发送<br>· 可随时点「终止打标」停止：已成功的结果保留，剩余不再请求<br>· 结果实时写入本地，可在「标签」页查看`,
+        confirmText: force ? '全量重打' : '开始打标'
+      }));
+    if (!ok) return;
 
-  aiResumeState = null;
-  clearPersistentError();
-  aiTagRunning = true;
-  const btns = document.querySelectorAll('[data-action="ai-tag-all"], [data-action="ai-tag-all-force"]');
-  btns.forEach(b => { b.disabled = false; b.textContent = '⏹ 终止打标'; });
-  startProgress(force ? 'AI 全量重打中' : 'AI 打标中', {
-    onCancel: () => { aiTagCancel = true; }
-  });
-  let applied = 0;
-  const completedRepresentatives = new Set();
-  try {
-    // 每批 AI 成功后立即批量落盘；后续批次失败不影响已保存结果。
-    // aiBatch 已是同址去重后的代表书签集；结果按 urlKey 回填到同址全部书签。
-    await BM.aiTagBatched(aiBatch, SETTINGS, {
-      batchSize: 40,
-      retries: 2,
-      shouldStop: () => aiTagCancel,
-      onBatch: async map => {
-        const changes = {};
-        const updated = [];
-        const completedInBatch = new Set();
-        for (const [id, tags] of Object.entries(map)) {
-          const rep = representativeById.get(String(id));
-          // 仅有“其他”仍视为未打标，保留给失败后的继续打标。
-          if (!rep || !Array.isArray(tags) || isAiTagPending({ tags })) continue;
-          const siblings = siblingsByKey.get(rep.key || BM.urlKey(rep.url)) || [rep];
-          const nextTags = mergeAiTagsWithSameUrl(siblings, tags, force);
-          for (const it of siblings) {
-            changes[it.id] = nextTags;
-            updated.push({ it, tags: nextTags });
-          }
-          completedInBatch.add(String(id));
-        }
-        if (!updated.length) return;
-        const saved = await BM.setTagsBatch(changes);
-        if (!saved) throw new Error('标签保存失败，请重试');
-        updated.forEach(({ it, tags }) => { it.tags = tags; });
-        completedInBatch.forEach(id => completedRepresentatives.add(id));
-        applied += updated.length;
-      },
-      onProgress: (ratio, done, total) => {
-        updateProgress(Math.round(ratio * 100), 'AI 打标 ' + done + '/' + total + (aiTagCancel ? '（终止中…）' : ''));
+    aiResumeState = null;
+    clearPersistentError();
+    aiTagRunning = true;
+    const btns = document.querySelectorAll(
+      '[data-action="ai-tag-all"], [data-action="ai-tag-all-force"]'
+    );
+    btns.forEach(b => {
+      b.disabled = false;
+      b.textContent = '终止打标';
+    });
+    startProgress(force ? 'AI 全量重打中' : 'AI 打标中', {
+      onCancel: () => {
+        aiTagCancel = true;
       }
     });
-    endProgress();
-    const remainingItems = getPendingAiRepresentatives(aiBatch, completedRepresentatives);
-    if (remainingItems.length) {
-      const title = aiTagCancel ? 'AI 打标已终止' : 'AI 打标未完成';
-      const detail = aiTagCancel
-        ? `已保留 ${applied} 个结果，仍有 ${remainingItems.length} 个待处理。`
-        : `已保留 ${applied} 个结果；模型未返回 ${remainingItems.length} 个书签的有效标签。`;
-      aiResumeState = { force, items: remainingItems };
-      showPersistentError(title, detail, {
-        label: '继续打标（' + remainingItems.length + '）',
-        onClick: () => {
-          if (aiTagRunning || aiTagStarting || !aiResumeState) return;
-          const state = aiResumeState;
-          aiTagAll(state.force, state.items);
+    let applied = 0;
+    const completedRepresentatives = new Set();
+    try {
+      // 每批 AI 成功后立即批量落盘；后续批次失败不影响已保存结果。
+      // aiBatch 已是同址去重后的代表书签集；结果按 urlKey 回填到同址全部书签。
+      await BM.aiTagBatched(aiBatch, SETTINGS, {
+        batchSize: 40,
+        retries: 2,
+        shouldStop: () => aiTagCancel,
+        onBatch: async map => {
+          const changes = {};
+          const updated = [];
+          const completedInBatch = new Set();
+          for (const [id, tags] of Object.entries(map)) {
+            const rep = representativeById.get(String(id));
+            // 仅有“其他”仍视为未打标，保留给失败后的继续打标。
+            if (!rep || !Array.isArray(tags) || isAiTagPending({ tags })) continue;
+            const siblings = siblingsByKey.get(rep.key || BM.urlKey(rep.url)) || [rep];
+            const nextTags = mergeAiTagsWithSameUrl(siblings, tags, force);
+            for (const it of siblings) {
+              changes[it.id] = nextTags;
+              updated.push({ it, tags: nextTags });
+            }
+            completedInBatch.add(String(id));
+          }
+          if (!updated.length) return;
+          const saved = await BM.setTagsBatch(changes);
+          if (!saved) throw new Error('标签保存失败，请重试');
+          updated.forEach(({ it, tags }) => {
+            it.tags = tags;
+          });
+          completedInBatch.forEach(id => completedRepresentatives.add(id));
+          applied += updated.length;
+        },
+        onProgress: (ratio, done, total) => {
+          updateProgress(
+            Math.round(ratio * 100),
+            'AI 打标 ' + done + '/' + total + (aiTagCancel ? '（终止中…）' : '')
+          );
         }
       });
-      toast(detail, 'warn');
-    } else {
-      toast((force ? '全量重打完成：已为 ' : 'AI 已为 ') + applied + ' 个书签打标 ✓', 'ok');
-      aiResumeState = null;
-    }
-    refresh();
-  } catch (e) {
-    endProgress();
-    const error = e.message || e;
-    const title = applied ? 'AI 打标未完成，已保留 ' + applied + ' 个结果' : 'AI 打标失败';
-    const remainingItems = getPendingAiRepresentatives(aiBatch, completedRepresentatives);
-    if (remainingItems.length) {
-      aiResumeState = { force, items: remainingItems };
-      showPersistentError(title, error, {
-        label: '继续打标（' + remainingItems.length + '）',
-        onClick: () => {
-          if (aiTagRunning || aiTagStarting || !aiResumeState) return;
-          const state = aiResumeState;
-          aiTagAll(state.force, state.items);
-        }
+      endProgress();
+      const remainingItems = getPendingAiRepresentatives(aiBatch, completedRepresentatives);
+      if (remainingItems.length) {
+        const title = aiTagCancel ? 'AI 打标已终止' : 'AI 打标未完成';
+        const detail = aiTagCancel
+          ? `已保留 ${applied} 个结果，仍有 ${remainingItems.length} 个待处理。`
+          : `已保留 ${applied} 个结果；模型未返回 ${remainingItems.length} 个书签的有效标签。`;
+        aiResumeState = { force, items: remainingItems };
+        showPersistentError(title, detail, {
+          label: '继续打标（' + remainingItems.length + '）',
+          onClick: () => {
+            if (aiTagRunning || aiTagStarting || !aiResumeState) return;
+            const state = aiResumeState;
+            aiTagAll(state.force, state.items);
+          }
+        });
+        toast(detail, 'warn');
+      } else {
+        toast((force ? '全量重打完成：已为 ' : 'AI 已为 ') + applied + ' 个书签打标 ✓', 'ok');
+        aiResumeState = null;
+      }
+      refresh();
+    } catch (e) {
+      endProgress();
+      const error = e.message || e;
+      const title = applied ? 'AI 打标未完成，已保留 ' + applied + ' 个结果' : 'AI 打标失败';
+      const remainingItems = getPendingAiRepresentatives(aiBatch, completedRepresentatives);
+      if (remainingItems.length) {
+        aiResumeState = { force, items: remainingItems };
+        showPersistentError(title, error, {
+          label: '继续打标（' + remainingItems.length + '）',
+          onClick: () => {
+            if (aiTagRunning || aiTagStarting || !aiResumeState) return;
+            const state = aiResumeState;
+            aiTagAll(state.force, state.items);
+          }
+        });
+      } else {
+        aiResumeState = null;
+        showPersistentError(title, error);
+      }
+      if (applied) refresh();
+      try {
+        BM.logError('ai-tag-all', e);
+      } catch (e2) {
+        /* ignore */
+      }
+    } finally {
+      aiTagRunning = false;
+      aiTagCancel = false;
+      const btns = document.querySelectorAll(
+        '[data-action="ai-tag-all"], [data-action="ai-tag-all-force"]'
+      );
+      btns.forEach(b => {
+        b.disabled = false;
+        b.textContent = b.dataset.action === 'ai-tag-all-force' ? '重新打标全部' : 'AI 批量打标';
       });
-    } else {
-      aiResumeState = null;
-      showPersistentError(title, error);
     }
-    if (applied) refresh();
-    try { BM.logError('ai-tag-all', e); } catch (e2) { /* ignore */ }
-  } finally {
-    aiTagRunning = false;
-    aiTagCancel = false;
-    const btns = document.querySelectorAll('[data-action="ai-tag-all"], [data-action="ai-tag-all-force"]');
-    btns.forEach(b => { b.disabled = false; b.textContent = b.dataset.action === 'ai-tag-all-force' ? '🔄 全量重新打标' : '🤖 AI 批量打标'; });
-  }
   } finally {
     aiTagStarting = false;
   }
@@ -2530,7 +3255,7 @@ async function aiTagAll(force, resumeItems) {
 function findExistingByUrl(url, excludeId) {
   if (!DATA || !url) return [];
   const candidates = DATA.itemsByUrl
-    ? (DATA.itemsByUrl.get(url) || [])
+    ? DATA.itemsByUrl.get(url) || []
     : DATA.items.filter(it => it.url === url);
   return excludeId ? candidates.filter(it => it.id !== excludeId) : candidates;
 }
@@ -2553,9 +3278,12 @@ function getSameUrlSiblings(bookmark) {
   if (!bookmark || !bookmark.id) return [];
   const key = bookmark.key || BM.urlKey(bookmark.url || '');
   if (!key) return [bookmark];
-  const group = DATA && DATA.itemsByUrlKey
-    ? (DATA.itemsByUrlKey.get(key) || [])
-    : (DATA && DATA.items ? DATA.items.filter(item => (item.key || BM.urlKey(item.url)) === key) : []);
+  const group =
+    DATA && DATA.itemsByUrlKey
+      ? DATA.itemsByUrlKey.get(key) || []
+      : DATA && DATA.items
+        ? DATA.items.filter(item => (item.key || BM.urlKey(item.url)) === key)
+        : [];
   // 传入的书签可能刚创建或刚改址，不能使用 DATA 中同 id 的旧快照。
   return [...group.filter(item => item.id !== bookmark.id), bookmark];
 }
@@ -2589,13 +3317,21 @@ function getPendingAiRepresentatives(items, completedIds) {
 // tags 为空数组表示清除标签，此时同址兄弟一并清除。
 async function unifySameUrlTags(bookmarkOrId, tags) {
   if (!bookmarkOrId || !DATA) return false;
-  const self = typeof bookmarkOrId === 'object'
-    ? bookmarkOrId
-    : (DATA.itemById ? DATA.itemById.get(bookmarkOrId) : DATA.items.find(it => it.id === bookmarkOrId));
+  const self =
+    typeof bookmarkOrId === 'object'
+      ? bookmarkOrId
+      : DATA.itemById
+        ? DATA.itemById.get(bookmarkOrId)
+        : DATA.items.find(it => it.id === bookmarkOrId);
   if (!self) return false;
   const siblings = getSameUrlSiblings(self);
   if (siblings.length <= 1) return true;
-  try { await BM.loadTags(); await BM.loadFixedTags(); } catch (e) { /* noop */ }
+  try {
+    await BM.loadTags();
+    await BM.loadFixedTags();
+  } catch (e) {
+    /* noop */
+  }
   const currentMap = BM.getTags() || {};
   const lists = siblings.map(it => currentMap[it.id] || []);
   // 本次变更的标签优先合并进并集，保证本次操作语义生效。
@@ -2608,41 +3344,79 @@ async function unifySameUrlTags(bookmarkOrId, tags) {
     union = BM.unionTagLists(lists);
   }
   const changes = {};
-  siblings.forEach(it => { changes[it.id] = union.length ? union : null; });
-  try { return await BM.setTagsBatch(changes); } catch (e) { return false; }
+  siblings.forEach(it => {
+    changes[it.id] = union.length ? union : null;
+  });
+  try {
+    return await BM.setTagsBatch(changes);
+  } catch (e) {
+    return false;
+  }
 }
 
 // ---------- 标签管理：新建 / 重命名 / 从池删除 / 批量打标签 ----------
 
 // 新建标签：加入固定池（若已存在或不在池则提示）
 async function createTag() {
-  const name = await promptDialog({ title: '➕ 新建标签', message: '输入新标签名（将加入固定标签池，AI 打标可选用）：', placeholder: '如：效率' });
+  const name = await promptDialog({
+    title: '新建标签',
+    message: '输入新标签名（将加入固定标签池，AI 打标可选用）：',
+    placeholder: '如：效率'
+  });
   if (!name) return;
   const clean = BM.normalizeTag(name);
-  if (!clean) { toast('标签名不能为空（去掉首尾空格后至少留 1 个字）', 'warn'); return; }
-  try { await BM.loadFixedTags(); } catch (e) { /* noop */ }
+  if (!clean) {
+    toast('标签名不能为空（去掉首尾空格后至少留 1 个字）', 'warn');
+    return;
+  }
+  try {
+    await BM.loadFixedTags();
+  } catch (e) {
+    /* noop */
+  }
   const pool = [...(BM.getFixedTags() || [])];
-  if (pool.includes(clean)) { toast('#' + clean + ' 已经在标签池里了', 'warn'); return; }
+  if (pool.includes(clean)) {
+    toast('#' + clean + ' 已经在标签池里了', 'warn');
+    return;
+  }
   const max = BM.MAX_FIXED_TAGS || 50;
-  if (pool.length >= max) { toast('标签池已达上限（' + max + '），请先删除或重命名', 'warn'); return; }
+  if (pool.length >= max) {
+    toast('标签池已达上限（' + max + '），请先删除或重命名', 'warn');
+    return;
+  }
   pool.push(clean);
   try {
     await BM.loadTagRules();
     await BM.saveSyncedTagConfiguration(
-      pool.filter(tag => tag !== BM.FALLBACK_TAG), BM.getTagRules() || {}
+      pool.filter(tag => tag !== BM.FALLBACK_TAG),
+      BM.getTagRules() || {}
     );
     toast('已新建标签 #' + clean + ' ✓', 'ok');
-  } catch (e) { toast('新建失败：' + (e.message || e), 'danger'); }
+  } catch (e) {
+    toast('新建失败：' + (e.message || e), 'danger');
+  }
   refresh();
 }
 
 function renameTagInRules(rules, oldName, newName) {
-  const oldKey = String(oldName || '').trim().toLowerCase();
-  const replaceInMap = map => Object.fromEntries(Object.entries(
-    map && typeof map === 'object' && !Array.isArray(map) ? map : {}
-  ).map(([key, tags]) => [key, (Array.isArray(tags) ? tags : []).map(tag =>
-    String(tag || '').trim().toLowerCase() === oldKey ? newName : tag
-  )]));
+  const oldKey = String(oldName || '')
+    .trim()
+    .toLowerCase();
+  const replaceInMap = map =>
+    Object.fromEntries(
+      Object.entries(map && typeof map === 'object' && !Array.isArray(map) ? map : {}).map(
+        ([key, tags]) => [
+          key,
+          (Array.isArray(tags) ? tags : []).map(tag =>
+            String(tag || '')
+              .trim()
+              .toLowerCase() === oldKey
+              ? newName
+              : tag
+          )
+        ]
+      )
+    );
   return {
     domain: replaceInMap(rules && rules.domain),
     keyword: replaceInMap(rules && rules.keyword)
@@ -2652,40 +3426,62 @@ function renameTagInRules(rules, oldName, newName) {
 // 重命名标签：同步改池 + 所有带此标签的书签
 async function renameTag(oldName) {
   const newName = await promptDialog({
-    title: '✏️ 重命名标签',
+    title: '重命名标签',
     message: '将把 #' + oldName + ' 重命名为（同步修改所有书签）：',
     value: oldName,
     placeholder: '新标签名'
   });
   if (!newName || newName === oldName) return;
   const clean = BM.normalizeTag(newName);
-  if (!clean) { toast('新标签名不能为空', 'warn'); return; }
+  if (!clean) {
+    toast('新标签名不能为空', 'warn');
+    return;
+  }
   // 1. 改固定池
-  try { await BM.loadFixedTags(); } catch (e) { /* noop */ }
+  try {
+    await BM.loadFixedTags();
+  } catch (e) {
+    /* noop */
+  }
   const pool = [...(BM.getFixedTags() || [])];
   const idx = pool.indexOf(oldName);
   if (idx >= 0) {
-    if (pool.includes(clean)) { toast('#' + clean + ' 已存在，换一个名字吧', 'warn'); return; }
+    if (pool.includes(clean)) {
+      toast('#' + clean + ' 已存在，换一个名字吧', 'warn');
+      return;
+    }
     pool[idx] = clean;
     try {
       await BM.loadTagRules();
       const rules = renameTagInRules(BM.getTagRules() || {}, oldName, clean);
       await BM.saveSyncedTagConfiguration(
-        pool.filter(tag => tag !== BM.FALLBACK_TAG), rules
+        pool.filter(tag => tag !== BM.FALLBACK_TAG),
+        rules
       );
-    } catch (e) { /* 配置已保留在本地，下次同步重试 */ }
+    } catch (e) {
+      /* 配置已保留在本地，下次同步重试 */
+    }
   }
   // 2. 改所有书签的标签
-  try { await BM.loadTags(); } catch (e) { /* noop */ }
+  try {
+    await BM.loadTags();
+  } catch (e) {
+    /* noop */
+  }
   const map = BM.getTags() || {};
   let changed = 0;
   for (const id of Object.keys(map)) {
     const arr = map[id];
     if (arr.includes(oldName)) {
       try {
-        await BM.setTags(id, arr.map(t => (t === oldName ? clean : t)));
+        await BM.setTags(
+          id,
+          arr.map(t => (t === oldName ? clean : t))
+        );
         changed++;
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        /* ignore */
+      }
     }
   }
   BM.invalidateFixedTags();
@@ -2696,22 +3492,36 @@ async function renameTag(oldName) {
 
 // 从固定池删除标签（书签上已有的标签保留，不再出现在标签云/建议/AI 打标）
 async function removeTagFromPool(name) {
-  if (name === BM.FALLBACK_TAG) { toast('「' + name + '」是兜底标签，不能删除', 'warn'); return; }
+  if (name === BM.FALLBACK_TAG) {
+    toast('「' + name + '」是兜底标签，不能删除', 'warn');
+    return;
+  }
   const ok = await confirmDialog({
     title: '从固定池移除 #' + name + '？',
-    message: '仅从标签池移除（不再建议/打标）。已有书签上的 #' + name + ' 标签会保留，但被视为「散落标签」，可之后收敛。',
+    message:
+      '仅从标签池移除（不再建议/打标）。已有书签上的 #' +
+      name +
+      ' 标签会保留，但被视为「散落标签」，可之后收敛。',
     confirmText: '移除',
     danger: false
   });
   if (!ok) return;
-  try { await BM.loadFixedTags(); } catch (e) { /* noop */ }
+  try {
+    await BM.loadFixedTags();
+  } catch (e) {
+    /* noop */
+  }
   const pool = [...(BM.getFixedTags() || [])].filter(t => t !== name);
   try {
     await BM.loadTagRules();
     await BM.saveSyncedTagConfiguration(
-      pool.filter(tag => tag !== BM.FALLBACK_TAG), BM.getTagRules() || {}
+      pool.filter(tag => tag !== BM.FALLBACK_TAG),
+      BM.getTagRules() || {}
     );
-  } catch (e) { toast('移除失败：' + (e.message || e), 'danger'); return; }
+  } catch (e) {
+    toast('移除失败：' + (e.message || e), 'danger');
+    return;
+  }
   toast('已从池移除 #' + name, 'ok');
   refresh();
 }
@@ -2720,33 +3530,47 @@ async function removeTagFromPool(name) {
 function openTagManager() {
   const pool = (BM.getFixedTags() || []).filter(t => t !== BM.FALLBACK_TAG);
   const list = $('#tagMgrList');
-  list.innerHTML = pool.map(t => {
-    const count = (DATA.tagStats || {})[t] || 0;
-    return `<div class="tag-mgr-row">
+  list.innerHTML =
+    pool
+      .map(t => {
+        const count = (DATA.tagStats || {})[t] || 0;
+        return `<div class="tag-mgr-row">
       <span class="tag-mgr-name">#${escapeHtml(t)}</span>
       <span class="tag-mgr-count">${count} 个书签</span>
       <div class="tag-mgr-btns">
-        <button class="btn small ghost" data-mgr="rename" data-tag="${escapeHtml(t)}">✏️ 重命名</button>
-        <button class="btn small ghost danger-text" data-mgr="remove" data-tag="${escapeHtml(t)}">🗑 从池移除</button>
+        <button class="btn small ghost" data-mgr="rename" data-tag="${escapeHtml(t)}">${ICON_SM('edit')} 重命名</button>
+        <button class="btn small ghost danger-text" data-mgr="remove" data-tag="${escapeHtml(t)}">${ICON_SM('trash')} 从池移除</button>
       </div>
     </div>`;
-  }).join('') || '<div class="tag-mgr-empty">固定池为空</div>';
+      })
+      .join('') || '<div class="tag-mgr-empty">固定池为空</div>';
   $('#tagMgrWrap').classList.remove('hidden');
 }
 
 // 批量打标签：选中书签 → 追加指定标签（去重、限数）
 async function bulkTagSelected() {
   const sel = getSelectedIds();
-  if (!sel.length) { toast('先在列表里勾选要打标签的书签', 'warn'); return; }
+  if (!sel.length) {
+    toast('先在列表里勾选要打标签的书签', 'warn');
+    return;
+  }
   const input = await promptDialog({
-    title: '🏷 批量打标签',
+    title: '批量打标签',
     message: '为选中的 ' + sel.length + ' 个书签追加标签（逗号分隔，已存在的不会重复）：',
     placeholder: '开发, 工作'
   });
   if (!input) return;
-  const newTags = input.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  const newTags = input
+    .split(/[,，]/)
+    .map(s => s.trim())
+    .filter(Boolean);
   if (!newTags.length) return;
-  try { await BM.loadTags(); await BM.loadFixedTags(); } catch (e) { /* noop */ }
+  try {
+    await BM.loadTags();
+    await BM.loadFixedTags();
+  } catch (e) {
+    /* noop */
+  }
   startProgress('批量打标中');
   let done = 0;
   let failed = 0;
@@ -2754,31 +3578,47 @@ async function bulkTagSelected() {
     try {
       const cur = (BM.getTags() || {})[id] || [];
       const merged = [...new Set([...cur, ...newTags])].slice(0, BM.MAX_TAGS_PER_BOOKMARK || 6);
-      if (!await BM.setTags(id, merged)) throw new Error('标签保存失败');
-      if (!await unifySameUrlTags(id, merged)) throw new Error('同址标签同步失败');
-    } catch (e) { failed++; }
+      if (!(await BM.setTags(id, merged))) throw new Error('标签保存失败');
+      if (!(await unifySameUrlTags(id, merged))) throw new Error('同址标签同步失败');
+    } catch (e) {
+      failed++;
+    }
     done++;
-    updateProgress(Math.round(done / sel.length * 100), '打标 ' + done + '/' + sel.length);
+    updateProgress(Math.round((done / sel.length) * 100), '打标 ' + done + '/' + sel.length);
   }
   endProgress();
-  toast(failed
-    ? '已为 ' + (sel.length - failed) + ' 个书签追加标签，' + failed + ' 个保存失败'
-    : '已为 ' + sel.length + ' 个书签追加标签 ✓', failed ? 'warn' : 'ok');
+  toast(
+    failed
+      ? '已为 ' + (sel.length - failed) + ' 个书签追加标签，' + failed + ' 个保存失败'
+      : '已为 ' + sel.length + ' 个书签追加标签 ✓',
+    failed ? 'warn' : 'ok'
+  );
   refresh();
 }
 
 // ---------- 标签收敛：把历史散落标签归并到固定池 + #其他 重新打标 ----------
 async function migrateTags() {
-  try { await BM.loadTags(); } catch (e) { /* noop */ }
-  try { await BM.loadFixedTags(); } catch (e) { /* noop */ }
+  try {
+    await BM.loadTags();
+  } catch (e) {
+    /* noop */
+  }
+  try {
+    await BM.loadFixedTags();
+  } catch (e) {
+    /* noop */
+  }
   const map = BM.getTags();
-  if (!map || !Object.keys(map).length) { toast('还没有任何标签记录，不需要收敛', 'warn'); return; }
+  if (!map || !Object.keys(map).length) {
+    toast('还没有任何标签记录，不需要收敛', 'warn');
+    return;
+  }
   const ids = Object.keys(map);
   const activeIds = ids.filter(id => !!getItemById(id));
   const staleIds = ids.filter(id => !getItemById(id));
-  const changeMap = {};      // 旧标签 -> { to, n }
+  const changeMap = {}; // 旧标签 -> { to, n }
   const affectedIds = new Set();
-  const otherIds = [];       // 被归到 #其他（兜底）的书签 id
+  const otherIds = []; // 被归到 #其他（兜底）的书签 id
   activeIds.forEach(id => {
     const orig = map[id];
     // #其他 视为"未真正命中池"，单独收集
@@ -2808,27 +3648,39 @@ async function migrateTags() {
       if (mt !== t) (changeMap[t] = changeMap[t] || { to: mt, n: 0 }).n++;
     });
   });
-  if (!affectedIds.size && !otherIds.length && !staleIds.length) { toast('所有标签都已在固定池内 ✓', 'ok'); return; }
+  if (!affectedIds.size && !otherIds.length && !staleIds.length) {
+    toast('所有标签都已在固定池内 ✓', 'ok');
+    return;
+  }
   const total = new Set([...affectedIds, ...otherIds]).size;
-  const hiddenCount = [...new Set([...affectedIds, ...otherIds])]
-    .filter(id => getItemById(id) && getItemById(id).hidden).length;
+  const hiddenCount = [...new Set([...affectedIds, ...otherIds])].filter(
+    id => getItemById(id) && getItemById(id).hidden
+  ).length;
   const changeList = Object.entries(changeMap).sort((a, b) => b[1].n - a[1].n);
-  const preview = changeList.slice(0, 15).map(([from, c]) => `${escapeHtml(from)} → ${escapeHtml(c.to)}（${c.n}）`).join('<br>')
-    + (changeList.length > 15 ? `<br>… 等共 ${changeList.length} 种标签` : '');
+  const preview =
+    changeList
+      .slice(0, 15)
+      .map(([from, c]) => `${escapeHtml(from)} → ${escapeHtml(c.to)}（${c.n}）`)
+      .join('<br>') + (changeList.length > 15 ? `<br>… 等共 ${changeList.length} 种标签` : '');
   let message = '';
   if (affectedIds.size) {
-    message += `📌 <b>${affectedIds.size}</b> 个书签有散落标签，将归并到固定池：<br>${preview}<br>`;
+    message += `<b>${affectedIds.size}</b> 个书签有散落标签，将归并到固定池：<br>${preview}<br>`;
   }
   if (otherIds.length) {
     // 列出 #其他 书签标题预览（最多 5）
-    const otherPreview = otherIds.slice(0, 5).map(id => {
-      const item = getItemById(id);
-      return `· ${escapeHtml(item ? item.title : '(已删除书签)')}<span style="color:var(--muted);font-size:11px;"> — ${escapeHtml(item ? item.host : '')}</span>`;
-    }).join('<br>') + (otherIds.length > 5 ? `<br>… 等 ${otherIds.length} 个` : '');
+    const otherPreview =
+      otherIds
+        .slice(0, 5)
+        .map(id => {
+          const item = getItemById(id);
+          return `· ${escapeHtml(item ? item.title : '(已删除书签)')}<span style="color:var(--muted);font-size:11px;"> — ${escapeHtml(item ? item.host : '')}</span>`;
+        })
+        .join('<br>') + (otherIds.length > 5 ? `<br>… 等 ${otherIds.length} 个` : '');
     message += `<br>⚠️ <b>${otherIds.length}</b> 个书签被归到「#${escapeHtml(BM.FALLBACK_TAG)}」（池外兜底），将用本地规则重新打标（消耗 API 即可考虑 AI 重打）：<br>${otherPreview}<br>`;
   }
-  if (hiddenCount) message += `<br>👁 其中 <b>${hiddenCount}</b> 个为隐藏书签，也会一并处理。`;
-  if (staleIds.length) message += `<br>🧹 将清理 <b>${staleIds.length}</b> 条已删除书签的历史标签记录。`;
+  if (hiddenCount) message += `<br>其中 <b>${hiddenCount}</b> 个为隐藏书签，也会一并处理。`;
+  if (staleIds.length)
+    message += `<br>将清理 <b>${staleIds.length}</b> 条已删除书签的历史标签记录。`;
   message += '<br>⚠️ 此操作会更新上述书签的标签数据，可在「标签」页查看结果。';
   const title = total
     ? `收敛 ${total} 个书签的标签${staleIds.length ? `，并清理 ${staleIds.length} 条历史记录` : ''}？`
@@ -2851,30 +3703,55 @@ async function migrateTags() {
     const mapped = [...new Set(orig.map(t => BM.normalizeToPool(t)).filter(Boolean))];
     tagChanges[id] = mapped;
     done++;
-    updateProgress(Math.round(done / operationCount * 100), '收敛 ' + done + '/' + operationCount);
+    updateProgress(
+      Math.round((done / operationCount) * 100),
+      '收敛 ' + done + '/' + operationCount
+    );
   }
   // 2. #其他 书签：用本地规则重新打标（suggestTags，不消耗 API）
   for (const id of otherIds) {
     try {
       const item = getItemById(id);
-      const sugg = item ? (BM.suggestTags ? BM.suggestTags({ host: item.host, url: item.url, title: item.title }) : []) : [];
+      const sugg = item
+        ? BM.suggestTags
+          ? BM.suggestTags({ host: item.host, url: item.url, title: item.title })
+          : []
+        : [];
       const cleaned = (map[id] || []).filter(t => t !== BM.FALLBACK_TAG);
       const newTags = [...new Set([...cleaned, ...sugg])].filter(Boolean);
       tagChanges[id] = newTags;
-    } catch (e) { /* noop */ }
+    } catch (e) {
+      /* noop */
+    }
     done++;
-    updateProgress(Math.round(done / operationCount * 100), '重打 ' + done + '/' + operationCount);
+    updateProgress(
+      Math.round((done / operationCount) * 100),
+      '重打 ' + done + '/' + operationCount
+    );
   }
   for (const id of staleIds) {
     tagChanges[id] = null;
     done++;
-    updateProgress(Math.round(done / operationCount * 100), '清理 ' + done + '/' + operationCount);
+    updateProgress(
+      Math.round((done / operationCount) * 100),
+      '清理 ' + done + '/' + operationCount
+    );
   }
   let saved = false;
-  try { saved = await BM.setTagsBatch(tagChanges); } catch (e) { saved = false; }
+  try {
+    saved = await BM.setTagsBatch(tagChanges);
+  } catch (e) {
+    saved = false;
+  }
   endProgress();
-  if (!saved) { toast('标签收敛保存失败，请重试', 'danger'); return; }
-  toast(`标签已收敛 ✓（处理 ${total} 个书签${staleIds.length ? `，清理 ${staleIds.length} 条历史记录` : ''}）`, 'ok');
+  if (!saved) {
+    toast('标签收敛保存失败，请重试', 'danger');
+    return;
+  }
+  toast(
+    `标签已收敛 ✓（处理 ${total} 个书签${staleIds.length ? `，清理 ${staleIds.length} 条历史记录` : ''}）`,
+    'ok'
+  );
   refresh();
 }
 

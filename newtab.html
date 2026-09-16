@@ -1,68 +1,159 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>书签管家 · 新标签页</title>
-  <link rel="stylesheet" href="css/popup.css" />
-  <link rel="stylesheet" href="css/newtab.css" />
-</head>
-<body class="nt-body">
-  <div class="nt-wrap">
-    <!-- 顶栏：品牌 + 打开管理面板 -->
-    <header class="nt-top">
-      <div class="nt-brand">
-        <img class="brand-icon" src="icons/icon48.png" alt="" width="22" height="22">
-        <span>书签管家</span>
-        <span class="nt-version" id="ntVersion" title="扩展版本号"></span>
-      </div>
-      <div class="nt-top-actions">
-        <span class="nt-count" id="ntCount"></span>
-        <a class="nt-source-link" href="https://github.com/cfdywds/chrome-bookmark-manager" target="_blank" rel="noopener noreferrer" title="查看开源仓库" aria-label="查看开源仓库">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          <span>开源仓库</span>
-        </a>
-        <button id="ntOpenPanel" class="btn small ghost">⚙️ 打开管理面板</button>
-      </div>
-    </header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>书签管家 · 新标签页</title>
+    <link rel="stylesheet" href="css/popup.css" />
+    <link rel="stylesheet" href="css/newtab.css" />
+  </head>
+  <body class="nt-body">
+    <div class="nt-wrap">
+      <!-- 顶栏：品牌 + 打开管理面板 -->
+      <header class="nt-top">
+        <div class="nt-brand">
+          <img class="brand-icon" src="icons/icon48.png" alt="" width="22" height="22" />
+          <span>书签管家</span>
+          <span class="nt-version" id="ntVersion" title="扩展版本号"></span>
+        </div>
+        <div class="nt-top-actions">
+          <span class="nt-count" id="ntCount"></span>
+          <a
+            class="nt-source-link"
+            href="https://github.com/cfdywds/chrome-bookmark-manager"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="查看开源仓库"
+            aria-label="查看开源仓库"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
+            <span>开源仓库</span>
+          </a>
+          <button id="ntOpenPanel" class="btn small ghost">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="ico ico-sm"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+              />
+            </svg>
+            打开管理面板
+          </button>
+        </div>
+      </header>
 
-    <!-- 搜索（滚动时悬浮固定在最顶部） -->
-    <div class="nt-search" id="ntSearchBar">
-      <svg class="nt-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input id="ntSearch" type="text" placeholder="搜索标题、网址、域名、标签" autocomplete="off" spellcheck="false" />
-      <button class="help-dot" type="button" data-tip="多个词会同时匹配；以 #标签名开头可按标签精确筛选。" aria-label="多个词会同时匹配；以标签名开头可按标签精确筛选。">?</button>
-      <span id="ntResultCount" class="nt-result-count hidden"></span>
-      <button id="ntClear" class="nt-clear hidden" title="清空">✕</button>
+      <!-- 搜索（滚动时悬浮固定在最顶部） -->
+      <div class="nt-search" id="ntSearchBar">
+        <svg
+          class="nt-search-ico"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+        <input
+          id="ntSearch"
+          type="text"
+          placeholder="搜索标题、网址、域名、标签"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button
+          class="help-dot"
+          type="button"
+          data-tip="多个词会同时匹配；以 #标签名开头可按标签精确筛选。"
+          aria-label="多个词会同时匹配；以标签名开头可按标签精确筛选。"
+        >
+          ?
+        </button>
+        <span id="ntResultCount" class="nt-result-count hidden"></span>
+        <button id="ntClear" class="nt-clear hidden" title="清空">✕</button>
+      </div>
+
+      <!-- 标签筛选条 -->
+      <div class="nt-tags" id="ntTags"></div>
+
+      <!-- 书签卡片网格 -->
+      <main class="nt-main">
+        <!-- 首屏骨架屏：初始化期间展示，首次渲染后隐藏 -->
+        <div class="nt-loading" id="ntLoading" aria-hidden="true">
+          <div class="nt-skeleton"></div>
+          <div class="nt-skeleton"></div>
+          <div class="nt-skeleton"></div>
+          <div class="nt-skeleton"></div>
+          <div class="nt-skeleton"></div>
+          <div class="nt-skeleton"></div>
+          <div class="nt-skeleton"></div>
+          <div class="nt-skeleton"></div>
+        </div>
+        <div class="nt-grid" id="ntGrid"></div>
+        <div class="nt-more" id="ntMore"></div>
+        <div class="nt-empty hidden" id="ntEmpty">
+          <div class="nt-empty-icon">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              width="44"
+              height="44"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </div>
+          <div class="nt-empty-title" id="ntEmptyTitle">没有匹配的书签</div>
+          <div class="nt-empty-desc" id="ntEmptyDesc">换个关键词，或清空筛选条件</div>
+        </div>
+      </main>
     </div>
 
-    <!-- 标签筛选条 -->
-    <div class="nt-tags" id="ntTags"></div>
-
-    <!-- 书签卡片网格 -->
-    <main class="nt-main">
-      <!-- 首屏骨架屏：初始化期间展示，首次渲染后隐藏 -->
-      <div class="nt-loading" id="ntLoading" aria-hidden="true">
-        <div class="nt-skeleton"></div>
-        <div class="nt-skeleton"></div>
-        <div class="nt-skeleton"></div>
-        <div class="nt-skeleton"></div>
-        <div class="nt-skeleton"></div>
-        <div class="nt-skeleton"></div>
-        <div class="nt-skeleton"></div>
-        <div class="nt-skeleton"></div>
+    <!-- 轻量确认弹层（删除等危险操作） -->
+    <div
+      id="ntConfirmWrap"
+      class="modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ntConfirmTitle"
+    >
+      <div class="modal-card">
+        <div class="modal-title" id="ntConfirmTitle">确认操作？</div>
+        <div class="modal-msg" id="ntConfirmMsg"></div>
+        <div class="modal-actions">
+          <button id="ntConfirmNo" class="btn ghost">取消</button>
+          <button id="ntConfirmYes" class="btn danger">确认</button>
+        </div>
       </div>
-      <div class="nt-grid" id="ntGrid"></div>
-      <div class="nt-more" id="ntMore"></div>
-      <div class="nt-empty hidden" id="ntEmpty">
-        <div class="nt-empty-icon">🔍</div>
-        <div class="nt-empty-title" id="ntEmptyTitle">没有匹配的书签</div>
-        <div class="nt-empty-desc" id="ntEmptyDesc">换个关键词，或清空筛选条件</div>
-      </div>
-    </main>
-  </div>
+    </div>
 
-  <script src="js/lib.js"></script>
-  <script src="js/analyzer.js"></script>
-  <script src="js/newtab.js"></script>
-</body>
+    <script src="js/lib.js"></script>
+    <script src="js/analyzer.js"></script>
+    <script src="js/newtab.js"></script>
+  </body>
 </html>

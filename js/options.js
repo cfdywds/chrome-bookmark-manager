@@ -6,6 +6,19 @@
 const PROVIDERS = (typeof BM !== 'undefined' && BM.PROVIDERS) || {};
 
 const $ = sel => document.querySelector(sel);
+
+function debounce(fn, wait) {
+  let timer = null;
+  return function (...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(null, args), wait);
+  };
+}
+// 敏感/文本配置输入防抖保存，避免每敲一键就写 storage / 触发主页面刷新
+const queuePersist = debounce(() => {
+  setMsg('正在保存…', '', false);
+  persist();
+}, 600);
 const LLM_PROFILES_KEY = 'bmLlmProfiles';
 const ACTIVE_LLM_PROFILE_KEY = 'bmActiveLlmProfileId';
 // 新标签页外观（宽度 / 配色 / 自定义背景色）
@@ -39,7 +52,9 @@ function setMsg(text, cls, autohide) {
   el.textContent = text || '';
   el.className = 'settings-msg' + (cls ? ' ' + cls : '');
   if (autohide !== false) {
-    setTimeout(() => { if (el.textContent === text) el.textContent = ''; }, 2600);
+    setTimeout(() => {
+      if (el.textContent === text) el.textContent = '';
+    }, 2600);
   }
 }
 
@@ -71,12 +86,14 @@ function ntBgRowVisible(show) {
 }
 
 function fillNtAppearance(raw) {
-  raw = (raw && typeof raw === 'object') ? raw : {};
+  raw = raw && typeof raw === 'object' ? raw : {};
   const widthEl = $('#setNtWidth');
   if (widthEl) widthEl.value = NT_WIDTH_OPTIONS.indexOf(raw.width) >= 0 ? raw.width : '1080';
   const themeEl = $('#setNtTheme');
   if (themeEl) themeEl.value = NT_THEME_OPTIONS.indexOf(raw.theme) >= 0 ? raw.theme : 'auto';
-  const bg = /^#[0-9a-fA-F]{6}$/.test(String(raw.bg || '')) ? String(raw.bg).toLowerCase() : NT_DEFAULT_BG;
+  const bg = /^#[0-9a-fA-F]{6}$/.test(String(raw.bg || ''))
+    ? String(raw.bg).toLowerCase()
+    : NT_DEFAULT_BG;
   const colorEl = $('#setNtBg');
   const hexEl = $('#setNtBgHex');
   if (colorEl) colorEl.value = bg;
@@ -118,8 +135,8 @@ function renderTagSyncStatus(status) {
       progressTrack.setAttribute('aria-valuemax', String(maximum));
       progressTrack.setAttribute('aria-valuenow', String(current));
     }
-    if (progressBar) progressBar.style.width = (current / maximum * 100) + '%';
-    if (progressText) progressText.textContent = text || ('初始化 ' + current + '/' + maximum);
+    if (progressBar) progressBar.style.width = (current / maximum) * 100 + '%';
+    if (progressText) progressText.textContent = text || '初始化 ' + current + '/' + maximum;
   };
   const clearProgress = () => {
     if (progress) progress.hidden = true;
@@ -136,14 +153,15 @@ function renderTagSyncStatus(status) {
     };
     const step = Number(status && status.step) || fallbackStep;
     const total = Number(status && status.totalSteps) || 5;
-    const text = status && status.detail || phaseLabels[status && status.phase] || fallbackText;
+    const text = (status && status.detail) || phaseLabels[status && status.phase] || fallbackText;
     setProgress(step, total, text);
     return text;
   };
-  const pendingRequestId = typeof pendingTagSyncRequestId === 'string' ? pendingTagSyncRequestId : '';
+  const pendingRequestId =
+    typeof pendingTagSyncRequestId === 'string' ? pendingTagSyncRequestId : '';
   const pendingTarget = typeof pendingTagSyncTarget === 'boolean' ? pendingTagSyncTarget : true;
-  const isCurrentPendingStatus = !pendingRequestId ||
-    (status && status.requestId === pendingRequestId);
+  const isCurrentPendingStatus =
+    !pendingRequestId || (status && status.requestId === pendingRequestId);
   if (status && status.lastError && isCurrentPendingStatus) {
     clearProgress();
     msg.textContent = '上次同步失败：' + status.lastError;
@@ -151,10 +169,15 @@ function renderTagSyncStatus(status) {
     return;
   }
   if (pendingRequestId && !isCurrentPendingStatus) {
-    setProgress(1, 5, pendingTarget === false ? '正在启动关闭同步任务' : '请求已保存，正在启动同步服务');
-    msg.textContent = pendingTarget === false
-      ? '正在关闭同步：后台将停止读写同步目录'
-      : '已开启：正在初始化同步目录';
+    setProgress(
+      1,
+      5,
+      pendingTarget === false ? '正在启动关闭同步任务' : '请求已保存，正在启动同步服务'
+    );
+    msg.textContent =
+      pendingTarget === false
+        ? '正在关闭同步：后台将停止读写同步目录'
+        : '已开启：正在初始化同步目录';
     msg.className = 'settings-msg';
     return;
   }
@@ -175,12 +198,14 @@ function renderTagSyncStatus(status) {
     return;
   }
   if (status && status.pending) {
-    const text = statusProgress(1, status.target === false
-      ? '正在关闭同步：后台将停止读写同步目录'
-      : '已开启：正在初始化同步目录');
-    msg.textContent = status.target === false
-      ? '正在关闭同步：后台将停止读写同步目录'
-      : '已开启：' + text;
+    const text = statusProgress(
+      1,
+      status.target === false
+        ? '正在关闭同步：后台将停止读写同步目录'
+        : '已开启：正在初始化同步目录'
+    );
+    msg.textContent =
+      status.target === false ? '正在关闭同步：后台将停止读写同步目录' : '已开启：' + text;
     msg.className = 'settings-msg';
     return;
   }
@@ -220,22 +245,38 @@ function renderTagSyncDiagnostics() {
 
 // ---- 固定标签池：textarea ↔ 数组转换（每行一个，忽略 # 注释）----
 function parseFixedTags(text) {
-  return [...new Set(String(text || '').split('\n').map(l => l.trim())
-    .filter(l => l && !l.startsWith('#')))];
+  return [
+    ...new Set(
+      String(text || '')
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l && !l.startsWith('#'))
+    )
+  ];
 }
 
 // 每行 `关键字=标签1,标签2`；忽略空行和 # 注释。
 function parseTagRuleMap(text) {
   const entries = [];
-  String(text || '').split('\n').forEach(line => {
-    line = line.trim();
-    if (!line || line.startsWith('#')) return;
-    const eq = line.indexOf('=');
-    if (eq <= 0) return;
-    const key = line.slice(0, eq).trim();
-    const tags = [...new Set(line.slice(eq + 1).split(/[,，、;；]/).map(tag => tag.trim()).filter(Boolean))];
-    if (key && tags.length) entries.push([key, tags]);
-  });
+  String(text || '')
+    .split('\n')
+    .forEach(line => {
+      line = line.trim();
+      if (!line || line.startsWith('#')) return;
+      const eq = line.indexOf('=');
+      if (eq <= 0) return;
+      const key = line.slice(0, eq).trim();
+      const tags = [
+        ...new Set(
+          line
+            .slice(eq + 1)
+            .split(/[,，、;；]/)
+            .map(tag => tag.trim())
+            .filter(Boolean)
+        )
+      ];
+      if (key && tags.length) entries.push([key, tags]);
+    });
   return Object.fromEntries(entries);
 }
 
@@ -244,10 +285,12 @@ function parseTagRules(domainText, keywordText) {
 }
 
 function serializeTagRuleMap(map) {
-  return Object.entries(map || {}).map(([key, tags]) => {
-    const values = Array.isArray(tags) ? tags : [tags];
-    return key + '=' + values.join(',');
-  }).join('\n');
+  return Object.entries(map || {})
+    .map(([key, tags]) => {
+      const values = Array.isArray(tags) ? tags : [tags];
+      return key + '=' + values.join(',');
+    })
+    .join('\n');
 }
 
 function createProfileId() {
@@ -275,15 +318,17 @@ function defaultProfileName(settings) {
 function createProfile(raw, fallbackName) {
   const settings = normalizeLlmSettings(raw);
   return {
-    id: String(raw && raw.id || createProfileId()),
-    name: String(raw && raw.name || '').trim() || fallbackName || defaultProfileName(settings),
+    id: String((raw && raw.id) || createProfileId()),
+    name: String((raw && raw.name) || '').trim() || fallbackName || defaultProfileName(settings),
     ...settings,
     updatedAt: Number(raw && raw.updatedAt) || Date.now()
   };
 }
 
 function normalizeLlmProfiles(rawProfiles, legacySettings) {
-  const raw = Array.isArray(rawProfiles) ? rawProfiles.filter(item => item && typeof item === 'object') : [];
+  const raw = Array.isArray(rawProfiles)
+    ? rawProfiles.filter(item => item && typeof item === 'object')
+    : [];
   const source = raw.length ? raw : [legacySettings || {}];
   const usedIds = new Set();
   return source.map((item, index) => {
@@ -316,10 +361,13 @@ function removePendingProfileWrite(marker) {
 }
 
 function consumeOwnProfileWrite(changes) {
-  const index = pendingOwnProfileWrites.findIndex(marker =>
-    (!changes[LLM_PROFILES_KEY] || sameStoredValue(marker.profiles, changes[LLM_PROFILES_KEY].newValue)) &&
-    (!changes[ACTIVE_LLM_PROFILE_KEY] || marker.activeId === changes[ACTIVE_LLM_PROFILE_KEY].newValue) &&
-    (!changes.bmSettings || sameStoredValue(marker.settings, changes.bmSettings.newValue))
+  const index = pendingOwnProfileWrites.findIndex(
+    marker =>
+      (!changes[LLM_PROFILES_KEY] ||
+        sameStoredValue(marker.profiles, changes[LLM_PROFILES_KEY].newValue)) &&
+      (!changes[ACTIVE_LLM_PROFILE_KEY] ||
+        marker.activeId === changes[ACTIVE_LLM_PROFILE_KEY].newValue) &&
+      (!changes.bmSettings || sameStoredValue(marker.settings, changes.bmSettings.newValue))
   );
   if (index < 0) return false;
   pendingOwnProfileWrites.splice(index, 1);
@@ -328,22 +376,24 @@ function consumeOwnProfileWrite(changes) {
 
 function queueProfileWrite(values) {
   const payload = cloneStoredValue(values);
-  profileWriteQueue = profileWriteQueue.catch(() => {}).then(async () => {
-    const marker = {
-      profiles: payload[LLM_PROFILES_KEY],
-      activeId: payload[ACTIVE_LLM_PROFILE_KEY],
-      settings: payload.bmSettings
-    };
-    pendingOwnProfileWrites.push(marker);
-    try {
-      await chrome.storage.local.set(payload);
-      // 少数浏览器版本不会为同值写入触发 onChanged，超时后释放标记。
-      setTimeout(() => removePendingProfileWrite(marker), 10000);
-    } catch (e) {
-      removePendingProfileWrite(marker);
-      throw e;
-    }
-  });
+  profileWriteQueue = profileWriteQueue
+    .catch(() => {})
+    .then(async () => {
+      const marker = {
+        profiles: payload[LLM_PROFILES_KEY],
+        activeId: payload[ACTIVE_LLM_PROFILE_KEY],
+        settings: payload.bmSettings
+      };
+      pendingOwnProfileWrites.push(marker);
+      try {
+        await chrome.storage.local.set(payload);
+        // 少数浏览器版本不会为同值写入触发 onChanged，超时后释放标记。
+        setTimeout(() => removePendingProfileWrite(marker), 10000);
+      } catch (e) {
+        removePendingProfileWrite(marker);
+        throw e;
+      }
+    });
   return profileWriteQueue;
 }
 
@@ -388,7 +438,7 @@ function updateActiveProfileFromForm() {
     name: $('#setProfileName').value.trim() || defaultProfileName(settings),
     updatedAt: Date.now()
   };
-  llmProfiles = llmProfiles.map(item => item.id === profile.id ? profile : item);
+  llmProfiles = llmProfiles.map(item => (item.id === profile.id ? profile : item));
   return profile;
 }
 
@@ -400,7 +450,7 @@ function mergeActiveLlmSettings(settings) {
     ...profileSettings(settings),
     updatedAt: Date.now()
   };
-  llmProfiles = llmProfiles.map(item => item.id === profile.id ? profile : item);
+  llmProfiles = llmProfiles.map(item => (item.id === profile.id ? profile : item));
   return profile;
 }
 
@@ -421,7 +471,9 @@ async function persistSilent() {
       [ACTIVE_LLM_PROFILE_KEY]: activeLlmProfileId,
       bmSettings: profileSettings(profile)
     });
-  } catch (e) { console.warn('[书签管家] 保存设置失败', e); }
+  } catch (e) {
+    console.warn('[书签管家] 保存设置失败', e);
+  }
 }
 
 // 实时保存（带提示）
@@ -437,7 +489,12 @@ async function persist() {
   }
   await persistSilent();
   if (permissionError) {
-    setMsg('配置已保存；但新域名还没有授权访问，已暂时关闭「后台 AI 补充标签」：' + (permissionError.message || permissionError), 'err', false);
+    setMsg(
+      '配置已保存；但新域名还没有授权访问，已暂时关闭「后台 AI 补充标签」：' +
+        (permissionError.message || permissionError),
+      'err',
+      false
+    );
   } else {
     setMsg('✓ 已自动保存', 'ok');
   }
@@ -461,7 +518,10 @@ async function persistFixedTags() {
   pendingTagConfigurationSaveCount++;
   try {
     await BM.saveSyncedTagConfiguration(tags, rules);
-    setFtMsg(`✓ 已保存 ${tags.length} 个标签${tags.length > max ? `（超出上限 ${max}，超出部分不会参与 AI 打标）` : ''}`, 'ok');
+    setFtMsg(
+      `✓ 已保存 ${tags.length} 个标签${tags.length > max ? `（超出上限 ${max}，超出部分不会参与 AI 打标）` : ''}`,
+      'ok'
+    );
   } catch (e) {
     setFtMsg('保存失败：' + (e.message || e), 'err');
   } finally {
@@ -489,9 +549,12 @@ async function persistTagRules() {
 function fillForm(profile) {
   modelFetchIntent++;
   const modelsBtn = $('#modelsFetch');
-  if (modelsBtn) { modelsBtn.disabled = false; modelsBtn.textContent = '获取模型列表'; }
+  if (modelsBtn) {
+    modelsBtn.disabled = false;
+    modelsBtn.textContent = '获取模型列表';
+  }
   const settings = profileSettings(profile);
-  $('#setProfileName').value = profile && profile.name || defaultProfileName(settings);
+  $('#setProfileName').value = (profile && profile.name) || defaultProfileName(settings);
   $('#setProvider').value = settings.provider;
   $('#setBase').value = settings.baseUrl;
   $('#setModel').value = settings.model;
@@ -506,14 +569,17 @@ function fillForm(profile) {
   closeModelList();
   $('#setKey').value = settings.apiKey;
   const modelsMsg = $('#modelsMsg');
-  if (modelsMsg) { modelsMsg.textContent = ''; modelsMsg.className = 'settings-msg'; }
+  if (modelsMsg) {
+    modelsMsg.textContent = '';
+    modelsMsg.className = 'settings-msg';
+  }
 }
 
 async function ensureBackgroundAiPermission(settings) {
   const stored = await chrome.storage.local.get('bmAutoAiTag');
   if (stored.bmAutoAiTag !== true) return;
   if (!settings || !settings.baseUrl || !settings.apiKey || !settings.model) return;
-  if (BM.hasLlmHostPermission && await BM.hasLlmHostPermission(settings.baseUrl)) return;
+  if (BM.hasLlmHostPermission && (await BM.hasLlmHostPermission(settings.baseUrl))) return;
   await BM.requestLlmHostPermission(settings.baseUrl);
 }
 
@@ -587,7 +653,7 @@ function fillFixedTags(list) {
   const el = $('#setFixedTags');
   if (!el) return false;
   let tags = list;
-  if (!tags || !tags.length && typeof BM !== 'undefined' && BM.DEFAULT_FIXED_TAGS) {
+  if (!tags || (!tags.length && typeof BM !== 'undefined' && BM.DEFAULT_FIXED_TAGS)) {
     tags = BM.DEFAULT_FIXED_TAGS;
   }
   el.value = (tags || []).filter(t => t !== '其他').join('\n');
@@ -632,13 +698,25 @@ function hydrateTagConfigurationAfterLoad(configSnapshot) {
 async function load() {
   let initialTagConfiguration = null;
   try {
-    try { $('#optVersion').textContent = 'v' + chrome.runtime.getManifest().version; } catch (e) { /* noop */ }
+    try {
+      $('#optVersion').textContent = 'v' + chrome.runtime.getManifest().version;
+    } catch (e) {
+      /* noop */
+    }
     await BM.migrateStorage();
     const tagSyncEnabledVersionAtRead = tagSyncEnabledVersion;
     const r = await chrome.storage.local.get([
-      'bmSettings', LLM_PROFILES_KEY, ACTIVE_LLM_PROFILE_KEY,
-      'bmFixedTags', 'bmTagRules', 'bmStarHook', 'bmAutoAiTag', BM.NATIVE_SYNC_ENABLED_KEY, BM.SYNC_STATUS_KEY,
-      BM.NATIVE_SYNC_REQUEST_KEY, BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY,
+      'bmSettings',
+      LLM_PROFILES_KEY,
+      ACTIVE_LLM_PROFILE_KEY,
+      'bmFixedTags',
+      'bmTagRules',
+      'bmStarHook',
+      'bmAutoAiTag',
+      BM.NATIVE_SYNC_ENABLED_KEY,
+      BM.SYNC_STATUS_KEY,
+      BM.NATIVE_SYNC_REQUEST_KEY,
+      BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY,
       NT_APPEARANCE_KEY
     ]);
     llmProfiles = normalizeLlmProfiles(r[LLM_PROFILES_KEY], r.bmSettings);
@@ -655,10 +733,7 @@ async function load() {
     const autoAi = $('#setAutoAiTag');
     if (autoAi) autoAi.checked = r.bmAutoAiTag === true;
     // 标签原生同步开关：默认关闭（隐私权衡，需主动开启）
-    fillTagSyncEnabledFromSnapshot(
-      r[BM.NATIVE_SYNC_ENABLED_KEY],
-      tagSyncEnabledVersionAtRead
-    );
+    fillTagSyncEnabledFromSnapshot(r[BM.NATIVE_SYNC_ENABLED_KEY], tagSyncEnabledVersionAtRead);
     initialTagConfiguration = tagConfigurationSnapshot(r);
     tagSyncStatus = r[BM.SYNC_STATUS_KEY];
     updateTagSyncRequestState(
@@ -678,7 +753,11 @@ async function load() {
 }
 
 async function persistStarHook() {
-  try { await chrome.storage.local.set({ bmStarHook: $('#setStarHook').checked }); } catch (e) { /* noop */ }
+  try {
+    await chrome.storage.local.set({ bmStarHook: $('#setStarHook').checked });
+  } catch (e) {
+    /* noop */
+  }
 }
 
 async function persistAutoAiTag() {
@@ -686,7 +765,8 @@ async function persistAutoAiTag() {
     const enabled = $('#setAutoAiTag').checked;
     if (enabled) {
       const cfg = formSettings();
-      if (!cfg.baseUrl || !cfg.apiKey || !cfg.model) throw new Error('请先填好 AI 服务配置（接口地址、API Key、模型名）并保存');
+      if (!cfg.baseUrl || !cfg.apiKey || !cfg.model)
+        throw new Error('请先填好 AI 服务配置（接口地址、API Key、模型名）并保存');
       await BM.requestLlmHostPermission(cfg.baseUrl);
     }
     await chrome.storage.local.set({ bmAutoAiTag: enabled });
@@ -717,12 +797,23 @@ async function persistTagSync() {
       stored[BM.NATIVE_SYNC_REQUEST_KEY],
       stored[BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY]
     );
-    renderTagSyncStatus(tagSyncStatus || {
-      lastError: '', pending: true, target: on, phase: 'queued', step: 1, totalSteps: 5
-    });
+    renderTagSyncStatus(
+      tagSyncStatus || {
+        lastError: '',
+        pending: true,
+        target: on,
+        phase: 'queued',
+        step: 1,
+        totalSteps: 5
+      }
+    );
   } catch (e) {
     if (intent !== tagSyncPersistIntent) return;
-    try { $('#setTagSync').checked = await BM.getTagSyncEnabled(); } catch (ignored) { /* 保留当前状态 */ }
+    try {
+      $('#setTagSync').checked = await BM.getTagSyncEnabled();
+    } catch (ignored) {
+      /* 保留当前状态 */
+    }
     if (intent !== tagSyncPersistIntent) return;
     const msg = $('#tagSyncMsg');
     msg.textContent = '同步设置失败：' + (e.message || e);
@@ -734,22 +825,31 @@ async function persistTagSync() {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   const hasProfileChanges = changes[LLM_PROFILES_KEY] || changes[ACTIVE_LLM_PROFILE_KEY];
-  const ownProfileChange = (hasProfileChanges || changes.bmSettings) && consumeOwnProfileWrite(changes);
+  const ownProfileChange =
+    (hasProfileChanges || changes.bmSettings) && consumeOwnProfileWrite(changes);
   if (hasProfileChanges && !ownProfileChange) {
-    const legacy = changes.bmSettings ? changes.bmSettings.newValue : profileSettings(activeLlmProfile());
+    const legacy = changes.bmSettings
+      ? changes.bmSettings.newValue
+      : profileSettings(activeLlmProfile());
     llmProfiles = normalizeLlmProfiles(
       changes[LLM_PROFILES_KEY] ? changes[LLM_PROFILES_KEY].newValue : llmProfiles,
       legacy
     );
-    const nextActiveId = changes[ACTIVE_LLM_PROFILE_KEY] ? changes[ACTIVE_LLM_PROFILE_KEY].newValue : activeLlmProfileId;
-    activeLlmProfileId = llmProfiles.some(profile => profile.id === nextActiveId) ? nextActiveId : llmProfiles[0].id;
+    const nextActiveId = changes[ACTIVE_LLM_PROFILE_KEY]
+      ? changes[ACTIVE_LLM_PROFILE_KEY].newValue
+      : activeLlmProfileId;
+    activeLlmProfileId = llmProfiles.some(profile => profile.id === nextActiveId)
+      ? nextActiveId
+      : llmProfiles[0].id;
     renderProfileSelect();
     fillForm(activeLlmProfile());
   } else if (changes.bmSettings && !ownProfileChange) {
     const profile = mergeActiveLlmSettings(changes.bmSettings.newValue);
     if (profile) {
       fillForm(profile);
-      persistProfileState(profileSettings(profile)).catch(e => console.warn('[书签管家] 同步外部 LLM 配置失败', e));
+      persistProfileState(profileSettings(profile)).catch(e =>
+        console.warn('[书签管家] 同步外部 LLM 配置失败', e)
+      );
     }
   }
   if (changes.bmFixedTags && !ownProfileChange && pendingTagConfigurationSaveCount === 0) {
@@ -764,16 +864,21 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes[BM.NATIVE_SYNC_REQUEST_KEY] || changes[BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY]) {
     updateTagSyncRequestState(
       changes[BM.NATIVE_SYNC_REQUEST_KEY]
-        ? changes[BM.NATIVE_SYNC_REQUEST_KEY].newValue : tagSyncRequest,
+        ? changes[BM.NATIVE_SYNC_REQUEST_KEY].newValue
+        : tagSyncRequest,
       changes[BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY]
-        ? changes[BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY].newValue : completedTagSyncRequestId
+        ? changes[BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY].newValue
+        : completedTagSyncRequestId
     );
   }
   if (changes[BM.SYNC_STATUS_KEY]) {
     tagSyncStatus = changes[BM.SYNC_STATUS_KEY].newValue;
   }
-  if (changes[BM.NATIVE_SYNC_REQUEST_KEY] || changes[BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY] ||
-    changes[BM.SYNC_STATUS_KEY]) {
+  if (
+    changes[BM.NATIVE_SYNC_REQUEST_KEY] ||
+    changes[BM.NATIVE_SYNC_COMPLETED_REQUEST_KEY] ||
+    changes[BM.SYNC_STATUS_KEY]
+  ) {
     renderTagSyncStatus(tagSyncStatus);
   }
   if (changes[NT_APPEARANCE_KEY] && $('#setNtWidth')) {
@@ -788,13 +893,18 @@ try {
     const editVersion = tagConfigurationEditVersion;
     if (BM.invalidateFixedTags) BM.invalidateFixedTags();
     if (BM.invalidateTagRules) BM.invalidateTagRules();
-    Promise.all([BM.loadFixedTags(), BM.loadTagRules()]).then(([tags, rules]) => {
-      if (editVersion !== tagConfigurationEditVersion || pendingTagConfigurationSaveCount > 0) return;
-      fillFixedTags(tags);
-      fillTagRules(rules);
-    }).catch(() => {});
+    Promise.all([BM.loadFixedTags(), BM.loadTagRules()])
+      .then(([tags, rules]) => {
+        if (editVersion !== tagConfigurationEditVersion || pendingTagConfigurationSaveCount > 0)
+          return;
+        fillFixedTags(tags);
+        fillTagRules(rules);
+      })
+      .catch(() => {});
   });
-} catch (e) { /* sync 权限不可用时保持本地配置 */ }
+} catch (e) {
+  /* sync 权限不可用时保持本地配置 */
+}
 
 async function testConnection() {
   const cfg = {
@@ -807,7 +917,8 @@ async function testConnection() {
     return;
   }
   const btn = $('#settingsTest');
-  btn.disabled = true; btn.textContent = '测试中…';
+  btn.disabled = true;
+  btn.textContent = '测试中…';
   setMsg('', '');
   try {
     await BM.requestLlmHostPermission(cfg.baseUrl);
@@ -816,7 +927,8 @@ async function testConnection() {
   } catch (e) {
     setMsg('失败：' + (e.message || e), 'err');
   } finally {
-    btn.disabled = false; btn.textContent = '测试连接';
+    btn.disabled = false;
+    btn.textContent = '测试连接';
   }
 }
 
@@ -847,7 +959,9 @@ function mergeModelOptions(models, current) {
 
 // 下拉过滤：大小写不敏感的子串匹配；空查询返回全部
 function filterModelOptions(models, query) {
-  const q = String(query == null ? '' : query).trim().toLowerCase();
+  const q = String(query == null ? '' : query)
+    .trim()
+    .toLowerCase();
   return (models || []).filter(model => !q || String(model).toLowerCase().includes(q));
 }
 
@@ -889,7 +1003,10 @@ function renderModelList() {
   const current = input.value.trim();
   list.replaceChildren();
   const setActiveDescendant = () => {
-    input.setAttribute('aria-activedescendant', modelComboActiveIndex >= 0 ? 'modelOpt-' + modelComboActiveIndex : '');
+    input.setAttribute(
+      'aria-activedescendant',
+      modelComboActiveIndex >= 0 ? 'modelOpt-' + modelComboActiveIndex : ''
+    );
   };
   if (!models.length) {
     const li = document.createElement('li');
@@ -915,7 +1032,10 @@ function renderModelList() {
   matches.forEach((model, index) => {
     const selected = model === current;
     const li = document.createElement('li');
-    li.className = 'model-combo-item' + (index === modelComboActiveIndex ? ' active' : '') + (selected ? ' is-selected' : '');
+    li.className =
+      'model-combo-item' +
+      (index === modelComboActiveIndex ? ' active' : '') +
+      (selected ? ' is-selected' : '');
     li.id = 'modelOpt-' + index;
     li.setAttribute('role', 'option');
     li.setAttribute('aria-selected', String(selected));
@@ -938,7 +1058,7 @@ function renderModelList() {
     }
     li.appendChild(label);
     li.addEventListener('mousedown', event => {
-      event.preventDefault();   // 保持输入框焦点，避免 blur 先于点击关闭
+      event.preventDefault(); // 保持输入框焦点，避免 blur 先于点击关闭
       commitModel(model);
     });
     list.appendChild(li);
@@ -953,8 +1073,8 @@ function commitModel(value) {
   const input = $('#setModel');
   if (!input) return;
   input.value = value;
-  if (modelComboOpen) renderModelList();   // 更新 ✓ 标记
-  input.dispatchEvent(new Event('input', { bubbles: true }));  // 触发持久化
+  if (modelComboOpen) renderModelList(); // 更新 ✓ 标记
+  input.dispatchEvent(new Event('input', { bubbles: true })); // 触发持久化
   closeModelList();
 }
 
@@ -963,13 +1083,14 @@ function onModelKeydown(event) {
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
     event.preventDefault();
     if (!modelComboOpen) {
-      modelComboActiveIndex = event.key === 'ArrowDown' ? 0 : 999999;  // render 时收敛到末项
+      modelComboActiveIndex = event.key === 'ArrowDown' ? 0 : 999999; // render 时收敛到末项
       openModelList();
       return;
     }
     const count = list ? list.querySelectorAll('.model-combo-item').length : 0;
     if (count) {
-      modelComboActiveIndex = (modelComboActiveIndex + (event.key === 'ArrowDown' ? 1 : -1) + count) % count;
+      modelComboActiveIndex =
+        (modelComboActiveIndex + (event.key === 'ArrowDown' ? 1 : -1) + count) % count;
       renderModelList();
     }
     return;
@@ -989,14 +1110,21 @@ function onModelKeydown(event) {
 function maybeAutoFetchModels() {
   clearTimeout(modelAutoFetchTimer);
   const cfg = formSettings();
-  if (!cfg.baseUrl || !cfg.apiKey) { setModelReadonly(false); return; }
+  if (!cfg.baseUrl || !cfg.apiKey) {
+    setModelReadonly(false);
+    return;
+  }
   const key = modelListKey(cfg);
   const cached = modelListCache.get(key);
-  if (cached && cached.length) { setModelReadonly(true); return; }
+  if (cached && cached.length) {
+    setModelReadonly(true);
+    return;
+  }
   // 新配置还没有模型列表：先恢复手动输入，静默获取成功后再切回「仅选择」。
   setModelReadonly(false);
-  Promise.resolve(typeof BM.hasLlmHostPermission === 'function'
-    ? BM.hasLlmHostPermission(cfg.baseUrl) : false)
+  Promise.resolve(
+    typeof BM.hasLlmHostPermission === 'function' ? BM.hasLlmHostPermission(cfg.baseUrl) : false
+  )
     .then(granted => {
       if (!granted) return;
       modelAutoFetchTimer = setTimeout(() => fetchModelList({ silent: true }).catch(() => {}), 700);
@@ -1012,48 +1140,97 @@ async function fetchModelList(opts) {
   const cfg = formSettings();
   const profileId = activeLlmProfileId;
   if (!cfg.baseUrl) {
-    if (msg && !opts.silent) { msg.textContent = '请先填写 Base URL'; msg.className = 'settings-msg err'; }
+    if (msg && !opts.silent) {
+      msg.textContent = '请先填写 Base URL';
+      msg.className = 'settings-msg err';
+    }
     return;
   }
-  if (!opts.silent && btn) { btn.disabled = true; btn.textContent = '获取中…'; }
-  if (msg && !opts.silent) { msg.textContent = ''; msg.className = 'settings-msg'; }
+  if (!opts.silent && btn) {
+    btn.disabled = true;
+    btn.textContent = '获取中…';
+  }
+  if (msg && !opts.silent) {
+    msg.textContent = '';
+    msg.className = 'settings-msg';
+  }
   try {
     await BM.requestLlmHostPermission(cfg.baseUrl);
     const models = await BM.listModels(cfg);
     const currentCfg = formSettings();
-    if (intent !== modelFetchIntent || activeLlmProfileId !== profileId ||
-      currentCfg.provider !== cfg.provider || currentCfg.baseUrl !== cfg.baseUrl || currentCfg.apiKey !== cfg.apiKey) return;
+    if (
+      intent !== modelFetchIntent ||
+      activeLlmProfileId !== profileId ||
+      currentCfg.provider !== cfg.provider ||
+      currentCfg.baseUrl !== cfg.baseUrl ||
+      currentCfg.apiKey !== cfg.apiKey
+    )
+      return;
     modelListCache.set(modelListKey(cfg), mergeModelOptions(models, $('#setModel').value.trim()));
-    setModelReadonly(true);   // 列表已就绪：只能从列表中选择模型
+    setModelReadonly(true); // 列表已就绪：只能从列表中选择模型
     if (modelComboOpen) renderModelList();
     const current = $('#setModel').value.trim();
     if (msg && !opts.silent) {
-      msg.textContent = '已加载 ' + models.length + ' 个模型' +
+      msg.textContent =
+        '已加载 ' +
+        models.length +
+        ' 个模型' +
         (current && !models.includes(current) ? '；当前模型未出现在列表中，仍可继续使用' : '');
       msg.className = 'settings-msg ok';
     }
   } catch (e) {
     if (intent !== modelFetchIntent) return;
-    if (msg && !opts.silent) { msg.textContent = '获取失败：' + (e.message || e); msg.className = 'settings-msg err'; }
+    if (msg && !opts.silent) {
+      msg.textContent = '获取失败：' + (e.message || e);
+      msg.className = 'settings-msg err';
+    }
   } finally {
-    if (intent === modelFetchIntent && btn && !opts.silent) { btn.disabled = false; btn.textContent = '获取模型列表'; }
+    if (intent === modelFetchIntent && btn && !opts.silent) {
+      btn.disabled = false;
+      btn.textContent = '获取模型列表';
+    }
   }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  $('#setProvider').addEventListener('change', () => { applyProviderPreset(); persist(); maybeAutoFetchModels(); });
-  $('#setBase').addEventListener('input', () => { persist(); maybeAutoFetchModels(); });
-  $('#setModel').addEventListener('input', persist);
+  $('#setProvider').addEventListener('change', () => {
+    applyProviderPreset();
+    persist();
+    maybeAutoFetchModels();
+  });
+  $('#setBase').addEventListener('input', () => {
+    queuePersist();
+    maybeAutoFetchModels();
+  });
+  $('#setModel').addEventListener('input', queuePersist);
   $('#setModel').addEventListener('input', event => {
-    if (event.isTrusted) { modelComboActiveIndex = 0; openModelList(); }
-    else if (modelComboOpen) renderModelList();
+    if (event.isTrusted) {
+      modelComboActiveIndex = 0;
+      openModelList();
+    } else if (modelComboOpen) renderModelList();
   });
   $('#setModel').addEventListener('focus', () => openModelList());
+  $('#setModel').addEventListener('click', () => {
+    // 选中后输入框仍保持聚焦且变为只读，focus 不会再次触发，需在 click 时重新打开下拉
+    if (!modelComboOpen) openModelList();
+  });
   $('#setModel').addEventListener('blur', () => closeModelList());
   $('#setModel').addEventListener('keydown', onModelKeydown);
-  $('#setKey').addEventListener('input', () => { persist(); maybeAutoFetchModels(); });
-  $('#setProfileName').addEventListener('input', persist);
-  $('#setProfile').addEventListener('change', event => { switchLlmProfile(event.target.value); });
+  $('#setKey').addEventListener('input', () => {
+    queuePersist();
+    maybeAutoFetchModels();
+  });
+  $('#setKeyToggle').addEventListener('click', () => {
+    const input = $('#setKey');
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    $('#setKeyToggle').textContent = show ? '隐藏' : '显示';
+    input.focus();
+  });
+  $('#setProfileName').addEventListener('input', queuePersist);
+  $('#setProfile').addEventListener('change', event => {
+    switchLlmProfile(event.target.value);
+  });
   $('#profileNew').addEventListener('click', createLlmProfile);
   $('#profileDelete').addEventListener('click', deleteActiveLlmProfile);
   $('#settingsSave').addEventListener('click', saveWithLlmPermission);
@@ -1068,7 +1245,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (fetchBtn && fetchBtn.contains(event.target)) return;
     closeModelList();
   });
-  $('#setFixedTags').addEventListener('input', persistFixedTags);
+  $('#setFixedTags').addEventListener('input', debounce(persistFixedTags, 600));
   // 规则编辑完成并失焦后再保存，避免每次敲键都让已打开的侧边栏全量刷新。
   $('#setDomainTagRules').addEventListener('change', persistTagRules);
   $('#setKeywordTagRules').addEventListener('change', persistTagRules);
@@ -1076,7 +1253,9 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#setAutoAiTag').addEventListener('change', persistAutoAiTag);
   $('#setTagSync').addEventListener('change', persistTagSync);
   // 新标签页外观：改动即存，新标签页通过 onChanged 实时生效
-  $('#setNtWidth').addEventListener('change', () => persistNtAppearance('已保存 · 新标签页宽度即时生效'));
+  $('#setNtWidth').addEventListener('change', () =>
+    persistNtAppearance('已保存 · 新标签页宽度即时生效')
+  );
   $('#setNtTheme').addEventListener('change', () => {
     ntBgRowVisible($('#setNtTheme').value === 'custom');
     persistNtAppearance('已保存 · 新标签页配色即时生效');

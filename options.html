@@ -1,260 +1,599 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>书签管家 · 设置</title>
-  <link rel="stylesheet" href="css/popup.css" />
-</head>
-<body class="opt-body">
-  <div class="opt-wrap">
-    <div class="opt-hero">
-      <h1><span class="brand-icon">⚙️</span> 书签管家 · 设置</h1>
-      <p><b id="optVersion"></b> · 所有数据仅保存在你的浏览器本地 · 修改即时生效，无需手动保存</p>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>书签管家 · 设置</title>
+    <link rel="stylesheet" href="css/popup.css" />
+  </head>
+  <body class="opt-body">
+    <div class="opt-wrap">
+      <div class="opt-hero">
+        <h1>
+          <span class="brand-icon"
+            ><svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+              /></svg
+          ></span>
+          书签管家 · 设置
+        </h1>
+        <p><b id="optVersion"></b> · 所有数据仅保存在你的浏览器本地 · 修改即时生效，无需手动保存</p>
+      </div>
+
+      <!-- ===== 分组 1：AI 分类 ===== -->
+      <section class="opt-section">
+        <div class="opt-section-head">
+          <div class="opt-section-icon opt-section-icon-ai">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 8V4H8" />
+              <rect width="16" height="12" x="4" y="8" rx="2" />
+              <path d="M2 14h2" />
+              <path d="M20 14h2" />
+              <path d="M15 13v2" />
+              <path d="M9 13v2" />
+            </svg>
+          </div>
+          <div class="opt-section-text">
+            <h2>
+              AI 分类
+              <button
+                class="help-dot"
+                type="button"
+                data-tip="不配置 AI 服务商时，普通书签管理和本地规则仍可使用。"
+                aria-label="不配置 AI 服务商时，普通书签管理和本地规则仍可使用。"
+              >
+                ?
+              </button>
+            </h2>
+          </div>
+        </div>
+
+        <div class="opt-card">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="3" />
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+                /></svg
+            ></span>
+            <div>
+              <div class="opt-card-title">
+                LLM 服务商配置
+                <button
+                  class="help-dot"
+                  type="button"
+                  data-tip="API Key 仅保存在本地，不会同步或发送给扩展开发者。保存配置或测试连接时，会请求当前 API 域名的网络访问权限；AI 仅发送标题与 URL 的域名、路径。"
+                >
+                  ?
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="llm-profile-bar">
+            <div class="form-row">
+              <label>已保存的配置</label>
+              <select id="setProfile"></select>
+            </div>
+            <div class="profile-actions">
+              <button id="profileNew" type="button" class="btn ghost">新建配置</button>
+              <button id="profileDelete" type="button" class="btn ghost danger-text">删除</button>
+            </div>
+          </div>
+          <div class="opt-grid">
+            <div class="form-row form-row-wide">
+              <label>配置名称</label>
+              <input
+                id="setProfileName"
+                type="text"
+                maxlength="80"
+                placeholder="例如：公司 Kimi"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </div>
+            <div class="form-row">
+              <label>服务商 / 协议</label>
+              <select id="setProvider">
+                <option value="openai">OpenAI</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="grok">Grok (xAI)</option>
+                <option value="groq">Groq</option>
+                <option value="gemini">Gemini（OpenAI 兼容层）</option>
+                <option value="ollama">Ollama（本地）</option>
+                <option value="custom">自定义</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Base URL</label>
+              <input
+                id="setBase"
+                type="text"
+                placeholder="https://api.example.com/v1"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </div>
+            <div class="form-row">
+              <label>API Key</label>
+              <div class="secret-row">
+                <input
+                  id="setKey"
+                  type="password"
+                  placeholder="sk-..."
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <button id="setKeyToggle" type="button" class="text-btn">显示</button>
+              </div>
+            </div>
+            <div class="form-row">
+              <label>模型名</label>
+              <div class="model-fetch-row">
+                <div class="model-combo" id="modelCombo">
+                  <input
+                    id="setModel"
+                    type="text"
+                    placeholder="输入或从下拉选择模型"
+                    autocomplete="off"
+                    spellcheck="false"
+                    role="combobox"
+                    aria-expanded="false"
+                    aria-autocomplete="list"
+                    aria-controls="modelComboList"
+                    aria-activedescendant=""
+                  />
+                  <span class="model-combo-caret" aria-hidden="true">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </span>
+                  <ul
+                    id="modelComboList"
+                    class="model-combo-list"
+                    role="listbox"
+                    aria-label="模型列表"
+                    hidden
+                  ></ul>
+                </div>
+                <button id="modelsFetch" type="button" class="btn ghost">获取模型列表</button>
+              </div>
+              <span id="modelsMsg" class="settings-msg"></span>
+            </div>
+          </div>
+          <div class="opt-foot">
+            <span id="settingsMsg" class="settings-msg"></span>
+            <button id="settingsSave" class="btn ghost">保存配置</button>
+            <button id="settingsTest" class="btn primary">测试连接</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 分组 2：标签体系 ===== -->
+      <section class="opt-section">
+        <div class="opt-section-head">
+          <div class="opt-section-icon opt-section-icon-tag">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.83z"
+              />
+              <line x1="7" y1="7" x2="7.01" y2="7" />
+            </svg>
+          </div>
+          <div class="opt-section-text">
+            <h2>
+              标签体系
+              <button
+                class="help-dot"
+                type="button"
+                data-tip="AI 打标、建议标签和收敛仅使用固定标签池内的标签。"
+                aria-label="AI 打标、建议标签和收敛仅使用固定标签池内的标签。"
+              >
+                ?
+              </button>
+            </h2>
+          </div>
+        </div>
+
+        <div class="opt-card opt-card-compact opt-card-tag-tag">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path
+                  d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.83z"
+                />
+                <line x1="7" y1="7" x2="7.01" y2="7" /></svg
+            ></span>
+            <div>
+              <div class="opt-card-title">
+                固定标签池（最多 50 个）
+                <button
+                  class="help-dot"
+                  type="button"
+                  data-tip="每行一个标签。更新标签池后，历史书签需执行收敛标签或重新打标才会生效。"
+                  aria-label="每行一个标签。更新标签池后，历史书签需执行收敛标签或重新打标才会生效。"
+                >
+                  ?
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>标签池（每行一个）</label>
+            <textarea
+              id="setFixedTags"
+              rows="10"
+              spellcheck="false"
+              placeholder="AI&#10;代码&#10;前端&#10;后端&#10;设计&#10;论坛&#10;工具"
+            ></textarea>
+          </div>
+          <div class="opt-foot">
+            <span id="fixedTagsMsg" class="settings-msg"></span>
+          </div>
+        </div>
+
+        <div class="opt-card opt-card-compact opt-card-tag-tag">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="3" />
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+                /></svg
+            ></span>
+            <div>
+              <div class="opt-card-title">
+                自定义规则
+                <button
+                  class="help-dot"
+                  type="button"
+                  data-tip="每行填写 关键字=标签1,标签2。标签必须先存在于固定标签池；域名规则只匹配主机名，首个标签也会作为概览分类名；标题/路径规则不会读取查询参数或页面锚点。"
+                  aria-label="每行填写关键字等于标签列表。标签必须先存在于固定标签池。"
+                >
+                  ?
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="opt-grid">
+            <div class="form-row form-row-wide">
+              <label>域名关键字 → 标签（首个标签为概览分类）</label>
+              <textarea
+                id="setDomainTagRules"
+                rows="7"
+                spellcheck="false"
+                placeholder="github=代码&#10;corp=工作,代码&#10;# 只匹配 hostname"
+              ></textarea>
+            </div>
+            <div class="form-row form-row-wide">
+              <label>标题 / URL 路径关键字 → 标签</label>
+              <textarea
+                id="setKeywordTagRules"
+                rows="7"
+                spellcheck="false"
+                placeholder="教程=学习,教程&#10;release=资讯&#10;# 不匹配 query 或 fragment"
+              ></textarea>
+            </div>
+          </div>
+          <div class="opt-foot">
+            <span id="tagRulesMsg" class="settings-msg"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 分组 3：浏览器集成 ===== -->
+      <section class="opt-section">
+        <div class="opt-section-head">
+          <div class="opt-section-icon opt-section-icon-browser">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="2" y1="12" x2="22" y2="12" />
+              <path
+                d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+              />
+            </svg>
+          </div>
+          <div class="opt-section-text">
+            <h2>
+              浏览器集成
+              <button
+                class="help-dot"
+                type="button"
+                data-tip="可设置浏览器收藏后的后台默认打标，以及跨设备标签同步。"
+                aria-label="可设置浏览器收藏后的后台默认打标，以及跨设备标签同步。"
+              >
+                ?
+              </button>
+            </h2>
+          </div>
+        </div>
+
+        <div class="opt-card opt-card-compact opt-card-tag-browser">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <polygon
+                  points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21 12 17.77 5.82 21 7 14.14 2 9.27 8.91 8.26 12 2"
+                /></svg
+            ></span>
+            <div>
+              <div class="opt-card-title">
+                接管浏览器收藏按钮
+                <button
+                  class="help-dot"
+                  type="button"
+                  data-tip="地址栏收藏后先按本地域名与关键词规则打标。可另行允许 AI 仅补充规则未知项；登录、凭据参数、金融服务和原生批量导入不会发送给 AI。"
+                  aria-label="地址栏收藏后先按本地域名与关键词规则打标。可另行允许 AI 仅补充规则未知项；登录、凭据参数、金融服务和原生批量导入不会发送给 AI。"
+                >
+                  ?
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="form-row">
+            <label class="switch-row">
+              <input type="checkbox" id="setStarHook" />
+              <span>启用收藏按钮后台规则打标</span>
+            </label>
+          </div>
+          <div class="form-row">
+            <label class="switch-row">
+              <input type="checkbox" id="setAutoAiTag" />
+              <span>规则无法确定时，允许后台静默使用 AI 补充标签</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="opt-card opt-card-compact opt-card-tag-browser">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <polyline points="17 1 21 5 17 9" />
+                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                <polyline points="7 23 3 19 7 15" />
+                <path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg
+            ></span>
+            <div>
+              <div class="opt-card-title">
+                标签原生同步（跨设备）
+                <button
+                  class="help-dot"
+                  type="button"
+                  data-tip="标签、固定标签池和自定义规则保存在受保护的“书签管家同步数据”目录，并随 Chrome 书签同步。插件不会显示该目录；不要在 Chrome 书签管理器中修改或删除它。"
+                >
+                  ?
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="form-row">
+            <label class="switch-row">
+              <input type="checkbox" id="setTagSync" />
+              <span>启用标签原生同步</span>
+            </label>
+          </div>
+          <div class="opt-foot">
+            <span id="tagSyncMsg" class="settings-msg"></span>
+            <span id="tagSyncSummary" class="settings-msg"></span>
+          </div>
+          <div id="tagSyncProgress" class="tag-sync-progress" hidden aria-live="polite">
+            <div
+              class="tag-sync-progress-track"
+              role="progressbar"
+              aria-label="标签同步初始化进度"
+              aria-valuemin="0"
+              aria-valuemax="5"
+              aria-valuenow="0"
+            >
+              <span id="tagSyncProgressBar" class="tag-sync-progress-bar"></span>
+            </div>
+            <span id="tagSyncProgressText" class="tag-sync-progress-text"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 分组 4：新标签页外观 ===== -->
+      <section class="opt-section">
+        <div class="opt-section-head">
+          <div class="opt-section-icon opt-section-icon-ui">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+              <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+              <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+              <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+              <path
+                d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"
+              />
+            </svg>
+          </div>
+          <div class="opt-section-text">
+            <h2>
+              新标签页外观
+              <button
+                class="help-dot"
+                type="button"
+                data-tip="布局宽度与配色仅作用于新标签页，不改变侧边栏；均为本地设置，不上传不同步。"
+                aria-label="布局宽度与配色仅作用于新标签页。"
+              >
+                ?
+              </button>
+            </h2>
+          </div>
+        </div>
+
+        <div class="opt-card opt-card-compact opt-card-tag-ui">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+                <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+                <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+                <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+                <path
+                  d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"
+                /></svg
+            ></span>
+            <div>
+              <div class="opt-card-title">
+                布局宽度与配色
+                <button
+                  class="help-dot"
+                  type="button"
+                  data-tip="宽度影响卡片列数：屏幕越宽列数越多。2K 屏可选手「超宽」或「自动铺满」。选择自定义背景色时，文字与面板会按背景亮度自动匹配明暗，保证可读。"
+                  aria-label="宽度影响卡片列数。"
+                >
+                  ?
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="opt-grid">
+            <div class="form-row">
+              <label>内容区宽度</label>
+              <select id="setNtWidth">
+                <option value="1080">紧凑 · 默认（1080px / 约 3-4 列）</option>
+                <option value="1440">标准（1440px / 约 4-5 列）</option>
+                <option value="1720">宽屏（1720px / 约 5-6 列）</option>
+                <option value="2560">超宽 · 2K（2560px / 约 7-8 列）</option>
+                <option value="auto">自动铺满（列数完全跟随屏幕）</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>页面配色</label>
+              <select id="setNtTheme">
+                <option value="auto">跟随系统（默认）</option>
+                <option value="light">始终浅色</option>
+                <option value="dark">始终深色</option>
+                <option value="custom">自定义背景色…</option>
+              </select>
+            </div>
+            <div class="form-row form-row-wide" id="ntBgRow" hidden>
+              <label
+                >背景颜色
+                <button
+                  class="help-dot"
+                  type="button"
+                  data-tip="点击色块取色，或直接输入十六进制色值（#rrggbb）。"
+                  aria-label="点击色块取色。"
+                >
+                  ?
+                </button></label
+              >
+              <div class="nt-bg-picker">
+                <input type="color" id="setNtBg" value="#0f1117" />
+                <input
+                  type="text"
+                  id="setNtBgHex"
+                  maxlength="7"
+                  placeholder="#0f1117"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <button id="setNtBgReset" type="button" class="btn ghost small">重置默认色</button>
+              </div>
+            </div>
+          </div>
+          <div class="opt-foot">
+            <span id="ntAppearMsg" class="settings-msg"></span>
+          </div>
+        </div>
+      </section>
     </div>
 
-    <!-- ===== 分组 1：AI 分类 ===== -->
-    <section class="opt-section">
-      <div class="opt-section-head">
-        <div class="opt-section-icon opt-section-icon-ai">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
-        </div>
-        <div class="opt-section-text">
-          <h2>AI 分类 <button class="help-dot" type="button" data-tip="不配置 AI 服务商时，普通书签管理和本地规则仍可使用。" aria-label="不配置 AI 服务商时，普通书签管理和本地规则仍可使用。">?</button></h2>
-        </div>
-      </div>
-
-      <div class="opt-card">
-        <div class="opt-card-head">
-          <span class="opt-card-icon">⚙️</span>
-          <div>
-            <div class="opt-card-title">LLM 服务商配置 <button class="help-dot" type="button" data-tip="API Key 仅保存在本地，不会同步或发送给扩展开发者。保存配置或测试连接时，会请求当前 API 域名的网络访问权限；AI 仅发送标题与 URL 的域名、路径。">?</button></div>
-          </div>
-        </div>
-        <div class="llm-profile-bar">
-          <div class="form-row">
-            <label>📚 已保存的配置</label>
-            <select id="setProfile"></select>
-          </div>
-          <div class="profile-actions">
-            <button id="profileNew" type="button" class="btn ghost">新建配置</button>
-            <button id="profileDelete" type="button" class="btn ghost danger-text">删除</button>
-          </div>
-        </div>
-        <div class="opt-grid">
-          <div class="form-row form-row-wide">
-            <label>🏷️ 配置名称</label>
-            <input id="setProfileName" type="text" maxlength="80" placeholder="例如：公司 Kimi" autocomplete="off" spellcheck="false" />
-          </div>
-          <div class="form-row">
-            <label>🌐 服务商 / 协议</label>
-            <select id="setProvider">
-              <option value="openai">OpenAI</option>
-              <option value="deepseek">DeepSeek</option>
-              <option value="grok">Grok (xAI)</option>
-              <option value="groq">Groq</option>
-              <option value="gemini">Gemini（OpenAI 兼容层）</option>
-              <option value="ollama">Ollama（本地）</option>
-              <option value="custom">自定义</option>
-            </select>
-          </div>
-          <div class="form-row">
-            <label>🔗 Base URL</label>
-            <input id="setBase" type="text" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false" />
-          </div>
-          <div class="form-row">
-            <label>🔑 API Key</label>
-            <input id="setKey" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false" />
-          </div>
-          <div class="form-row">
-            <label>🤖 模型名</label>
-            <div class="model-fetch-row">
-              <div class="model-combo" id="modelCombo">
-                <input id="setModel" type="text" placeholder="输入或从下拉选择模型" autocomplete="off" spellcheck="false"
-                  role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="modelComboList" aria-activedescendant="" />
-                <span class="model-combo-caret" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                </span>
-                <ul id="modelComboList" class="model-combo-list" role="listbox" aria-label="模型列表" hidden></ul>
-              </div>
-              <button id="modelsFetch" type="button" class="btn ghost">获取模型列表</button>
-            </div>
-            <span id="modelsMsg" class="settings-msg"></span>
-          </div>
-        </div>
-        <div class="opt-foot">
-          <span id="settingsMsg" class="settings-msg"></span>
-          <button id="settingsSave" class="btn ghost">保存配置</button>
-          <button id="settingsTest" class="btn primary">🔌 测试连接</button>
-        </div>
-      </div>
-
-    </section>
-
-    <!-- ===== 分组 2：标签体系 ===== -->
-    <section class="opt-section">
-      <div class="opt-section-head">
-        <div class="opt-section-icon opt-section-icon-tag">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.83z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-        </div>
-        <div class="opt-section-text">
-          <h2>标签体系 <button class="help-dot" type="button" data-tip="AI 打标、建议标签和收敛仅使用固定标签池内的标签。" aria-label="AI 打标、建议标签和收敛仅使用固定标签池内的标签。">?</button></h2>
-        </div>
-      </div>
-
-      <div class="opt-card opt-card-compact opt-card-tag-tag">
-        <div class="opt-card-head">
-          <span class="opt-card-icon">🏷️</span>
-          <div>
-            <div class="opt-card-title">固定标签池（最多 50 个） <button class="help-dot" type="button" data-tip="每行一个标签。更新标签池后，历史书签需执行收敛标签或重新打标才会生效。" aria-label="每行一个标签。更新标签池后，历史书签需执行收敛标签或重新打标才会生效。">?</button></div>
-          </div>
-        </div>
-        <div class="form-row">
-          <label>📝 标签池（每行一个）</label>
-          <textarea id="setFixedTags" rows="10" spellcheck="false" placeholder="AI&#10;代码&#10;前端&#10;后端&#10;设计&#10;论坛&#10;工具"></textarea>
-        </div>
-        <div class="opt-foot">
-          <span id="fixedTagsMsg" class="settings-msg"></span>
-        </div>
-      </div>
-
-      <div class="opt-card opt-card-compact opt-card-tag-tag">
-        <div class="opt-card-head">
-          <span class="opt-card-icon">⚙️</span>
-          <div>
-            <div class="opt-card-title">自定义规则 <button class="help-dot" type="button" data-tip="每行填写 关键字=标签1,标签2。标签必须先存在于固定标签池；域名规则只匹配主机名，首个标签也会作为概览分类名；标题/路径规则不会读取查询参数或页面锚点。" aria-label="每行填写关键字等于标签列表。标签必须先存在于固定标签池。">?</button></div>
-          </div>
-        </div>
-        <div class="opt-grid">
-          <div class="form-row form-row-wide">
-            <label>🌐 域名关键字 → 标签（首个标签为概览分类）</label>
-            <textarea id="setDomainTagRules" rows="7" spellcheck="false" placeholder="github=代码&#10;corp=工作,代码&#10;# 只匹配 hostname"></textarea>
-          </div>
-          <div class="form-row form-row-wide">
-            <label>📝 标题 / URL 路径关键字 → 标签</label>
-            <textarea id="setKeywordTagRules" rows="7" spellcheck="false" placeholder="教程=学习,教程&#10;release=资讯&#10;# 不匹配 query 或 fragment"></textarea>
-          </div>
-        </div>
-        <div class="opt-foot">
-          <span id="tagRulesMsg" class="settings-msg"></span>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===== 分组 3：浏览器集成 ===== -->
-    <section class="opt-section">
-      <div class="opt-section-head">
-        <div class="opt-section-icon opt-section-icon-browser">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-        </div>
-        <div class="opt-section-text">
-          <h2>浏览器集成 <button class="help-dot" type="button" data-tip="可设置浏览器收藏后的后台默认打标，以及跨设备标签同步。" aria-label="可设置浏览器收藏后的后台默认打标，以及跨设备标签同步。">?</button></h2>
-        </div>
-      </div>
-
-      <div class="opt-card opt-card-compact opt-card-tag-browser">
-        <div class="opt-card-head">
-          <span class="opt-card-icon">⭐</span>
-          <div>
-            <div class="opt-card-title">接管浏览器收藏按钮 <button class="help-dot" type="button" data-tip="地址栏收藏后先按本地域名与关键词规则打标。可另行允许 AI 仅补充规则未知项；登录、凭据参数、金融服务和原生批量导入不会发送给 AI。" aria-label="地址栏收藏后先按本地域名与关键词规则打标。可另行允许 AI 仅补充规则未知项；登录、凭据参数、金融服务和原生批量导入不会发送给 AI。">?</button></div>
-          </div>
-        </div>
-        <div class="form-row">
-          <label class="switch-row">
-            <input type="checkbox" id="setStarHook" />
-            <span>启用 ⭐ 收藏按钮后台规则打标</span>
-          </label>
-        </div>
-        <div class="form-row">
-          <label class="switch-row">
-            <input type="checkbox" id="setAutoAiTag" />
-            <span>规则无法确定时，允许后台静默使用 AI 补充标签</span>
-          </label>
-        </div>
-      </div>
-
-      <div class="opt-card opt-card-compact opt-card-tag-browser">
-        <div class="opt-card-head">
-          <span class="opt-card-icon">🔄</span>
-          <div>
-            <div class="opt-card-title">标签原生同步（跨设备） <button class="help-dot" type="button" data-tip="标签、固定标签池和自定义规则保存在受保护的“书签管家同步数据”目录，并随 Chrome 书签同步。插件不会显示该目录；不要在 Chrome 书签管理器中修改或删除它。">?</button></div>
-          </div>
-        </div>
-        <div class="form-row">
-          <label class="switch-row">
-            <input type="checkbox" id="setTagSync" />
-            <span>启用标签原生同步</span>
-          </label>
-        </div>
-        <div class="opt-foot">
-          <span id="tagSyncMsg" class="settings-msg"></span>
-          <span id="tagSyncSummary" class="settings-msg"></span>
-        </div>
-        <div id="tagSyncProgress" class="tag-sync-progress" hidden aria-live="polite">
-          <div class="tag-sync-progress-track" role="progressbar" aria-label="标签同步初始化进度" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0">
-            <span id="tagSyncProgressBar" class="tag-sync-progress-bar"></span>
-          </div>
-          <span id="tagSyncProgressText" class="tag-sync-progress-text"></span>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===== 分组 4：新标签页外观 ===== -->
-    <section class="opt-section">
-      <div class="opt-section-head">
-        <div class="opt-section-icon opt-section-icon-ui">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
-        </div>
-        <div class="opt-section-text">
-          <h2>新标签页外观 <button class="help-dot" type="button" data-tip="布局宽度与配色仅作用于新标签页，不改变侧边栏；均为本地设置，不上传不同步。" aria-label="布局宽度与配色仅作用于新标签页。">?</button></h2>
-        </div>
-      </div>
-
-      <div class="opt-card opt-card-compact opt-card-tag-ui">
-        <div class="opt-card-head">
-          <span class="opt-card-icon">🎨</span>
-          <div>
-            <div class="opt-card-title">布局宽度与配色 <button class="help-dot" type="button" data-tip="宽度影响卡片列数：屏幕越宽列数越多。2K 屏可选手「超宽」或「自动铺满」。选择自定义背景色时，文字与面板会按背景亮度自动匹配明暗，保证可读。" aria-label="宽度影响卡片列数。">?</button></div>
-          </div>
-        </div>
-        <div class="opt-grid">
-          <div class="form-row">
-            <label>↔️ 内容区宽度</label>
-            <select id="setNtWidth">
-              <option value="1080">紧凑 · 默认（1080px / 约 3-4 列）</option>
-              <option value="1440">标准（1440px / 约 4-5 列）</option>
-              <option value="1720">宽屏（1720px / 约 5-6 列）</option>
-              <option value="2560">超宽 · 2K（2560px / 约 7-8 列）</option>
-              <option value="auto">自动铺满（列数完全跟随屏幕）</option>
-            </select>
-          </div>
-          <div class="form-row">
-            <label>🎨 页面配色</label>
-            <select id="setNtTheme">
-              <option value="auto">跟随系统（默认）</option>
-              <option value="light">始终浅色</option>
-              <option value="dark">始终深色</option>
-              <option value="custom">自定义背景色…</option>
-            </select>
-          </div>
-          <div class="form-row form-row-wide" id="ntBgRow" hidden>
-            <label>🖌️ 背景颜色 <button class="help-dot" type="button" data-tip="点击色块取色，或直接输入十六进制色值（#rrggbb）。" aria-label="点击色块取色。">?</button></label>
-            <div class="nt-bg-picker">
-              <input type="color" id="setNtBg" value="#0f1117" />
-              <input type="text" id="setNtBgHex" maxlength="7" placeholder="#0f1117" autocomplete="off" spellcheck="false" />
-              <button id="setNtBgReset" type="button" class="btn ghost small">重置默认色</button>
-            </div>
-          </div>
-        </div>
-        <div class="opt-foot">
-          <span id="ntAppearMsg" class="settings-msg"></span>
-        </div>
-      </div>
-    </section>
-
-  </div>
-
-  <script src="js/lib.js"></script>
-  <script src="js/options.js"></script>
-</body>
+    <script src="js/lib.js"></script>
+    <script src="js/options.js"></script>
+  </body>
 </html>

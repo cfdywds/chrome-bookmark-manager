@@ -28,90 +28,69 @@
 
   // ---- 新标签页外观（设置页「新标签页外观」）----
   const NT_APPEARANCE_KEY = 'bmNewtabAppearance';
-  // 与 popup.css :root 两套色板一致（DRY 约束：值改动时需同步两处）
-  const NT_PALETTES = {
-    light: {
-      '--bg': '#f3f5f8', '--panel': '#ffffff', '--ink': '#101828', '--ink-2': '#344054',
-      '--muted': '#667085', '--line': '#e7ebf0', '--line-2': '#dce1e8',
-      '--primary': '#2563eb', '--primary-2': '#0ea5e9', '--primary-3': '#7cb8f7', '--primary-soft': '#e9f1fe',
-      '--accent': '#06b6d4', '--pink': '#ec4899',
-      '--grad': 'linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)',
-      '--grad-soft': 'linear-gradient(135deg, #eaf2fe 0%, #e8f9fd 100%)',
-      '--danger': '#e11d48', '--danger-soft': '#ffe7ec',
-      '--warn': '#d97706', '--warn-soft': '#fdf1d7',
-      '--ok': '#059669', '--ok-strong': '#047857', '--ok-soft': '#d5f5e7',
-      '--shadow-sm': '0 1px 2px rgba(15, 23, 42, .06)',
-      '--shadow': '0 6px 20px rgba(15, 23, 42, .09)',
-      '--shadow-lg': '0 16px 48px rgba(15, 23, 42, .16)'
-    },
-    dark: {
-      '--bg': '#0f1117', '--panel': '#171b24', '--ink': '#f2f4f8', '--ink-2': '#c3c9d4',
-      '--muted': '#8b93a3', '--line': '#242a36', '--line-2': '#303845',
-      '--primary': '#5da2f5', '--primary-2': '#38bdf8', '--primary-3': '#93c5fd', '--primary-soft': '#1a2436',
-      '--accent': '#22d3ee', '--pink': '#f472b6',
-      '--grad': 'linear-gradient(135deg, #3b82f6 0%, #22d3ee 100%)',
-      '--grad-soft': 'linear-gradient(135deg, #182234 0%, #16232c 100%)',
-      '--danger': '#fb7185', '--danger-soft': '#3a2229',
-      '--warn': '#fbbf24', '--warn-soft': '#332a14',
-      '--ok': '#34d399', '--ok-strong': '#6ee7b7', '--ok-soft': '#12332a',
-      '--shadow-sm': '0 1px 2px rgba(0, 0, 0, .4)',
-      '--shadow': '0 6px 20px rgba(0, 0, 0, .45)',
-      '--shadow-lg': '0 16px 48px rgba(0, 0, 0, .55)'
-    }
-  };
-  const NT_WIDTHS = ['1080', '1440', '1720', '2560', 'auto'];
+  // 颜色变量由 newtab.css 按 data-nt-theme 维护（消除 JS/CSS 双份调色板）
   const NT_DEFAULT_BG = '#0f1117';
+  const NT_WIDTHS = ['1080', '1440', '1720', '2560', 'auto'];
 
   function hexLuma(hex) {
     const h = String(hex || '').replace('#', '');
     if (!/^[0-9a-fA-F]{6}$/.test(h)) return 255; // 非法 → 当作亮色
     const n = parseInt(h, 16);
-    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const r = (n >> 16) & 255,
+      g = (n >> 8) & 255,
+      b = n & 255;
     return 0.299 * r + 0.587 * g + 0.114 * b;
   }
 
-  // 应用外观：注入 --nt-maxw 与主题变量；theme='auto' 时还原为系统（移除覆盖）
+  // 应用外观：注入 --nt-maxw 与主题标记；theme='auto' 时还原为系统（移除覆盖）
   function applyAppearance(raw) {
-    raw = (raw && typeof raw === 'object') ? raw : {};
+    raw = raw && typeof raw === 'object' ? raw : {};
     const width = NT_WIDTHS.indexOf(raw.width) >= 0 ? raw.width : '1080';
     const theme = ['auto', 'light', 'dark', 'custom'].indexOf(raw.theme) >= 0 ? raw.theme : 'auto';
-    const bg = /^#[0-9a-fA-F]{6}$/.test(String(raw.bg || '')) ? String(raw.bg).toLowerCase() : NT_DEFAULT_BG;
+    const bg = /^#[0-9a-fA-F]{6}$/.test(String(raw.bg || ''))
+      ? String(raw.bg).toLowerCase()
+      : NT_DEFAULT_BG;
     const root = document.documentElement;
 
     // 1) 内容区宽度
     root.style.setProperty('--nt-maxw', width === 'auto' ? 'none' : width + 'px');
 
-    // 2) 主题：先摘除旧注入（删除全部变量后自动回退到 popup.css 的 :root 定义）
+    // 2) 主题：先摘除旧标记与旧自定义底色，再按主题设置（变量由 CSS 维护）
     root.removeAttribute('data-nt-theme');
-    Object.values(NT_PALETTES).forEach(pal => Object.keys(pal).forEach(k => root.style.removeProperty(k)));
-
+    root.style.removeProperty('--bg');
     if (theme === 'auto') return; // 交给 @media (prefers-color-scheme)
 
-    const paletteKey = (theme === 'custom') ? (hexLuma(bg) < 128 ? 'dark' : 'light') : theme;
-    const palette = NT_PALETTES[paletteKey];
-    if (!palette) return;
-    Object.entries(palette).forEach(([k, v]) => root.style.setProperty(k, v));
     if (theme === 'custom') {
-      // 自定义背景：页面底色用所选色，其余面板沿用对应明暗主题
       root.style.setProperty('--bg', bg);
+      root.setAttribute('data-nt-theme', hexLuma(bg) < 128 ? 'dark' : 'light');
+    } else {
+      root.setAttribute('data-nt-theme', theme);
     }
-    root.setAttribute('data-nt-theme', theme === 'custom' ? paletteKey : theme);
   }
 
   function esc(s) {
     return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   function safeHttpUrl(rawUrl) {
-    try { return window.BM.normalizeHttpUrl(rawUrl).href; } catch (e) { return ''; }
+    try {
+      return window.BM.normalizeHttpUrl(rawUrl).href;
+    } catch (e) {
+      return '';
+    }
   }
 
   function faviconUrl(rawUrl) {
     const href = safeHttpUrl(rawUrl);
     if (!href) return '';
-    return chrome.runtime.getURL('/_favicon/') + '?pageUrl=' + encodeURIComponent(href) + '&size=64';
+    return (
+      chrome.runtime.getURL('/_favicon/') + '?pageUrl=' + encodeURIComponent(href) + '&size=64'
+    );
   }
 
   function copyBookmarkUrl(rawUrl) {
@@ -142,9 +121,13 @@
     // 鼠标点击后链接仍会保留焦点；返回新标签页时应避免焦点重新展开抽屉。
     if (typeof card.blur === 'function') card.blur();
     wrap.classList.add('nt-card-opening');
-    wrap.addEventListener('mouseleave', () => {
-      wrap.classList.remove('nt-card-opening');
-    }, { once: true });
+    wrap.addEventListener(
+      'mouseleave',
+      () => {
+        wrap.classList.remove('nt-card-opening');
+      },
+      { once: true }
+    );
   }
 
   // 过滤 + 排序（最近添加在前）。
@@ -176,7 +159,15 @@
         }
         // 文本词：AND 匹配 hay
         if (textTerms.length) {
-          const hay = ((it.title || '') + ' ' + (it.url || '') + ' ' + (it.host || '') + ' ' + (it.tags || []).join(' ')).toLowerCase();
+          const hay = (
+            (it.title || '') +
+            ' ' +
+            (it.url || '') +
+            ' ' +
+            (it.host || '') +
+            ' ' +
+            (it.tags || []).join(' ')
+          ).toLowerCase();
           if (!textTerms.every(t => hay.includes(t))) return false;
         }
         return true;
@@ -189,10 +180,13 @@
     const stats = DATA.tagStats || {};
     const pool = new Set(window.BM.getFixedTags() || []);
     // 标签条只显示固定池内的标签（收敛；散落标签不展示）
-    const entries = Object.entries(stats).filter(([t]) => pool.has(t)).sort((a, b) => b[1] - a[1]);
+    const entries = Object.entries(stats)
+      .filter(([t]) => pool.has(t))
+      .sort((a, b) => b[1] - a[1]);
     const chip = (t, n, active) =>
-      `<button class="nt-tag${active ? ' active' : ''}" data-tag="${esc(t)}">${t ? '#' + esc(t) : '全部'} <span class="cnt">${n}</span></button>`;
-    $('#ntTags').innerHTML = chip('', DATA.items.length, !activeTag) +
+      `<button class="nt-tag${active ? ' active' : ''}" data-tag="${esc(t)}" aria-pressed="${active ? 'true' : 'false'}">${t ? '#' + esc(t) : '全部'} <span class="cnt">${n}</span></button>`;
+    $('#ntTags').innerHTML =
+      chip('', DATA.items.length, !activeTag) +
       entries.map(([t, n]) => chip(t, n, activeTag === t)).join('');
   }
 
@@ -231,9 +225,11 @@
       eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
       copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
       edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
-      trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>',
+      trash:
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>',
       save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>',
-      close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
+      close:
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
     };
     return paths[name] || '';
   }
@@ -269,7 +265,10 @@
 
   function updateMore(list) {
     const more = $('#ntMore');
-    if (list.length <= shown) { more.innerHTML = ''; return; }
+    if (list.length <= shown) {
+      more.innerHTML = '';
+      return;
+    }
     const btn = document.createElement('button');
     btn.className = 'btn small';
     btn.textContent = `加载更多（${shown}/${list.length}）`;
@@ -290,7 +289,11 @@
       await chrome.sidePanel.open({ windowId: win.id });
     } catch (e) {
       // 降级：打开设置页
-      try { chrome.runtime.openOptionsPage(); } catch (e2) { /* noop */ }
+      try {
+        chrome.runtime.openOptionsPage();
+      } catch (e2) {
+        /* noop */
+      }
     }
   }
 
@@ -304,7 +307,9 @@
     timer = setTimeout(render, 150);
   });
   $('#ntClear').addEventListener('click', () => {
-    search = ''; searchInput.value = ''; $('#ntClear').classList.add('hidden');
+    search = '';
+    searchInput.value = '';
+    $('#ntClear').classList.add('hidden');
     render();
   });
   // 键盘：回车直接打开第一条
@@ -317,13 +322,18 @@
   // 全局快捷键：/ 聚焦搜索（与侧边栏一致）；Esc 清空搜索
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && search) {
-      search = ''; searchInput.value = ''; $('#ntClear').classList.add('hidden');
+      search = '';
+      searchInput.value = '';
+      $('#ntClear').classList.add('hidden');
       render();
       return;
     }
     const tag = (e.target.tagName || '').toLowerCase();
     if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
-    if (e.key === '/') { e.preventDefault(); searchInput.focus(); }
+    if (e.key === '/') {
+      e.preventDefault();
+      searchInput.focus();
+    }
   });
   $('#ntTags').addEventListener('click', e => {
     const t = e.target.closest('.nt-tag');
@@ -339,9 +349,12 @@
     const sentinel = document.createElement('div');
     sentinel.className = 'nt-sticky-sentinel';
     searchBar.parentNode.insertBefore(sentinel, searchBar);
-    new IntersectionObserver(entries => {
-      searchBar.classList.toggle('is-stuck', !(entries[0] && entries[0].isIntersecting));
-    }, { threshold: 0 }).observe(sentinel);
+    new IntersectionObserver(
+      entries => {
+        searchBar.classList.toggle('is-stuck', !(entries[0] && entries[0].isIntersecting));
+      },
+      { threshold: 0 }
+    ).observe(sentinel);
   }
 
   $('#ntGrid').addEventListener('click', e => {
@@ -351,10 +364,14 @@
     if (e.button === 1) suppressHoverAfterOpen(e.target.closest('.nt-card'));
   });
 
-  $('#ntGrid').addEventListener('error', e => {
-    const img = e.target.closest && e.target.closest('.nt-fav-img');
-    if (img) img.classList.add('is-error');
-  }, true);
+  $('#ntGrid').addEventListener(
+    'error',
+    e => {
+      const img = e.target.closest && e.target.closest('.nt-fav-img');
+      if (img) img.classList.add('is-error');
+    },
+    true
+  );
 
   // 卡片操作按钮（事件委托）：👁 隐藏 / ✏️ 编辑 / 🗑 删除
   $('#ntGrid').addEventListener('click', async e => {
@@ -367,12 +384,28 @@
     if (!it) return;
     const act = btn.dataset.ntAct;
     if (act === 'copy') {
-      try { await copyBookmarkUrl(it.url); showCopyState(btn, true); }
-      catch (err) { showCopyState(btn, false); }
+      try {
+        await copyBookmarkUrl(it.url);
+        showCopyState(btn, true);
+      } catch (err) {
+        showCopyState(btn, false);
+      }
     } else if (act === 'toggle-hidden') {
+      const wasHidden = it.hidden;
       await window.BM.toggleHidden(it.id);
-      // 实时刷新：onChanged 监听会自动重 analyze（但为即时反馈也可手动 render）
       render();
+      if (!wasHidden) {
+        showToast('已隐藏书签', false, {
+          label: '撤销',
+          onClick: async () => {
+            await window.BM.toggleHidden(it.id);
+            DATA = await window.BMAnalyzer.analyze();
+            render();
+          }
+        });
+      } else {
+        showToast('已取消隐藏 ✓', false);
+      }
     } else if (act === 'edit') {
       openInlineEditor(it, btn.closest('.nt-card-wrap'));
     } else if (act === 'delete') {
@@ -380,13 +413,80 @@
     }
   });
 
+  // 轻量确认弹层：对齐侧边栏的确认交互，避免删除误触
+  function confirmDialog(opts) {
+    opts = opts || {};
+    return new Promise(resolve => {
+      const wrap = $('#ntConfirmWrap');
+      if (!wrap) {
+        resolve(false);
+        return;
+      }
+      const restoreFocusTo = document.activeElement;
+      $('#ntConfirmTitle').textContent = opts.title || '确认操作？';
+      $('#ntConfirmMsg').innerHTML = opts.message || '';
+      const yes = $('#ntConfirmYes');
+      const no = $('#ntConfirmNo');
+      yes.textContent = opts.confirmText || '确认';
+      yes.className = 'btn ' + (opts.danger === false ? 'primary' : 'danger');
+      wrap.classList.remove('hidden');
+      const trapTab = e => {
+        if (e.key !== 'Tab') return;
+        const list = [yes, no].filter(x => x && x.offsetParent !== null);
+        if (!list.length) return;
+        if (e.shiftKey && document.activeElement === list[0]) {
+          e.preventDefault();
+          list[list.length - 1].focus();
+        } else if (!e.shiftKey && document.activeElement === list[list.length - 1]) {
+          e.preventDefault();
+          list[0].focus();
+        }
+      };
+      const onKey = e => {
+        if (e.key === 'Escape') {
+          done(false);
+          return;
+        }
+        if (e.key === 'Enter' && e.target !== yes && e.target !== no) {
+          done(true);
+          return;
+        }
+        trapTab(e);
+      };
+      const onWrapClick = e => {
+        if (e.target === wrap) done(false);
+      };
+      const done = v => {
+        wrap.classList.add('hidden');
+        yes.onclick = no.onclick = null;
+        document.removeEventListener('keydown', onKey);
+        wrap.removeEventListener('click', onWrapClick);
+        if (restoreFocusTo && document.contains(restoreFocusTo)) restoreFocusTo.focus();
+        resolve(v);
+      };
+      yes.onclick = () => done(true);
+      no.onclick = () => done(false);
+      document.addEventListener('keydown', onKey);
+      wrap.addEventListener('click', onWrapClick);
+      yes.focus();
+    });
+  }
+
   // 软删除：加入收藏站 + 从 Chrome 移除
   async function softDeleteBookmark(it) {
     try {
+      const ok = await confirmDialog({
+        title: '移入回收站？',
+        message: `「${esc(it.title)}」将移入回收站，30 天内可恢复。`,
+        confirmText: '移入回收站'
+      });
+      if (!ok) return;
       // 拿一下父级信息（回收站需要 parentId/title 等）
       const bm = await chrome.bookmarks.get(it.id).catch(() => null);
       const trashItem = {
-        id: it.id, title: it.title, url: it.url,
+        id: it.id,
+        title: it.title,
+        url: it.url,
         parentId: bm && bm[0] ? bm[0].parentId : undefined
       };
       const added = await window.BM.addToTrash([trashItem], { deletionPending: true });
@@ -394,12 +494,24 @@
       try {
         await chrome.bookmarks.remove(it.id);
       } catch (e) {
-        try { await window.BM.completeTrashDelete([], [it.id]); } catch { /* 保留保护记录 */ }
+        try {
+          await window.BM.completeTrashDelete([], [it.id]);
+        } catch {
+          /* 保留保护记录 */
+        }
         throw e;
       }
-      try { await window.BM.completeTrashDelete([it.id], []); } catch { /* 保留保护记录 */ }
+      try {
+        await window.BM.completeTrashDelete([it.id], []);
+      } catch {
+        /* 保留保护记录 */
+      }
       // 清掉本地 tags 缓存（防引用）
-      try { await window.BM.setTags(it.id, []); } catch (e) { /* noop */ }
+      try {
+        await window.BM.setTags(it.id, []);
+      } catch (e) {
+        /* noop */
+      }
       // 立即刷新
       DATA = await window.BMAnalyzer.analyze();
       render();
@@ -408,7 +520,10 @@
         onClick: async () => {
           try {
             const r = await window.BM.restoreTrashItems([{ id: it.id }]);
-            showToast(r.restored ? '已恢复书签 ✓' : '恢复失败：该记录可能已被永久删除', !r.restored);
+            showToast(
+              r.restored ? '已恢复书签 ✓' : '恢复失败：该记录可能已被永久删除',
+              !r.restored
+            );
             DATA = await window.BMAnalyzer.analyze();
             render();
           } catch (err) {
@@ -425,6 +540,8 @@
   function showToast(msg, danger, action) {
     const t = document.createElement('div');
     t.className = 'nt-toast' + (danger ? ' danger' : '');
+    t.setAttribute('role', danger ? 'alert' : 'status');
+    t.setAttribute('aria-live', danger ? 'assertive' : 'polite');
     const txt = document.createElement('span');
     txt.textContent = msg;
     t.appendChild(txt);
@@ -433,11 +550,18 @@
       btn.type = 'button';
       btn.className = 'nt-toast-act';
       btn.textContent = action.label;
-      btn.addEventListener('click', () => { t.remove(); action.onClick(); });
+      btn.addEventListener('click', () => {
+        t.remove();
+        action.onClick();
+      });
       t.appendChild(btn);
     }
     document.body.appendChild(t);
-    setTimeout(() => { t.classList.add('nt-toast-out'); setTimeout(() => t.remove(), 220); }, action ? 6000 : 1800);
+    const hold = action ? 8000 : 2200;
+    setTimeout(() => {
+      t.classList.add('nt-toast-out');
+      setTimeout(() => t.remove(), 220);
+    }, hold);
   }
 
   // Inline 编辑浮层（标题/URL/标签），不离开 New Tab
@@ -448,15 +572,15 @@
     wrap.innerHTML = `
       <div class="nt-edit">
         <div class="nt-edit-row">
-          <label>📝 标题</label>
+          <label>标题</label>
           <input class="nt-edit-title" type="text" value="${esc(it.title)}" />
         </div>
         <div class="nt-edit-row">
-          <label>🔗 URL</label>
+          <label>URL</label>
           <input class="nt-edit-url" type="text" value="${esc(it.url)}" />
         </div>
         <div class="nt-edit-row">
-          <label>🏷️ 标签（逗号分隔）</label>
+          <label>标签（逗号分隔）</label>
           <input class="nt-edit-tags" type="text" value="${esc(tagsStr)}" placeholder="开发, github, 工作" />
         </div>
         <div class="nt-edit-actions">
@@ -468,9 +592,14 @@
     wrap.querySelector('[data-edit-act="save"]').onclick = async () => {
       const newTitle = wrap.querySelector('.nt-edit-title').value.trim();
       const newUrl = wrap.querySelector('.nt-edit-url').value.trim();
-      const newTags = wrap.querySelector('.nt-edit-tags').value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+      const newTags = wrap
+        .querySelector('.nt-edit-tags')
+        .value.split(/[,，]/)
+        .map(s => s.trim())
+        .filter(Boolean);
       try {
-        if (newTitle && newTitle !== it.title) await chrome.bookmarks.update(it.id, { title: newTitle });
+        if (newTitle && newTitle !== it.title)
+          await chrome.bookmarks.update(it.id, { title: newTitle });
         if (newUrl && newUrl !== it.url) {
           const normalizedUrl = window.BM.normalizeHttpUrl(newUrl).href;
           await chrome.bookmarks.update(it.id, { url: normalizedUrl });
@@ -506,14 +635,20 @@
         window.BM.invalidateTagRules && window.BM.invalidateTagRules();
         DATA = await window.BMAnalyzer.analyze();
         render();
-      } catch (e) { /* 忽略同步失败 */ }
+      } catch (e) {
+        /* 忽略同步失败 */
+      }
     }, 300);
   });
 
   // 初始化：加载配置 + 分析书签
   (async function init() {
     // 版本号：直接读 manifest，保证与实际安装版本一致
-    try { $('#ntVersion').textContent = 'v' + chrome.runtime.getManifest().version; } catch (e) { /* noop */ }
+    try {
+      $('#ntVersion').textContent = 'v' + chrome.runtime.getManifest().version;
+    } catch (e) {
+      /* noop */
+    }
     const tagConfigurationTask = window.BM.initializeSyncedTagConfiguration()
       .then(changed => ({ changed: !!changed, failed: false }))
       .catch(() => ({ changed: false, failed: true }));
@@ -522,10 +657,24 @@
     try {
       const r = await chrome.storage.local.get(NT_APPEARANCE_KEY);
       applyAppearance(r[NT_APPEARANCE_KEY]);
-    } catch (e) { /* 保持默认外观 */ }
-    try { await window.BM.loadTags(); } catch (e) { /* 无标签 */ }
-    try { await window.BM.loadFixedTags(); } catch (e) { /* 默认池 */ }
-    try { await window.BM.loadTagRules(); } catch (e) { /* 无自定义规则 */ }
+    } catch (e) {
+      /* 保持默认外观 */
+    }
+    try {
+      await window.BM.loadTags();
+    } catch (e) {
+      /* 无标签 */
+    }
+    try {
+      await window.BM.loadFixedTags();
+    } catch (e) {
+      /* 默认池 */
+    }
+    try {
+      await window.BM.loadTagRules();
+    } catch (e) {
+      /* 无自定义规则 */
+    }
     try {
       DATA = await window.BMAnalyzer.analyze();
       render();
@@ -539,13 +688,15 @@
       console.error('[书签管家] newtab 初始化失败', e);
     }
     // 首屏已展示后再做一次标签拉取。初始化任务若仍在后台队列中，完成后会在此继续。
-    void tagConfigurationTask.then(async result => {
-      if (result.failed) return;
-      const changed = await window.BM.pullTagsFromCloud();
-      if (!changed || !DATA) return;
-      window.BM.invalidateTags && window.BM.invalidateTags();
-      DATA = await window.BMAnalyzer.analyze();
-      render();
-    }).catch(() => {});
+    void tagConfigurationTask
+      .then(async result => {
+        if (result.failed) return;
+        const changed = await window.BM.pullTagsFromCloud();
+        if (!changed || !DATA) return;
+        window.BM.invalidateTags && window.BM.invalidateTags();
+        DATA = await window.BMAnalyzer.analyze();
+        render();
+      })
+      .catch(() => {});
   })();
 })();
