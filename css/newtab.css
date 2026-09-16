@@ -604,6 +604,32 @@
   border-color: var(--primary);
   background: var(--panel);
 }
+/* 标签行：输入框 + AI 打标按钮 */
+.nt-edit-tags-line {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.nt-edit-tags-line .nt-edit-tags {
+  flex: 1;
+  min-width: 0;
+}
+.nt-edit-ai {
+  flex-shrink: 0;
+  border: 1px solid var(--line-2);
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--muted);
+}
+.nt-edit-ai:hover:not(:disabled) {
+  color: var(--primary);
+  background: var(--line);
+  border-color: var(--primary);
+}
+.nt-edit-ai:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 .nt-edit-actions {
   display: flex;
   justify-content: flex-end;

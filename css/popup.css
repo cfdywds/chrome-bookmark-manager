@@ -209,6 +209,8 @@ body.panel-body {
 .btn:focus-visible,
 .tab:focus-visible,
 .row-edit:focus-visible,
+.row-ai:focus-visible,
+.row-eye:focus-visible,
 .search-clear:focus-visible,
 .toast-act:focus-visible {
   outline: 2px solid var(--primary);
@@ -924,8 +926,9 @@ body.panel-body {
   flex-shrink: 0;
 }
 
-/* ===== 行内编辑按钮 ===== */
-.row-edit {
+/* ===== 行内编辑按钮 / 单条 AI 打标 ===== */
+.row-edit,
+.row-ai {
   border: none;
   background: transparent;
   color: var(--muted);
@@ -938,11 +941,17 @@ body.panel-body {
   transition: all 0.12s;
 }
 .row:hover .row-edit,
-.row-edit:focus {
+.row-edit:focus,
+.row:hover .row-ai,
+.row-ai:focus {
   opacity: 1;
 }
-.row-edit:hover {
+.row-edit:hover,
+.row-ai:hover {
   background: var(--line);
+  color: var(--primary);
+}
+.row-ai:hover {
   color: var(--primary);
 }
 
@@ -1149,22 +1158,29 @@ mark {
 }
 
 /* ===== 隐藏书签 ===== */
+/* 与 row-ai / row-edit / row-drag 保持一致：默认隐藏，悬浮行时显示；
+   已隐藏行（.row-hidden）保留常驻眼睛作为状态指示，方便取消隐藏 */
 .row-eye {
   border: none;
   background: transparent;
   color: var(--muted, #999);
   cursor: pointer;
-  padding: 4px;
+  padding: 3px 5px;
   border-radius: 8px;
-  opacity: 0.55;
-  transition: all 0.15s;
+  opacity: 0;
+  transition: all 0.12s;
   flex-shrink: 0;
   align-self: center;
+}
+.row:hover .row-eye,
+.row-eye:focus,
+.row-hidden .row-eye {
+  opacity: 1;
 }
 .row-eye:hover {
   opacity: 1;
   color: var(--primary);
-  background: var(--primary-soft);
+  background: var(--line);
 }
 .row-hidden {
   opacity: 0.55;
@@ -2736,7 +2752,8 @@ mark {
 .icon-btn .ico,
 .tab .ico,
 .btn .ico,
-.row-edit .ico {
+.row-edit .ico,
+.row-ai .ico {
   vertical-align: -2.5px;
 }
 .brand-icon svg {

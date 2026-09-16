@@ -229,7 +229,9 @@
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>',
       save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>',
       close:
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+      sparkles:
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z"/></svg>'
     };
     return paths[name] || '';
   }
@@ -564,7 +566,7 @@
     }, hold);
   }
 
-  // Inline 编辑浮层（标题/URL/标签），不离开 New Tab
+  // Inline 编辑浮层（标题/URL/标签 + AI 打标），不离开 New Tab
   function openInlineEditor(it, wrap) {
     if (!wrap) return;
     wrap.classList.add('editing');
@@ -581,13 +583,20 @@
         </div>
         <div class="nt-edit-row">
           <label>标签（逗号分隔）</label>
-          <input class="nt-edit-tags" type="text" value="${esc(tagsStr)}" placeholder="开发, github, 工作" />
+          <div class="nt-edit-tags-line">
+            <input class="nt-edit-tags" type="text" value="${esc(tagsStr)}" placeholder="开发, github, 工作" />
+            <button type="button" class="nt-edit-btn ghost nt-edit-ai" data-edit-act="ai" title="AI 从固定标签池中挑 1-3 个标签（需在设置页配置 AI 服务）">${ICON('sparkles')}<span class="nt-edit-ai-label">AI 打标</span></button>
+          </div>
         </div>
         <div class="nt-edit-actions">
           <button class="nt-edit-btn ghost" data-edit-act="cancel">${ICON('close')} 取消</button>
           <button class="nt-edit-btn primary" data-edit-act="save">${ICON('save')} 保存</button>
         </div>
       </div>`;
+    // AI 打标：结果填入标签输入框，用户确认后点「保存」落盘
+    wrap.querySelector('[data-edit-act="ai"]').onclick = () => {
+      aiTagIntoEditor(it, wrap.querySelector('[data-edit-act="ai"]'), wrap.querySelector('.nt-edit-tags'));
+    };
     // 保存
     wrap.querySelector('[data-edit-act="save"]').onclick = async () => {
       const newTitle = wrap.querySelector('.nt-edit-title').value.trim();
@@ -614,6 +623,90 @@
       }
     };
     wrap.querySelector('[data-edit-act="cancel"]').onclick = () => render();
+  }
+
+  // 编辑器内单条 AI 打标：与主界面同一套 lib.js 能力（固定标签池 + 隐私脱敏 + 高敏站点保护）
+  async function aiTagIntoEditor(it, btn, tagsInput) {
+    if (!btn || !tagsInput) return;
+    if (btn.disabled) return;
+    // 1) 读取 AI 配置（与设置页同一份 bmSettings）
+    let cfg = {};
+    try {
+      const r = await chrome.storage.local.get('bmSettings');
+      cfg = Object.assign({ provider: 'deepseek', baseUrl: '', apiKey: '', model: '' }, r.bmSettings || {});
+    } catch (e) {
+      /* 保持空配置 */
+    }
+    const p = (window.BM.PROVIDERS || {})[cfg.provider];
+    if (p && !cfg.baseUrl) cfg.baseUrl = p.base;
+    if (!cfg.apiKey || !cfg.baseUrl || !cfg.model) {
+      showToast('还没有配置 AI 服务：请先到设置页填写接口地址、API Key 和模型名', true);
+      try {
+        chrome.runtime.openOptionsPage();
+      } catch (e) {
+        /* noop */
+      }
+      return;
+    }
+    // 2) 资格检查：仅普通网页；高风险敏感站点不发 AI
+    if (!window.BM.isHttpUrl(it.url)) {
+      showToast('仅支持普通网页（http/https）', true);
+      return;
+    }
+    const meta = window.BM.getBookmarkMetadata ? window.BM.getBookmarkMetadata(it.url, it.title) : null;
+    if (meta && (meta.sensitive || []).some(s => s.sev === 'high')) {
+      showToast('该站点为高风险敏感站点，已自动保护，不发送给 AI', true);
+      return;
+    }
+    let hasPerm = false;
+    try {
+      hasPerm = await window.BM.hasLlmHostPermission(cfg.baseUrl);
+    } catch (e) {
+      showToast('LLM 配置无效：' + (e.message || e), true);
+      return;
+    }
+    if (!hasPerm) {
+      showToast('请先在设置中保存配置并授予该 LLM 服务访问权限', true);
+      try {
+        chrome.runtime.openOptionsPage();
+      } catch (e) {
+        /* noop */
+      }
+      return;
+    }
+    // 3) 请求 AI（单条；LLM 失败时 lib 会先通过 onBatch 降级返回本地规则标签）
+    const label = btn.querySelector('.nt-edit-ai-label');
+    const oldLabel = label ? label.textContent : '';
+    btn.disabled = true;
+    if (label) label.textContent = 'AI 打标中…';
+    let batchMap = {};
+    try {
+      const map = await window.BM.aiTagBatched([it], cfg, {
+        batchSize: 1,
+        retries: 1,
+        onBatch: async m => {
+          batchMap = m || {};
+        }
+      });
+      if (map && Object.keys(map).length) batchMap = map;
+    } catch (e) {
+      if (!Object.keys(batchMap).length) {
+        showToast('AI 打标失败：' + (e.message || e), true);
+        return;
+      }
+      showToast('AI 服务失败，已使用本地规则标签 ✓');
+    } finally {
+      btn.disabled = false;
+      if (label) label.textContent = oldLabel;
+    }
+    const tags = batchMap[String(it.id)] || [];
+    if (!tags.length) {
+      showToast('未获得有效标签，请重试', true);
+      return;
+    }
+    tagsInput.value = tags.join(', ');
+    tagsInput.focus();
+    showToast('标签已填入，点「保存」生效 ✓');
   }
 
   // 实时同步：侧边栏里隐藏/打标/收敛标签后，已打开的 New Tab 自动刷新（防抖 300ms）

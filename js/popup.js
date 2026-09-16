@@ -659,6 +659,7 @@ function itemRow(it, opts) {
       <div class="loc"><span>${ICON_SM('folder')} ${escapeHtml(it.path.join(' / '))}</span> ${cat} ${tags}</div>
     </div>
     ${eyeBtn}
+    <button class="row-ai" data-action="ai-tag-single" data-id="${it.id}" title="${(it.tags || []).some(t => t && t !== BM.FALLBACK_TAG) ? 'AI 重新打标（覆盖标签）' : 'AI 打标'}" aria-label="AI 打标 ${escapeHtml(it.title)}">${ICON_SM('sparkles')}</button>
     <button class="row-edit" data-action="edit-item" data-id="${it.id}" title="编辑书签" aria-label="编辑 ${escapeHtml(it.title)}">${ICON_SM('edit')}</button>
     <button class="row-drag" draggable="true" data-action="drag-handle" data-id="${it.id}" title="拖动排序 / 移动到其他分组" aria-label="拖动 ${escapeHtml(it.title)}">${ICON_SM('drag')}</button>
   </div>`;
@@ -1964,12 +1965,16 @@ function bindDrag() {
   });
   contentEl.addEventListener('drop', async e => {
     e.preventDefault();
-    if (!dragState) return;
+    // 同步快照：浏览器在 drop 事件派发结束后立即触发 dragend（不会等待 async 处理器完成），
+    // dragend 会把 dragState 置空；若在 await 之后再读 dragState 会拿到 null，
+    // 导致 "Cannot read properties of null (reading 'fromParent')"。
+    const drag = dragState;
+    if (!drag) return;
     const row = e.target.closest('.row.clickable.draggable');
     const head = e.target.closest('.group-head');
     try {
-      if (row && row.dataset.id !== dragState.id) await dropOntoRow(row);
-      else if (head) await dropOntoGroup(head);
+      if (row && row.dataset.id !== drag.id) await dropOntoRow(row, drag);
+      else if (head) await dropOntoGroup(head, drag);
     } catch (err) {
       toast('移动失败：' + (err.message || err), 'danger');
       try {
@@ -1992,16 +1997,18 @@ function clearDragHints() {
 }
 
 // 拖到书签行：排序 / 插入到目标行所在文件夹的对应位置
-async function dropOntoRow(row) {
+// drag 为 drop 入口处的同步快照（dragend 会清空 dragState，不能直接读）
+async function dropOntoRow(row, drag) {
+  if (!drag) return;
   const targetIt = getItemById(row.dataset.id);
   if (!targetIt) return;
   const children = await chrome.bookmarks.getChildren(targetIt.parentId);
   let index = children.findIndex(c => c.id === targetIt.id);
-  if (dsFromSameParent(dragState.fromParent, targetIt.parentId)) {
-    const fromIndex = children.findIndex(c => c.id === dragState.id);
+  if (dsFromSameParent(drag.fromParent, targetIt.parentId)) {
+    const fromIndex = children.findIndex(c => c.id === drag.id);
     if (fromIndex >= 0 && fromIndex < index) index -= 1;
   }
-  await chrome.bookmarks.move(dragState.id, {
+  await chrome.bookmarks.move(drag.id, {
     parentId: targetIt.parentId,
     index: index < 0 ? 0 : index
   });
@@ -2010,7 +2017,8 @@ async function dropOntoRow(row) {
 const dsFromSameParent = (a, b) => String(a) === String(b);
 
 // 拖到分组标题：整组移动（exact → 域名文件夹；category → 分类文件夹）
-async function dropOntoGroup(head) {
+async function dropOntoGroup(head, drag) {
+  if (!drag) return;
   const group = head.closest('.group');
   const gkey = group.dataset.group;
   const gnameEl = head.querySelector('.g-name');
@@ -2027,7 +2035,7 @@ async function dropOntoGroup(head) {
     return;
   }
   const folderId = await ensureFolder(folderTitle);
-  await chrome.bookmarks.move(dragState.id, { parentId: folderId });
+  await chrome.bookmarks.move(drag.id, { parentId: folderId });
   toast('已移动到「' + name + '」✓', 'ok');
 }
 
@@ -2132,6 +2140,8 @@ async function init() {
       } else if (action === 'clear-tag-filter') {
         TAG_FILTER = '';
         render('tags');
+      } else if (action === 'ai-tag-single') {
+        aiTagSingle(btn.dataset.id);
       } else if (action === 'ai-tag-all') {
         // 运行中点击 = 终止打标；空闲时点击 = 开始批量打标（仅未打标）
         if (aiTagRunning) aiTagCancel = true;
@@ -3043,6 +3053,22 @@ function claimAiTagStart() {
   if (aiTagRunning || aiTagStarting) return false;
   aiTagStarting = true;
   return true;
+}
+
+// 单个书签 AI 打标：复用批量打标引擎，只处理这一条；已有有效标签时默认覆盖重打
+async function aiTagSingle(id, force) {
+  const it = getItemById(id);
+  if (!it) {
+    toast('书签不存在，请刷新后重试', 'warn');
+    return;
+  }
+  if (aiTagRunning || aiTagStarting) {
+    toast('AI 打标正在进行中，请稍候', 'warn');
+    return;
+  }
+  const hasUsableTag = (it.tags || []).some(t => t && t !== BM.FALLBACK_TAG);
+  const f = typeof force === 'boolean' ? force : hasUsableTag;
+  await aiTagAll(f, [it]);
 }
 
 async function aiTagAll(force, resumeItems) {
