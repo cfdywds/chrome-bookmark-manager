@@ -195,6 +195,45 @@ beforeEach(() => {
 });
 
 describe('原生书签标签同步', () => {
+  it('会按 URL 同步隐藏状态，并覆盖仅隐藏无标签的书签', async () => {
+    const source = createHarness(createTree([
+      { id: 'source', parentId: '1', title: 'Private', url: 'https://example.com/private' }
+    ]), {
+      bmHiddenIds: ['source'],
+      bmFixedTags: ['工作'],
+      bmTagRules: { domain: {}, keyword: {} }
+    });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await expect(source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true }))
+        .resolves.toMatchObject({ ok: true });
+      expect(source.localData.bmNativeTagSyncRecords['example.com/private'])
+        .toMatchObject({ tags: [], hidden: true });
+      await source.chrome.storage.local.set({ bmHiddenIds: [] });
+      await vi.waitFor(() => expect(source.localData.bmNativeTagSyncRecords['example.com/private'].hidden)
+        .toBe(false));
+      await source.chrome.storage.local.set({ bmHiddenIds: ['source'] });
+      await vi.waitFor(() => expect(source.localData.bmNativeTagSyncRecords['example.com/private'].hidden)
+        .toBe(true));
+
+      const target = createHarness(clone(source.tree), { bmHiddenIds: [] });
+      target.tree[0].children[0].children = [
+        { id: 'target', parentId: '1', title: 'Private', url: 'https://example.com/private' }
+      ];
+      globalThis.chrome = target.chrome;
+      new Function(backgroundCode)();
+
+      await expect(target.send({ type: 'bmNativeTagSync', action: 'hydrate' }))
+        .resolves.toMatchObject({ ok: true, changed: true });
+      expect(target.localData.bmHiddenIds).toEqual(['target']);
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
   it.each([
     ['压缩', 'CompressionStream', 'nativeCompress'],
     ['解压', 'DecompressionStream', 'nativeDecompress']

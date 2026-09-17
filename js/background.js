@@ -12,6 +12,7 @@ if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
 const STAR_HOOK_KEY = 'bmStarHook';   // storage.local 键，true/false，默认 true
 const AUTO_AI_TAG_KEY = 'bmAutoAiTag'; // 明确开启后，普通浏览器收藏才允许静默请求 LLM
 const TAGS_KEY = 'bmTags';
+const HIDDEN_KEY = 'bmHiddenIds';
 const FIXED_TAGS_KEY = 'bmFixedTags';
 const TAG_RULES_KEY = 'bmTagRules';
 const LEGACY_DOMAIN_GROUPS_MIGRATED_KEY = 'bmDomainGroupsMigrated';
@@ -272,10 +273,21 @@ function nativeRecordTagsForUrl(bookmarks, tags, key) {
   return normalizeNativeTags(values);
 }
 
-function updateNativeRecordsForUrls(records, state, bookmarks, tags, keys) {
+function nativeRecordHiddenForUrl(bookmarks, hiddenIds, key) {
+  const hidden = hiddenIds instanceof Set ? hiddenIds : new Set(
+    Array.isArray(hiddenIds) ? hiddenIds.map(String) :
+      (hiddenIds && typeof hiddenIds === 'object' ? Object.keys(hiddenIds).filter(id => hiddenIds[id]) : [])
+  );
+  return (bookmarks || []).some(bookmark =>
+    syncUrlKey(bookmark.url) === key && hidden.has(String(bookmark.id))
+  );
+}
+
+function updateNativeRecordsForUrls(records, state, bookmarks, tags, keys, hiddenIds) {
   [...new Set(keys || [])].filter(Boolean).sort().forEach(key => {
     records[key] = {
       tags: nativeRecordTagsForUrl(bookmarks, tags, key),
+      hidden: nativeRecordHiddenForUrl(bookmarks, hiddenIds, key),
       revision: nativeNextRevision(state)
     };
   });
@@ -333,6 +345,7 @@ function normalizeNativeRecord(value) {
   const revision = nativeRevision(value.revision);
   if (!revision[0] || !revision[2]) return null;
   const record = { tags: normalizeNativeTags(value.tags), revision };
+  if (typeof value.hidden === 'boolean') record.hidden = value.hidden;
   if (value.provisional === true) record.provisional = true;
   return record;
 }
@@ -744,6 +757,8 @@ function mergeNativeRecord(target, key, raw) {
     target[key] = {
       tags: normalizeNativeTags([...current.tags, ...record.tags]),
       revision: current.revision,
+      ...(Object.prototype.hasOwnProperty.call(current, 'hidden') || Object.prototype.hasOwnProperty.call(record, 'hidden')
+        ? { hidden: current.hidden === true || record.hidden === true } : {}),
       provisional: true
     };
   }
@@ -892,12 +907,15 @@ async function applyNativeSyncData(api, source, allowedEmptyDeviceIds = null, co
     };
   }
   const stored = await api.storage.local.get([
-    TAGS_KEY, FIXED_TAGS_KEY, TAG_RULES_KEY, NATIVE_SYNC_CONFIG_KEY, NATIVE_SYNC_URLS_KEY,
+    TAGS_KEY, HIDDEN_KEY, FIXED_TAGS_KEY, TAG_RULES_KEY, NATIVE_SYNC_CONFIG_KEY, NATIVE_SYNC_URLS_KEY,
     NATIVE_SYNC_CONFIG_REQUEST_KEY
   ]);
   const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? { ...stored[TAGS_KEY] } : {};
+  const hiddenIds = new Set(Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []);
   const nextTags = { ...tags };
+  const nextHiddenIds = new Set(hiddenIds);
   let tagsChanged = false;
+  let hiddenChanged = false;
   const bookmarks = collectNativeUserBookmarks(source, []);
   bookmarks.forEach(bookmark => {
     const record = data.records[syncUrlKey(bookmark.url)];
@@ -912,9 +930,20 @@ async function applyNativeSyncData(api, source, allowedEmptyDeviceIds = null, co
       delete nextTags[bookmark.id];
       tagsChanged = true;
     }
+    if (typeof record.hidden === 'boolean') {
+      const id = String(bookmark.id);
+      if (record.hidden && !nextHiddenIds.has(id)) {
+        nextHiddenIds.add(id);
+        hiddenChanged = true;
+      } else if (!record.hidden && nextHiddenIds.has(id)) {
+        nextHiddenIds.delete(id);
+        hiddenChanged = true;
+      }
+    }
   });
   const updates = {};
   if (tagsChanged) updates[TAGS_KEY] = nextTags;
+  if (hiddenChanged) updates[HIDDEN_KEY] = [...nextHiddenIds];
   let configChanged = false;
   if (data.config) {
     const currentConfig = nativeConfigValues(stored[FIXED_TAGS_KEY], stored[TAG_RULES_KEY]);
@@ -985,7 +1014,7 @@ async function applyNativeSyncData(api, source, allowedEmptyDeviceIds = null, co
   if (awaitingDeviceData) await setBackgroundTagSyncWaitingStatus(api, data.emptyDeviceIds);
   else await setBackgroundTagSyncStatus(api, '');
   return {
-    changed: tagsChanged || configChanged,
+    changed: tagsChanged || hiddenChanged || configChanged,
     ready: true,
     retry: awaitingDeviceData,
     records: data.records,
@@ -997,8 +1026,9 @@ async function applyNativeSyncData(api, source, allowedEmptyDeviceIds = null, co
 }
 
 async function publishMissingNativeSyncRecords(api, state, tree, remoteRecords) {
-  const stored = await api.storage.local.get([TAGS_KEY, NATIVE_SYNC_RECORDS_KEY]);
+  const stored = await api.storage.local.get([TAGS_KEY, HIDDEN_KEY, NATIVE_SYNC_RECORDS_KEY]);
   const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
+  const hiddenIds = new Set(Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []);
   const records = stored[NATIVE_SYNC_RECORDS_KEY] && typeof stored[NATIVE_SYNC_RECORDS_KEY] === 'object'
     ? { ...stored[NATIVE_SYNC_RECORDS_KEY] } : {};
   const bookmarks = collectNativeUserBookmarks(tree, []);
@@ -1006,10 +1036,10 @@ async function publishMissingNativeSyncRecords(api, state, tree, remoteRecords) 
   bookmarks.forEach(bookmark => {
     const key = syncUrlKey(bookmark.url);
     if (!key || Object.prototype.hasOwnProperty.call(remoteRecords, key)) return;
-    if (!normalizeNativeTags(tags[bookmark.id]).length) return;
+    if (!normalizeNativeTags(tags[bookmark.id]).length && !hiddenIds.has(String(bookmark.id))) return;
     keys.add(key);
   });
-  updateNativeRecordsForUrls(records, state, bookmarks, tags, keys);
+  updateNativeRecordsForUrls(records, state, bookmarks, tags, keys, hiddenIds);
   state.seeded = true;
   await api.storage.local.set({
     [NATIVE_SYNC_RECORDS_KEY]: records,
@@ -1060,7 +1090,7 @@ async function hydrateNativeSyncResult(api, recoverIncomplete = false, configSna
   }
   if (!result.ready && !result.hasPublishedData && !result.hasPayloadErrors &&
     !nativeSyncActiveSettingId && state.enabled && state.seedAfterIncomplete && !state.seeded &&
-    await hasLocalNativeTagAssignments(api, tree)) {
+    await hasLocalNativeMetadataAssignments(api, tree)) {
     // 扩展重载后不会再次触发设置页的 change 事件。对用户此前明确开启、且仍只有
     // 空设备目录的状态，直接恢复候选种子，避免本机标签一直滞留在 storage。
     const seedRequestId = 'hydration-' + state.deviceId + '-' + Date.now().toString(36);
@@ -1151,11 +1181,17 @@ async function canWriteNativeSyncSeed(api) {
 }
 
 async function seedNativeSyncFromLocal(api, state, tree, replaceRecords, options = {}) {
-  const stored = await api.storage.local.get([TAGS_KEY, FIXED_TAGS_KEY, TAG_RULES_KEY]);
+  // 保持标签读取的独立 await，兼容旧版种子流程的取消时序。
+  const storedTags = await api.storage.local.get(TAGS_KEY);
+  const stored = {
+    ...storedTags,
+    ...(await api.storage.local.get([HIDDEN_KEY, FIXED_TAGS_KEY, TAG_RULES_KEY]))
+  };
   // storage.get 会让出执行权；用户可能在这期间关闭同步或发起了新请求。
   // 在创建持久化 records/config 前再次检查，不能给已取消的开启任务留下缓存。
   if (options.requireCurrentSetting && !(await canWriteNativeSyncSeed(api))) return null;
   const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
+  const hiddenIds = new Set(Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []);
   const records = replaceRecords ? {} : await loadNativeSyncRecords(api);
   const bookmarks = collectNativeUserBookmarks(tree, []);
   const byKey = {};
@@ -1163,12 +1199,14 @@ async function seedNativeSyncFromLocal(api, state, tree, replaceRecords, options
   bookmarks.forEach(bookmark => {
     const key = syncUrlKey(bookmark.url);
     const values = normalizeNativeTags(tags[bookmark.id]);
-    if (!key || !values.length) return;
+    if (!key || (!values.length && !hiddenIds.has(String(bookmark.id)))) return;
     byKey[key] = normalizeNativeTags([...(byKey[key] || []), ...values]);
+    if (hiddenIds.has(String(bookmark.id))) byKey[key] = byKey[key] || [];
   });
   Object.entries(byKey).forEach(([key, values]) => {
     records[key] = {
       tags: values,
+      hidden: nativeRecordHiddenForUrl(bookmarks, hiddenIds, key),
       revision: seedRevision || nativeNextRevision(state),
       ...(seedRevision ? { provisional: true } : {})
     };
@@ -1234,11 +1272,12 @@ async function publishNativeSyncSeed(api, seeded, requestId) {
   return true;
 }
 
-async function hasLocalNativeTagAssignments(api, tree) {
-  const stored = await api.storage.local.get(TAGS_KEY);
+async function hasLocalNativeMetadataAssignments(api, tree) {
+  const stored = await api.storage.local.get([TAGS_KEY, HIDDEN_KEY]);
   const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
+  const hiddenIds = new Set(Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []);
   return collectNativeUserBookmarks(tree, []).some(bookmark =>
-    normalizeNativeTags(tags[bookmark.id]).length > 0
+    normalizeNativeTags(tags[bookmark.id]).length > 0 || hiddenIds.has(String(bookmark.id))
   );
 }
 
@@ -1284,7 +1323,7 @@ async function setNativeSyncEnabled(api, enabled, settingId = '') {
         // 已持久化的记录保留原 revision 重发，避免无谓压过可能迟到的远端数据。
         const republished = state.seeded && await republishNativeSyncState(api, state);
         if (!republished) {
-          const hasLocalTags = await hasLocalNativeTagAssignments(api, tree);
+          const hasLocalTags = await hasLocalNativeMetadataAssignments(api, tree);
           if (hasLocalTags) {
             // 用户明确开启同步且所有设备目录都还没有完整提交时，本机已有标签必须
             // 立即成为首个种子；仅安排最终重试会让数据长期停留在本机 storage，
@@ -1353,7 +1392,41 @@ async function recordNativeTagChanges(api, change) {
     return;
   }
   const records = await loadNativeSyncRecords(api);
-  updateNativeRecordsForUrls(records, state, bookmarks, after, affectedKeys);
+  const stored = await api.storage.local.get(HIDDEN_KEY);
+  const hiddenIds = new Set(Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []);
+  updateNativeRecordsForUrls(records, state, bookmarks, after, affectedKeys, hiddenIds);
+  await api.storage.local.set({
+    [NATIVE_SYNC_RECORDS_KEY]: records,
+    [NATIVE_SYNC_URLS_KEY]: currentUrls,
+    [NATIVE_SYNC_STATE_KEY]: nativeSyncStateValue(state)
+  });
+  await publishNativeSync(api, new Set([...affectedKeys].map(nativeBucketForUrl)), false);
+}
+
+async function recordNativeHiddenChanges(api, change) {
+  if (nativeSyncApplying) return;
+  const state = await loadNativeSyncState(api);
+  if (!state.enabled) return;
+  const before = new Set(Array.isArray(change && change.oldValue) ? change.oldValue.map(String) : []);
+  const after = new Set(Array.isArray(change && change.newValue) ? change.newValue.map(String) : []);
+  const ids = new Set([...before, ...after]);
+  if (!ids.size) return;
+  const tree = await api.bookmarks.getTree();
+  const bookmarks = collectNativeUserBookmarks(tree, []);
+  const byId = new Map(bookmarks.map(bookmark => [String(bookmark.id), bookmark]));
+  const previousUrls = await loadNativeSyncUrls(api);
+  const currentUrls = nativeBookmarkUrlMap(bookmarks);
+  const affectedKeys = new Set();
+  ids.forEach(id => {
+    const bookmark = byId.get(String(id));
+    if (bookmark) affectedKeys.add(syncUrlKey(bookmark.url));
+    if (previousUrls[String(id)]) affectedKeys.add(previousUrls[String(id)]);
+  });
+  if (!affectedKeys.size) return;
+  const stored = await api.storage.local.get(TAGS_KEY);
+  const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
+  const records = await loadNativeSyncRecords(api);
+  updateNativeRecordsForUrls(records, state, bookmarks, tags, affectedKeys, after);
   await api.storage.local.set({
     [NATIVE_SYNC_RECORDS_KEY]: records,
     [NATIVE_SYNC_URLS_KEY]: currentUrls,
@@ -1417,8 +1490,9 @@ async function recordNativeBookmarkRemoval(api, node) {
   if (!removedBookmarks.length) return;
   const tree = await api.bookmarks.getTree();
   const bookmarks = collectNativeUserBookmarks(tree, []);
-  const stored = await api.storage.local.get([TAGS_KEY, NATIVE_SYNC_URLS_KEY]);
+  const stored = await api.storage.local.get([TAGS_KEY, HIDDEN_KEY, NATIVE_SYNC_URLS_KEY]);
   const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
+  const hiddenIds = new Set(Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []);
   const previousUrls = stored[NATIVE_SYNC_URLS_KEY] && typeof stored[NATIVE_SYNC_URLS_KEY] === 'object'
     ? stored[NATIVE_SYNC_URLS_KEY] : {};
   const affectedKeys = new Set();
@@ -1430,7 +1504,7 @@ async function recordNativeBookmarkRemoval(api, node) {
   });
   if (!affectedKeys.size) return;
   const records = await loadNativeSyncRecords(api);
-  updateNativeRecordsForUrls(records, state, bookmarks, tags, affectedKeys);
+  updateNativeRecordsForUrls(records, state, bookmarks, tags, affectedKeys, hiddenIds);
   await api.storage.local.set({
     [NATIVE_SYNC_RECORDS_KEY]: records,
     [NATIVE_SYNC_URLS_KEY]: nativeBookmarkUrlMap(bookmarks),
@@ -1453,11 +1527,12 @@ async function recordNativeBookmarkUrlMigration(api, id, oldUrl, newUrl) {
   if (!bookmark || syncUrlKey(bookmark.url) !== newKey) {
     throw new Error('书签地址尚未更新，无法迁移标签');
   }
-  const stored = await api.storage.local.get(TAGS_KEY);
+  const stored = await api.storage.local.get([TAGS_KEY, HIDDEN_KEY]);
   const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
+  const hiddenIds = new Set(Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []);
   const records = await loadNativeSyncRecords(api);
   const affectedKeys = new Set([oldKey, newKey]);
-  updateNativeRecordsForUrls(records, state, bookmarks, tags, affectedKeys);
+  updateNativeRecordsForUrls(records, state, bookmarks, tags, affectedKeys, hiddenIds);
   await api.storage.local.set({
     [NATIVE_SYNC_RECORDS_KEY]: records,
     [NATIVE_SYNC_URLS_KEY]: nativeBookmarkUrlMap(bookmarks),
@@ -1755,6 +1830,13 @@ if (chrome.storage && chrome.storage.onChanged) {
         .catch(async error => {
           await setBackgroundTagSyncStatus(chrome, error && error.message || error);
           console.warn('[书签管家] 原生标签同步写入失败', error);
+        });
+    }
+    if (changes[HIDDEN_KEY]) {
+      nativeQueue(() => recordNativeHiddenChanges(chrome, changes[HIDDEN_KEY]))
+        .catch(async error => {
+          await setBackgroundTagSyncStatus(chrome, error && error.message || error);
+          console.warn('[书签管家] 原生隐藏状态同步写入失败', error);
         });
     }
     if ((changes[FIXED_TAGS_KEY] || changes[TAG_RULES_KEY]) && !consumeIgnoredNativeConfigChange(changes)) {

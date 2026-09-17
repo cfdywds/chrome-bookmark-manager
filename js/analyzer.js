@@ -73,6 +73,64 @@
     return { items, emptyFolders };
   }
 
+  // 构建完整文件夹树（含所有层级），供「文件夹」页浏览。
+  // 过滤插件自建的同步数据根目录（isNativeSyncRoot）；保留 Chrome 系统容器
+  // （书签栏 / 其他书签 / 移动设备书签）作为顶级节点，但标记为不可删不可重命名。
+  // 节点内 bookmarkIds 仅保存直属书签 id（原生顺序），渲染时用 DATA.itemById 取完整 item。
+  function collectFolderTree(tree) {
+    const roots = [];
+    const folderById = new Map();
+    let totalFolders = 0;
+    const topContainers = (tree[0] && tree[0].children) || [];
+    function walk(node, path, depth) {
+      if (BM.isNativeSyncRoot && BM.isNativeSyncRoot(node)) return null;
+      const title = (node.title || '').trim() || '(未命名)';
+      const nextPath = path.concat(title);
+      const childFolders = [];
+      const bookmarkIds = [];
+      let totalCount = 0;
+      const kids = Array.isArray(node.children) ? node.children : [];
+      for (const c of kids) {
+        if (BM.isNativeSyncRoot && BM.isNativeSyncRoot(c)) continue;
+        if (c.url) {
+          bookmarkIds.push(String(c.id));
+          totalCount++;
+        } else {
+          const sub = walk(c, nextPath, depth + 1);
+          if (sub) {
+            childFolders.push(sub);
+            totalCount += sub.totalCount;
+          }
+        }
+      }
+      // depth === 1 表示书签栏 / 其他书签 / 移动设备书签等 Chrome 系统容器
+      const isSystemRoot = depth === 1;
+      const folderNode = {
+        id: String(node.id),
+        title,
+        parentId: node.parentId != null ? String(node.parentId) : '',
+        path: nextPath,
+        type: 'folder',
+        childFolders,
+        bookmarkIds,
+        directCount: bookmarkIds.length + childFolders.length,
+        totalCount,
+        folderCount: childFolders.length,
+        isSystemRoot
+      };
+      folderById.set(folderNode.id, folderNode);
+      totalFolders++;
+      return folderNode;
+    }
+    for (const r of topContainers) {
+      if (BM.isNativeSyncRoot && BM.isNativeSyncRoot(r)) continue;
+      if (r.url) continue; // 顶级不应为书签，防御性跳过
+      const f = walk(r, [], 1);
+      if (f) roots.push(f);
+    }
+    return { roots, folderById, totalFolders };
+  }
+
   function domainGroupsSignature() {
     const groups = BM.getDomainGroups ? (BM.getDomainGroups() || {}) : {};
     return Object.keys(groups).sort().map(key => key + '\u0000' + groups[key]).join('\u0001');
@@ -96,6 +154,7 @@
   async function analyze() {
     const tree = await chrome.bookmarks.getTree();
     const { items, emptyFolders } = collectItemsAndEmptyFolders(tree);
+    const folderTree = collectFolderTree(tree);
 
     // 配置相互独立；并行加载可缩短首次扫描的 storage 等待时间。
     await Promise.all([
@@ -205,6 +264,7 @@
       categories,
       tagStats,
       emptyFolders,
+      folderTree,
       itemById,
       itemsByUrl,
       itemsByUrlKey,
