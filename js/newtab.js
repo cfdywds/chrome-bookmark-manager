@@ -12,6 +12,14 @@
   const STEP = 200; // 每次「加载更多」数量
   const INITIAL_TAG_SYNC_WAIT_MS = 1200;
 
+  // ---- 视图模式 / 文件夹筛选 / 键盘导航状态 ----
+  const NT_VIEW_KEY = 'bmNewtabView'; // 视图模式持久化键
+  const NT_VIEWS = ['grid', 'list']; // 卡片网格 | 紧凑列表
+  const VIRTUALIZE_AT = 200; // 结果超过此数量时启用 content-visibility 虚拟化
+  let viewMode = 'grid';
+  let activeFolder = ''; // 文件夹筛选（folderTree.folderById 的 id）
+  let kbIndex = -1; // 键盘高亮位置（当前渲染出的卡片/行序号）
+
   function waitForInitialTagSync(task) {
     return new Promise(resolve => {
       let settled = false;
@@ -103,12 +111,13 @@
 
   function showCopyState(button, copied) {
     const label = copied ? '已复制链接' : '复制失败';
-    button.title = label;
+    // 提示统一走 data-tip（由 js/ui.js 的 tooltip 呈现），不再使用原生 title
+    button.setAttribute('data-tip', label);
     button.setAttribute('aria-label', label);
     button.classList.toggle('is-copied', copied);
     button.classList.toggle('is-copy-error', !copied);
     window.setTimeout(() => {
-      button.title = '复制链接';
+      button.setAttribute('data-tip', '复制链接');
       button.setAttribute('aria-label', '复制链接');
       button.classList.remove('is-copied', 'is-copy-error');
     }, 1600);
@@ -134,7 +143,8 @@
   // 搜索语法：
   //   - 普通词："空格分词 AND"，每词都得在 hay (title/url/host/tags) 里出现
   //   - #标签前缀：开头一个 #xxx 表示精确匹配某个标签名（可与后续文本词 AND）
-  function filtered() {
+  // folderId 为文件夹筛选（含全部后代文件夹），与搜索/标签筛选是 AND 关系
+  function filtered(folderId) {
     const trimmed = search.trim().toLowerCase();
     // 解析 #标签前缀
     let tagTerm = '';
@@ -173,6 +183,23 @@
         return true;
       });
     }
+    // 文件夹筛选：命中该文件夹及其全部后代文件夹中的书签
+    if (folderId) {
+      const byId = (DATA.folderTree && DATA.folderTree.folderById) || new Map();
+      const ids = new Set([String(folderId)]);
+      const pending = [String(folderId)];
+      while (pending.length) {
+        const node = byId.get(pending.pop());
+        if (!node) continue;
+        for (const child of node.childFolders || []) {
+          if (child && !ids.has(String(child.id))) {
+            ids.add(String(child.id));
+            pending.push(String(child.id));
+          }
+        }
+      }
+      list = list.filter(it => ids.has(String(it.parentId)));
+    }
     return [...list].sort((a, b) => (b.dateAdded || 0) - (a.dateAdded || 0));
   }
 
@@ -194,60 +221,113 @@
     const href = safeHttpUrl(it.url);
     const favicon = faviconUrl(it.url);
     const initial = esc((it.host || it.title || '?').trim().charAt(0).toUpperCase() || '?');
-    const tags = (it.tags || []).map(t => `<span class="nt-card-tag">#${esc(t)}</span>`).join('');
+    // favicon 兜底底色：域名哈希出稳定色相，父元素以 CSS 变量传递（.nt-fav-fallback 不新增属性）
+    const seed = String(it.host || it.url || it.title || '');
+    let hue = 0;
+    for (let i = 0; i < seed.length; i += 1) hue = (hue * 31 + seed.charCodeAt(i)) % 360;
+    const tagList = it.tags || [];
+    const chips =
+      tagList.slice(0, 2).map(t => `<span class="nt-tag-chip">#${esc(t)}</span>`).join('') +
+      (tagList.length > 2 ? `<span class="nt-tag-chip more">+${tagList.length - 2}</span>` : '');
     const hiddenBadge = it.hidden ? '<span class="nt-card-hidden">已隐藏</span>' : '';
     const hiddenLabel = it.hidden ? '取消隐藏' : '隐藏';
     const actions = `
       <div class="nt-actions" data-id="${esc(it.id)}">
-        <button type="button" class="nt-action" data-nt-act="copy" title="复制链接" aria-label="复制链接">${ICON('copy')}</button>
-        <button type="button" class="nt-action" data-nt-act="toggle-hidden" title="${hiddenLabel}" aria-label="${hiddenLabel}">${ICON('eye')}</button>
-        <button type="button" class="nt-action" data-nt-act="edit" title="编辑" aria-label="编辑">${ICON('edit')}</button>
-        <button type="button" class="nt-action danger" data-nt-act="delete" title="删除（30 天内可恢复）" aria-label="删除">${ICON('trash')}</button>
+        <button type="button" class="nt-action" data-nt-act="copy" data-tip="复制链接" aria-label="复制链接">${ICON('copy')}</button>
+        <button type="button" class="nt-action" data-nt-act="toggle-hidden" data-tip="${hiddenLabel}" aria-label="${hiddenLabel}">${ICON('eye')}</button>
+        <button type="button" class="nt-action" data-nt-act="edit" data-tip="编辑" aria-label="编辑">${ICON('edit')}</button>
+        <button type="button" class="nt-action danger" data-nt-act="delete" data-tip="删除（30 天内可恢复）" aria-label="删除">${ICON('trash')}</button>
       </div>`;
-    return `<div class="nt-card-wrap">
-      <a class="nt-card"${href ? ` href="${esc(href)}" target="_blank" rel="noopener"` : ' aria-disabled="true"'} title="${esc(it.title)}">
-        <span class="nt-fav" aria-hidden="true">
+    return `<div class="nt-card-wrap" id="nt-card-${esc(it.id)}" data-nt-id="${esc(it.id)}" role="option" aria-selected="false">
+      <a class="nt-card"${href ? ` href="${esc(href)}" target="_blank" rel="noopener"` : ' aria-disabled="true"'} data-tip="${esc(it.title)}">
+        <span class="nt-fav" aria-hidden="true" style="--fav-hue: ${hue}">
           <span class="nt-fav-fallback">${initial}</span>
           ${favicon ? `<img class="nt-fav-img" src="${esc(favicon)}" alt="" loading="lazy" />` : ''}
         </span>
         <div class="nt-card-body">
           <div class="nt-card-title">${esc(it.title)}</div>
           <div class="nt-card-host">${esc(it.host || '')}</div>
-          <div class="nt-card-tags">${hiddenBadge}${tags || '<span class="nt-card-untagged">未打标</span>'}</div>
+          <div class="nt-card-tags">${hiddenBadge}${chips || '<span class="nt-card-untagged">未打标</span>'}</div>
         </div>
       </a>${actions}
     </div>`;
   }
 
-  // 简易 SVG icon（内联，避免依赖 popup.html 的 <symbol>）
+  // 紧凑列表行：复用 popup 的 .row 视觉语言，信息密度高于卡片
+  function rowHtml(it) {
+    const href = safeHttpUrl(it.url);
+    const favicon = faviconUrl(it.url);
+    const initial = esc((it.host || it.title || '?').trim().charAt(0).toUpperCase() || '?');
+    const seed = String(it.host || it.url || it.title || '');
+    let hue = 0;
+    for (let i = 0; i < seed.length; i += 1) hue = (hue * 31 + seed.charCodeAt(i)) % 360;
+    const tagList = it.tags || [];
+    const chips =
+      tagList.slice(0, 2).map(t => `<span class="nt-tag-chip">#${esc(t)}</span>`).join('') +
+      (tagList.length > 2 ? `<span class="nt-tag-chip more">+${tagList.length - 2}</span>` : '');
+    const loc = [it.host || '', (it.path || []).slice(-1)[0] || ''].filter(Boolean).join(' · ');
+    const hiddenLabel = it.hidden ? '取消隐藏' : '隐藏';
+    const actions = `
+      <div class="nt-actions" data-id="${esc(it.id)}">
+        <button type="button" class="nt-action" data-nt-act="copy" data-tip="复制链接" aria-label="复制链接">${ICON('copy')}</button>
+        <button type="button" class="nt-action" data-nt-act="toggle-hidden" data-tip="${hiddenLabel}" aria-label="${hiddenLabel}">${ICON('eye')}</button>
+        <button type="button" class="nt-action" data-nt-act="edit" data-tip="编辑" aria-label="编辑">${ICON('edit')}</button>
+        <button type="button" class="nt-action danger" data-nt-act="delete" data-tip="删除（30 天内可恢复）" aria-label="删除">${ICON('trash')}</button>
+      </div>`;
+    return `<div class="nt-card-wrap nt-row" id="nt-card-${esc(it.id)}" data-nt-id="${esc(it.id)}" role="option" aria-selected="false">
+      <a class="nt-row-link"${href ? ` href="${esc(href)}" target="_blank" rel="noopener"` : ' aria-disabled="true"'} data-tip="${esc(it.title)}">
+        <span class="nt-fav" aria-hidden="true" style="--fav-hue: ${hue}">
+          <span class="nt-fav-fallback">${initial}</span>
+          ${favicon ? `<img class="nt-fav-img" src="${esc(favicon)}" alt="" loading="lazy" />` : ''}
+        </span>
+        <span class="nt-row-body">
+          <span class="nt-row-title">${esc(it.title)}</span>
+          <span class="nt-row-loc">${esc(loc)}</span>
+        </span>
+        <span class="nt-row-tags">${chips}${it.hidden ? '<span class="nt-card-hidden">已隐藏</span>' : ''}</span>
+      </a>${actions}
+    </div>`;
+  }
+
+  // 图标统一引用外链雪碧图 icons/sprite.svg（不再内联 path）
   function ICON(name) {
-    const paths = {
-      eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
-      copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
-      edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
-      trash:
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>',
-      save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>',
-      close:
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
-      sparkles:
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z"/></svg>'
+    const ids = {
+      eye: 'i-eye',
+      copy: 'i-copy',
+      edit: 'i-edit',
+      trash: 'i-trash',
+      save: 'i-save',
+      close: 'i-x',
+      sparkles: 'i-sparkles',
+      list: 'i-list',
+      grid: 'i-grid',
+      folder: 'i-folder',
+      search: 'i-search',
+      globe: 'i-globe',
+      alert: 'i-alert'
     };
-    return paths[name] || '';
+    const id = ids[name];
+    if (!id) return '';
+    return `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="icons/sprite.svg#${id}"/></svg>`;
   }
 
   function render() {
     renderTags();
-    const list = filtered();
+    renderFolders();
+    const list = filtered(activeFolder);
     const grid = $('#ntGrid');
     const more = $('#ntMore');
     const empty = $('#ntEmpty');
     const loading = $('#ntLoading');
     if (loading) loading.classList.add('hidden');
-    // 搜索/标签筛选时在搜索框内实时显示结果数（吸顶区始终可见）
+    const isList = viewMode === 'list';
+    grid.classList.toggle('is-list', isList);
+    // >200 条时启用 content-visibility（零依赖虚拟化，Chrome 原生支持）
+    grid.classList.toggle('is-virt', list.length > VIRTUALIZE_AT);
+    // 搜索/标签/文件夹筛选时在搜索框内实时显示结果数（吸顶区始终可见）
     const resultCount = $('#ntResultCount');
     if (resultCount) {
-      const filtering = Boolean(search.trim() || activeTag);
+      const filtering = Boolean(search.trim() || activeTag || activeFolder);
       resultCount.classList.toggle('hidden', !filtering);
       resultCount.textContent = filtering ? list.length + ' 个结果' : '';
     }
@@ -256,13 +336,167 @@
     if (!list.length) {
       grid.innerHTML = '';
       more.innerHTML = '';
+      kbIndex = -1;
+      grid.removeAttribute('aria-activedescendant');
       empty.classList.remove('hidden');
+      const emptyTitle = $('#ntEmptyTitle');
+      const emptyDesc = $('#ntEmptyDesc');
+      if (emptyTitle) emptyTitle.textContent = '没有匹配的书签';
+      if (emptyDesc)
+        emptyDesc.textContent = activeFolder
+          ? '当前文件夹下没有符合筛选条件的书签，换个文件夹或清空筛选条件'
+          : '换个关键词，或清空筛选条件';
       return;
     }
     empty.classList.add('hidden');
     shown = Math.min(STEP, list.length);
-    grid.innerHTML = list.slice(0, shown).map(cardHtml).join('');
+    grid.innerHTML = list.slice(0, shown).map(itemHtml).join('');
+    syncKbHighlight();
     updateMore(list);
+  }
+
+  // 当前视图下的单条渲染（卡片 / 紧凑列表行）
+  function itemHtml(it) {
+    return viewMode === 'list' ? rowHtml(it) : cardHtml(it);
+  }
+
+  // 文件夹筛选下拉：用 analyzer 的 folderTree 填充（含后代缩进与计数）
+  let folderSignature = '';
+  let folderTreeRef = null;
+  let folderRenderKey = '';
+  function renderFolders() {
+    const select = $('#ntFolder');
+    if (!select) return;
+    const tree = (DATA && DATA.folderTree) || {};
+    const roots = tree.roots || [];
+    const byId = tree.folderById || new Map();
+    // 签名覆盖 id / 父级 / 标题 / 计数：重命名或跨层移动（自身计数不变）后不会显示旧结构。
+    // 树对象未变时跳过全量拼接，避免每次输入防抖都做一次 O(n) 字符串拼接。
+    if (tree !== folderTreeRef) {
+      folderTreeRef = tree;
+      folderSignature =
+        byId.size +
+        ':' +
+        Array.from(byId.values())
+          .map(node => node.id + '/' + node.parentId + '/' + node.title + '/' + node.totalCount)
+          .join(',');
+    }
+    const renderKey = folderSignature + ':' + activeFolder;
+    if (renderKey === folderRenderKey) return;
+    folderRenderKey = renderKey;
+    if (activeFolder && !byId.has(String(activeFolder))) activeFolder = '';
+    const options = ['<option value="">全部文件夹</option>'];
+    const walk = (nodes, depth) => {
+      for (const node of nodes) {
+        const pad = '— '.repeat(depth);
+        options.push(
+          `<option value="${esc(node.id)}">${pad}${esc(node.title)}（${node.totalCount}）</option>`
+        );
+        walk(node.childFolders || [], depth + 1);
+      }
+    };
+    walk(roots, 0);
+    select.innerHTML = options.join('');
+    select.value = activeFolder;
+  }
+
+  // 视图切换：同步 .active / aria-pressed 并持久化到 storage
+  function setView(mode, options) {
+    const settings = options || {};
+    viewMode = NT_VIEWS.indexOf(mode) >= 0 ? mode : 'grid';
+    const isList = viewMode === 'list';
+    const gridBtn = $('#ntViewGrid');
+    const listBtn = $('#ntViewList');
+    if (gridBtn) {
+      gridBtn.classList.toggle('active', !isList);
+      gridBtn.setAttribute('aria-pressed', String(!isList));
+    }
+    if (listBtn) {
+      listBtn.classList.toggle('active', isList);
+      listBtn.setAttribute('aria-pressed', String(isList));
+    }
+    if (settings.persist !== false) {
+      try {
+        const task = chrome.storage.local.set({ [NT_VIEW_KEY]: viewMode });
+        if (task && typeof task.catch === 'function') task.catch(() => {});
+      } catch (e) {
+        /* 持久化失败不影响当前视图 */
+      }
+    }
+    if (settings.rerender !== false && DATA) {
+      kbIndex = -1;
+      render();
+    }
+  }
+
+  // ---- 键盘导航：j/k 与方向键移动高亮，Enter 打开，e 编辑，Delete 删除 ----
+  function cardsInGrid() {
+    const grid = $('#ntGrid');
+    return grid ? Array.from(grid.querySelectorAll('.nt-card-wrap')) : [];
+  }
+
+  function syncKbHighlight() {
+    const grid = $('#ntGrid');
+    if (!grid) return;
+    const wraps = cardsInGrid();
+    if (kbIndex < 0 || kbIndex >= wraps.length) {
+      kbIndex = -1;
+      grid.removeAttribute('aria-activedescendant');
+      return;
+    }
+    const active = wraps[kbIndex];
+    active.classList.add('kb-active');
+    active.setAttribute('aria-selected', 'true');
+    grid.setAttribute('aria-activedescendant', active.id);
+  }
+
+  function kbMove(delta) {
+    const wraps = cardsInGrid();
+    if (!wraps.length) return;
+    wraps.forEach(wrap => {
+      wrap.classList.remove('kb-active');
+      wrap.setAttribute('aria-selected', 'false');
+    });
+    kbIndex = kbIndex < 0 ? (delta > 0 ? 0 : wraps.length - 1) : kbIndex + delta;
+    if (kbIndex < 0) kbIndex = 0;
+    if (kbIndex > wraps.length - 1) kbIndex = wraps.length - 1;
+    syncKbHighlight();
+    const active = wraps[kbIndex];
+    if (active && typeof active.scrollIntoView === 'function') {
+      active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }
+
+  function kbClear() {
+    if (kbIndex < 0) return;
+    cardsInGrid().forEach(wrap => {
+      wrap.classList.remove('kb-active');
+      wrap.setAttribute('aria-selected', 'false');
+    });
+    kbIndex = -1;
+    const grid = $('#ntGrid');
+    if (grid) grid.removeAttribute('aria-activedescendant');
+  }
+
+  function kbTarget() {
+    const wrap = cardsInGrid()[kbIndex];
+    if (!wrap) return null;
+    const id = wrap.dataset.ntId || wrap.id.replace('nt-card-', '');
+    const it = (DATA.items || []).find(x => String(x.id) === String(id));
+    return it ? { it, wrap } : null;
+  }
+
+  // Shift+Enter：优先在后台新开标签页，不可用时退回 window.open
+  function openInBackground(rawUrl) {
+    const href = safeHttpUrl(rawUrl);
+    if (!href) return;
+    const fallback = () => window.open(href, '_blank', 'noopener');
+    try {
+      const task = chrome.tabs.create({ url: href, active: false });
+      if (task && typeof task.catch === 'function') task.catch(fallback);
+    } catch (e) {
+      fallback();
+    }
   }
 
   function updateMore(list) {
@@ -276,7 +510,7 @@
     btn.textContent = `加载更多（${shown}/${list.length}）`;
     btn.onclick = () => {
       const next = Math.min(shown + STEP, list.length);
-      $('#ntGrid').insertAdjacentHTML('beforeend', list.slice(shown, next).map(cardHtml).join(''));
+      $('#ntGrid').insertAdjacentHTML('beforeend', list.slice(shown, next).map(itemHtml).join(''));
       shown = next;
       updateMore(list);
     };
@@ -314,14 +548,29 @@
     $('#ntClear').classList.add('hidden');
     render();
   });
-  // 键盘：回车直接打开第一条
+  // 键盘：回车直接打开第一条（网格 / 列表通用）
   searchInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
-      const first = document.querySelector('#ntGrid .nt-card');
+      const first = document.querySelector('#ntGrid .nt-card, #ntGrid .nt-row-link');
       if (first) first.click();
+      return;
+    }
+    // ↓：从搜索框进入结果列表（焦点交给网格，后续 j/k / ↑↓ 由全局键盘导航处理），
+    // 让「输入关键词 → ↓ → Enter 打开」全程不需要鼠标
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const grid = $('#ntGrid');
+      if (grid && typeof grid.focus === 'function') {
+        try {
+          grid.focus({ preventScroll: true });
+        } catch (err) {
+          grid.focus();
+        }
+      }
+      kbMove(1);
     }
   });
-  // 全局快捷键：/ 聚焦搜索（与侧边栏一致）；Esc 清空搜索
+  // 全局快捷键：/ 聚焦搜索；Esc 清空搜索；j/k 与方向键移动高亮，Enter 打开，e 编辑，Delete 删除
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && search) {
       search = '';
@@ -330,12 +579,61 @@
       render();
       return;
     }
+    // 确认弹层打开时，键盘完全交给弹层的焦点陷阱（UI.focusTrap）
+    const modal = $('#ntConfirmWrap');
+    if (modal && !modal.classList.contains('hidden')) return;
     const tag = (e.target.tagName || '').toLowerCase();
-    if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === '/') {
       e.preventDefault();
       searchInput.focus();
+      return;
     }
+    if (e.key === 'j' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      kbMove(1);
+      return;
+    }
+    if (e.key === 'k' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      kbMove(-1);
+      return;
+    }
+    if (e.key === 'Enter' && kbIndex >= 0) {
+      const target = kbTarget();
+      if (!target) return;
+      // 焦点已在卡片链接上时交给浏览器原生激活，避免重复打开
+      if (!e.shiftKey && e.target.closest && e.target.closest('a[href]')) return;
+      e.preventDefault();
+      if (e.shiftKey) {
+        openInBackground(target.it.url);
+        return;
+      }
+      const link = target.wrap.querySelector('a[href]');
+      if (link) {
+        suppressHoverAfterOpen(link);
+        link.click();
+      } else {
+        openInBackground(target.it.url);
+      }
+      return;
+    }
+    if ((e.key === 'e' || e.key === 'E') && kbIndex >= 0) {
+      const target = kbTarget();
+      if (!target) return;
+      e.preventDefault();
+      openInlineEditor(target.it, target.wrap);
+      return;
+    }
+    if (e.key === 'Delete' && kbIndex >= 0) {
+      const target = kbTarget();
+      if (!target) return;
+      e.preventDefault();
+      softDeleteBookmark(target.it);
+      return;
+    }
+    if (e.key === 'Escape') kbClear();
   });
   $('#ntTags').addEventListener('click', e => {
     const t = e.target.closest('.nt-tag');
@@ -344,6 +642,19 @@
     render();
   });
   $('#ntOpenPanel').addEventListener('click', openPanel);
+  // 视图切换：卡片网格 / 紧凑列表
+  const viewGridBtn = $('#ntViewGrid');
+  const viewListBtn = $('#ntViewList');
+  if (viewGridBtn) viewGridBtn.addEventListener('click', () => setView('grid'));
+  if (viewListBtn) viewListBtn.addEventListener('click', () => setView('list'));
+  // 文件夹筛选（与标签筛选、搜索并存，AND）
+  const folderSelect = $('#ntFolder');
+  if (folderSelect) {
+    folderSelect.addEventListener('change', () => {
+      activeFolder = folderSelect.value || '';
+      render();
+    });
+  }
 
   // 搜索框滚动悬浮：越过顶栏后加深阴影提示已固定（IntersectionObserver，无滚动抖动）
   const searchBar = $('.nt-search');
@@ -360,10 +671,10 @@
   }
 
   $('#ntGrid').addEventListener('click', e => {
-    suppressHoverAfterOpen(e.target.closest('.nt-card'));
+    suppressHoverAfterOpen(e.target.closest('.nt-card, .nt-row-link'));
   });
   $('#ntGrid').addEventListener('auxclick', e => {
-    if (e.button === 1) suppressHoverAfterOpen(e.target.closest('.nt-card'));
+    if (e.button === 1) suppressHoverAfterOpen(e.target.closest('.nt-card, .nt-row-link'));
   });
 
   $('#ntGrid').addEventListener(
@@ -375,7 +686,7 @@
     true
   );
 
-  // 卡片操作按钮（事件委托）：👁 隐藏 / ✏️ 编辑 / 🗑 删除
+  // 卡片操作按钮（事件委托）：复制 / 隐藏 / 编辑 / 删除
   $('#ntGrid').addEventListener('click', async e => {
     const btn = e.target.closest('[data-nt-act]');
     if (!btn) return;
@@ -432,28 +743,16 @@
       yes.textContent = opts.confirmText || '确认';
       yes.className = 'btn ' + (opts.danger === false ? 'primary' : 'danger');
       wrap.classList.remove('hidden');
-      const trapTab = e => {
-        if (e.key !== 'Tab') return;
-        const list = [yes, no].filter(x => x && x.offsetParent !== null);
-        if (!list.length) return;
-        if (e.shiftKey && document.activeElement === list[0]) {
-          e.preventDefault();
-          list[list.length - 1].focus();
-        } else if (!e.shiftKey && document.activeElement === list[list.length - 1]) {
-          e.preventDefault();
-          list[0].focus();
-        }
-      };
+      // 焦点陷阱 / Escape 收敛到共享原语（js/ui.js）；无 UI 时退回原生焦点管理
+      const release = window.UI
+        ? window.UI.focusTrap(wrap, { onEscape: () => done(false), autofocus: false })
+        : null;
       const onKey = e => {
         if (e.key === 'Escape') {
-          done(false);
+          if (!window.UI) done(false); // 有 UI 时 Escape 由焦点陷阱的 onEscape 处理
           return;
         }
-        if (e.key === 'Enter' && e.target !== yes && e.target !== no) {
-          done(true);
-          return;
-        }
-        trapTab(e);
+        if (e.key === 'Enter' && e.target !== yes && e.target !== no) done(true);
       };
       const onWrapClick = e => {
         if (e.target === wrap) done(false);
@@ -463,7 +762,9 @@
         yes.onclick = no.onclick = null;
         document.removeEventListener('keydown', onKey);
         wrap.removeEventListener('click', onWrapClick);
-        if (restoreFocusTo && document.contains(restoreFocusTo)) restoreFocusTo.focus();
+        // 关闭后归还焦点：UI.releaseTrap 内建 restore，无 UI 时手工归还
+        if (release) release();
+        else if (restoreFocusTo && document.contains(restoreFocusTo)) restoreFocusTo.focus();
         resolve(v);
       };
       yes.onclick = () => done(true);
@@ -539,11 +840,21 @@
   }
 
   // Toast 简易提示（可附带撤销等动作按钮）
-  function showToast(msg, danger, action) {
+  // 兼容旧签名 showToast(msg, danger, action)，并支持分级字符串 'ok' | 'info' | 'warn' | 'danger'
+  function showToast(msg, level, action) {
+    const kind =
+      level === true
+        ? 'danger'
+        : typeof level === 'string' && ['ok', 'info', 'warn', 'danger'].indexOf(level) >= 0
+          ? level
+          : level
+            ? 'danger'
+            : 'ok';
     const t = document.createElement('div');
-    t.className = 'nt-toast' + (danger ? ' danger' : '');
-    t.setAttribute('role', danger ? 'alert' : 'status');
-    t.setAttribute('aria-live', danger ? 'assertive' : 'polite');
+    t.className = 'nt-toast' + (kind === 'ok' ? '' : ' ' + kind);
+    const alert = kind === 'danger' || kind === 'warn';
+    t.setAttribute('role', alert ? 'alert' : 'status');
+    t.setAttribute('aria-live', alert ? 'assertive' : 'polite');
     const txt = document.createElement('span');
     txt.textContent = msg;
     t.appendChild(txt);
@@ -585,7 +896,7 @@
           <label>标签（逗号分隔）</label>
           <div class="nt-edit-tags-line">
             <input class="nt-edit-tags" type="text" value="${esc(tagsStr)}" placeholder="开发, github, 工作" />
-            <button type="button" class="nt-edit-btn ghost nt-edit-ai" data-edit-act="ai" title="AI 从固定标签池中挑 1-3 个标签（需在设置页配置 AI 服务）">${ICON('sparkles')}<span class="nt-edit-ai-label">AI 打标</span></button>
+            <button type="button" class="nt-edit-btn ghost nt-edit-ai" data-edit-act="ai" data-tip="AI 从固定标签池中挑 1-3 个标签（需在设置页配置 AI 服务）">${ICON('sparkles')}<span class="nt-edit-ai-label">AI 打标</span></button>
           </div>
         </div>
         <div class="nt-edit-actions">
@@ -717,6 +1028,10 @@
     if (changes[NT_APPEARANCE_KEY]) {
       applyAppearance(changes[NT_APPEARANCE_KEY].newValue);
     }
+    // 视图模式在其它标签页切换时跟随（不重复写回 storage）
+    if (changes[NT_VIEW_KEY]) {
+      setView(changes[NT_VIEW_KEY].newValue, { persist: false });
+    }
     const keys = ['bmTags', 'bmHiddenIds', 'bmFixedTags', 'bmTagRules'];
     if (!keys.some(k => changes[k])) return;
     clearTimeout(syncTimer);
@@ -736,6 +1051,8 @@
 
   // 初始化：加载配置 + 分析书签
   (async function init() {
+    // 统一 tooltip（data-tip）由共享原语 js/ui.js 绑定
+    if (window.UI) UI.initTooltip();
     // 版本号：直接读 manifest，保证与实际安装版本一致
     try {
       $('#ntVersion').textContent = 'v' + chrome.runtime.getManifest().version;
@@ -752,6 +1069,13 @@
       applyAppearance(r[NT_APPEARANCE_KEY]);
     } catch (e) {
       /* 保持默认外观 */
+    }
+    // 视图模式（卡片网格 / 紧凑列表，默认卡片）
+    try {
+      const r = await chrome.storage.local.get(NT_VIEW_KEY);
+      setView(r[NT_VIEW_KEY], { persist: false, rerender: false });
+    } catch (e) {
+      /* 默认卡片视图 */
     }
     try {
       await window.BM.loadTags();
@@ -781,15 +1105,13 @@
       console.error('[书签管家] newtab 初始化失败', e);
     }
     // 首屏已展示后再做一次标签拉取。初始化任务若仍在后台队列中，完成后会在此继续。
-    void tagConfigurationTask
-      .then(async result => {
-        if (result.failed) return;
-        const changed = await window.BM.pullTagsFromCloud();
-        if (!changed || !DATA) return;
-        window.BM.invalidateTags && window.BM.invalidateTags();
-        DATA = await window.BMAnalyzer.analyze();
-        render();
-      })
-      .catch(() => {});
+    void tagConfigurationTask.then(async result => {
+      if (result.failed) return;
+      const changed = await window.BM.pullTagsFromCloud();
+      if (!changed || !DATA) return;
+      window.BM.invalidateTags && window.BM.invalidateTags();
+      DATA = await window.BMAnalyzer.analyze();
+      render();
+    }).catch(() => {});
   })();
 })();

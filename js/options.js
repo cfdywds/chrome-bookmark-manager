@@ -16,7 +16,6 @@ function debounce(fn, wait) {
 }
 // 敏感/文本配置输入防抖保存，避免每敲一键就写 storage / 触发主页面刷新
 const queuePersist = debounce(() => {
-  setMsg('正在保存…', '', false);
   persist();
 }, 600);
 const LLM_PROFILES_KEY = 'bmLlmProfiles';
@@ -79,6 +78,19 @@ function setNtMsg(text, cls) {
   el.className = 'settings-msg' + (cls ? ' ' + cls : '');
 }
 
+function setDangerMsg(text, cls) {
+  const el = $('#dangerMsg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'settings-msg' + (cls ? ' ' + cls : '');
+}
+
+// 保存反馈统一（P2-3-4）：成功提示走全局 toast，内联 settings-msg 只保留错误 / 校验文案。
+function notifySaved(message, level) {
+  if (window.UI && typeof UI.toast === 'function') UI.toast(message, level || 'ok');
+  else setMsg(message, level === 'danger' ? 'err' : 'ok');
+}
+
 // ---- 新标签页外观：表单 ↔ 存储 ----
 function ntBgRowVisible(show) {
   const row = $('#ntBgRow');
@@ -113,7 +125,8 @@ function ntAppearanceValue() {
 async function persistNtAppearance(msg) {
   try {
     await chrome.storage.local.set({ [NT_APPEARANCE_KEY]: ntAppearanceValue() });
-    if (msg) setNtMsg(msg, 'ok');
+    if (msg) notifySaved(msg);
+    renderSectionStatuses();
   } catch (e) {
     setNtMsg('保存失败：' + (e.message || e), 'err');
   }
@@ -471,6 +484,7 @@ async function persistSilent() {
       [ACTIVE_LLM_PROFILE_KEY]: activeLlmProfileId,
       bmSettings: profileSettings(profile)
     });
+    renderSectionStatuses();
   } catch (e) {
     console.warn('[书签管家] 保存设置失败', e);
   }
@@ -496,7 +510,8 @@ async function persist() {
       false
     );
   } else {
-    setMsg('✓ 已自动保存', 'ok');
+    setMsg('', '');
+    notifySaved('AI 配置已保存');
   }
 }
 
@@ -518,10 +533,14 @@ async function persistFixedTags() {
   pendingTagConfigurationSaveCount++;
   try {
     await BM.saveSyncedTagConfiguration(tags, rules);
-    setFtMsg(
-      `✓ 已保存 ${tags.length} 个标签${tags.length > max ? `（超出上限 ${max}，超出部分不会参与 AI 打标）` : ''}`,
-      'ok'
+    notifySaved(
+      '标签池已更新：' +
+        tags.length +
+        ' 个标签' +
+        (tags.length > max ? '（超出上限 ' + max + '，超出部分不会参与 AI 打标）' : ''),
+      tags.length > max ? 'warn' : 'ok'
     );
+    renderSectionStatuses();
   } catch (e) {
     setFtMsg('保存失败：' + (e.message || e), 'err');
   } finally {
@@ -537,7 +556,8 @@ async function persistTagRules() {
   pendingTagConfigurationSaveCount++;
   try {
     await BM.saveSyncedTagConfiguration(tags, rules);
-    setTrMsg('✓ 已保存 ' + count + ' 条自定义规则', 'ok');
+    notifySaved('自定义规则已保存：' + count + ' 条');
+    renderSectionStatuses();
   } catch (e) {
     setTrMsg('保存失败：' + (e.message || e), 'err');
   } finally {
@@ -610,7 +630,8 @@ async function switchLlmProfile(profileId) {
   if (!profile || profile.id === activeLlmProfileId) return;
   try {
     await commitActiveProfileState(llmProfiles, profile.id);
-    setMsg('已切换到「' + profile.name + '」', 'ok');
+    notifySaved('已切换到「' + profile.name + '」');
+    renderSectionStatuses();
   } catch (e) {
     setMsg('切换失败：' + (e.message || e), 'err');
   }
@@ -623,7 +644,8 @@ async function createLlmProfile() {
     await commitActiveProfileState([...llmProfiles, profile], profile.id);
     $('#setProfileName').focus();
     $('#setProfileName').select();
-    setMsg('已新建配置，可填写后自动保存', 'ok');
+    notifySaved('已新建配置，可填写后自动保存');
+    renderSectionStatuses();
   } catch (e) {
     setMsg('新建失败：' + (e.message || e), 'err');
   }
@@ -641,9 +663,11 @@ async function deleteActiveLlmProfile() {
   const next = remaining[Math.max(0, Math.min(currentIndex, remaining.length - 1))];
   try {
     await commitActiveProfileState(remaining, next.id);
-    setMsg('已删除配置', 'ok');
+    setDangerMsg('', '');
+    notifySaved('已删除配置', 'warn');
+    renderSectionStatuses();
   } catch (e) {
-    setMsg('删除失败：' + (e.message || e), 'err');
+    setDangerMsg('删除失败：' + (e.message || e), 'err');
   }
 }
 
@@ -743,12 +767,12 @@ async function load() {
     renderTagSyncStatus(tagSyncStatus);
     renderTagSyncDiagnostics();
     fillNtAppearance(r[NT_APPEARANCE_KEY]);
+    renderSectionStatuses();
   } catch (e) {
     console.warn('[书签管家] 读取设置失败', e);
   }
   // 注意：这里【只读不写】——无条件写回会用表单默认值覆盖
   // 另一处（popup 抽屉）刚保存的配置，导致「配置丢失」。
-  setMsg('设置已就绪 · 修改即时生效', 'ok', false);
   hydrateTagConfigurationAfterLoad(initialTagConfiguration);
 }
 
@@ -770,7 +794,8 @@ async function persistAutoAiTag() {
       await BM.requestLlmHostPermission(cfg.baseUrl);
     }
     await chrome.storage.local.set({ bmAutoAiTag: enabled });
-    setMsg(enabled ? '已开启浏览器收藏后台 AI 补充' : '已关闭浏览器收藏后台 AI 补充', 'ok');
+    setMsg('', '');
+    notifySaved(enabled ? '已开启浏览器收藏后台 AI 补充' : '已关闭浏览器收藏后台 AI 补充');
   } catch (e) {
     $('#setAutoAiTag').checked = false;
     await chrome.storage.local.set({ bmAutoAiTag: false });
@@ -886,6 +911,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
     const next = changes[NT_APPEARANCE_KEY].newValue;
     if (next && !sameStoredValue(next, ntAppearanceValue())) fillNtAppearance(next);
   }
+  renderSectionStatuses();
 });
 
 try {
@@ -923,7 +949,7 @@ async function testConnection() {
   try {
     await BM.requestLlmHostPermission(cfg.baseUrl);
     await BM.testLLM(cfg);
-    setMsg('连接成功 ✓', 'ok');
+    notifySaved('连接成功');
   } catch (e) {
     setMsg('失败：' + (e.message || e), 'err');
   } finally {
@@ -1171,12 +1197,16 @@ async function fetchModelList(opts) {
     if (modelComboOpen) renderModelList();
     const current = $('#setModel').value.trim();
     if (msg && !opts.silent) {
-      msg.textContent =
+      msg.textContent = '';
+      msg.className = 'settings-msg';
+    }
+    if (!opts.silent) {
+      notifySaved(
         '已加载 ' +
-        models.length +
-        ' 个模型' +
-        (current && !models.includes(current) ? '；当前模型未出现在列表中，仍可继续使用' : '');
-      msg.className = 'settings-msg ok';
+          models.length +
+          ' 个模型' +
+          (current && !models.includes(current) ? '；当前模型未出现在列表中，仍可继续使用' : '')
+      );
     }
   } catch (e) {
     if (intent !== modelFetchIntent) return;
@@ -1192,7 +1222,182 @@ async function fetchModelList(opts) {
   }
 }
 
+// ---------- P2-3：设置分组导航（桌面 sticky 锚点 + 窄屏下拉） ----------
+function escapeNavText(value) {
+  return String(value == null ? '' : value).replace(
+    /[&<>"']/g,
+    ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]
+  );
+}
+
+function optionsSections() {
+  return Array.from(document.querySelectorAll('.opt-wrap section.opt-section'));
+}
+
+function sectionNavLabel(section) {
+  const head = section.querySelector('.opt-section-head h2');
+  const text = head ? head.textContent.replace(/\s+/g, ' ').trim() : '';
+  return text || section.id;
+}
+
+function setActiveNav(targetId) {
+  const nav = $('#optNav');
+  if (nav) {
+    nav.querySelectorAll('.opt-nav-link').forEach(link => {
+      const active = link.dataset.target === targetId;
+      link.classList.toggle('active', active);
+      if (active) link.setAttribute('aria-current', 'true');
+      else link.removeAttribute('aria-current');
+    });
+  }
+  const select = $('#optNavSelect');
+  if (select && targetId && select.value !== targetId) select.value = targetId;
+}
+
+function jumpToSection(id, smooth) {
+  const target = id ? document.getElementById(id) : null;
+  if (!target) return;
+  target.scrollIntoView({ behavior: smooth === false ? 'auto' : 'smooth', block: 'start' });
+  setActiveNav(id);
+}
+
+function initOptionsNav() {
+  const nav = $('#optNav');
+  const sections = optionsSections();
+  if (!nav || !sections.length) return;
+  nav.innerHTML =
+    '<div class="opt-nav-title">设置分组</div>' +
+    sections
+      .map(section => {
+        const label = escapeNavText(sectionNavLabel(section));
+        return (
+          '<a class="opt-nav-link" href="#' +
+          section.id +
+          '" data-target="' +
+          section.id +
+          '">' +
+          label +
+          '</a>'
+        );
+      })
+      .join('') +
+    '<select id="optNavSelect" class="opt-nav-select" aria-label="跳转到设置分组">' +
+    sections
+      .map(
+        section =>
+          '<option value="' +
+          section.id +
+          '">' +
+          escapeNavText(sectionNavLabel(section)) +
+          '</option>'
+      )
+      .join('') +
+    '</select>';
+
+  nav.addEventListener('click', event => {
+    const link = event.target.closest('.opt-nav-link');
+    if (!link || !nav.contains(link)) return;
+    event.preventDefault();
+    jumpToSection(link.dataset.target, true);
+    // 链接保留 href="#id"，无 JS 时仍可原生跳转
+    if (window.history && history.replaceState) history.replaceState(null, '', '#' + link.dataset.target);
+  });
+  nav.addEventListener('change', event => {
+    const select = event.target.closest('.opt-nav-select');
+    if (select) jumpToSection(select.value, true);
+  });
+
+  if (typeof IntersectionObserver === 'function') {
+    const observer = new IntersectionObserver(
+      entries => {
+        const visible = entries
+          .filter(entry => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible.length) setActiveNav(visible[0].target.id);
+      },
+      { rootMargin: '-20% 0px -70% 0px', threshold: 0 }
+    );
+    sections.forEach(section => observer.observe(section));
+  }
+  setActiveNav((window.location.hash || '').slice(1) || sections[0].id);
+}
+
+// ---------- P2-3：分组状态摘要（不展开即可看到配置健康度） ----------
+function setSectionStatus(key, text, level) {
+  const el = document.querySelector('.section-status[data-status-for="' + key + '"]');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'section-status' + (level ? ' ' + level : '');
+}
+
+function countRuleLines(el) {
+  if (!el) return 0;
+  return String(el.value || '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean).length;
+}
+
+function selectedOptionText(select) {
+  if (!select) return '';
+  const option = select.selectedOptions && select.selectedOptions[0];
+  return option ? option.textContent.trim() : '';
+}
+
+function renderSectionStatuses() {
+  const profile = activeLlmProfile();
+  const providerSelect = $('#setProvider');
+  const hasKey = !!String(($('#setKey') && $('#setKey').value) || '').trim();
+  const model = String(($('#setModel') && $('#setModel').value) || '').trim();
+  const providerLabel = selectedOptionText(providerSelect) || (providerSelect && providerSelect.value) || '';
+  setSectionStatus(
+    'ai',
+    hasKey
+      ? '已配置 ' + providerLabel + (model ? ' · ' + model : '')
+      : '未配置服务商（仅本地规则可用）',
+    hasKey ? 'ok' : 'warn'
+  );
+
+  const fixedTags = String(($('#setFixedTags') && $('#setFixedTags').value) || '')
+    .split('\n')
+    .map(tag => tag.trim())
+    .filter(Boolean);
+  const maxTags = (typeof BM !== 'undefined' && BM.MAX_FIXED_TAGS) || 50;
+  const ruleCount = countRuleLines($('#setDomainTagRules')) + countRuleLines($('#setKeywordTagRules'));
+  setSectionStatus(
+    'tags',
+    '标签池 ' + fixedTags.length + ' 个 · 规则 ' + ruleCount + ' 条',
+    fixedTags.length > maxTags ? 'warn' : 'ok'
+  );
+
+  const syncOn = !!($('#setTagSync') && $('#setTagSync').checked);
+  const starOn = !!($('#setStarHook') && $('#setStarHook').checked);
+  setSectionStatus(
+    'browser',
+    '标签同步' + (syncOn ? '已开启' : '未开启') + ' · 收藏接管' + (starOn ? '已开启' : '未开启'),
+    syncOn ? 'ok' : ''
+  );
+
+  setSectionStatus(
+    'appearance',
+    '宽度：' + (selectedOptionText($('#setNtWidth')) || '默认') + ' · 配色：' + (selectedOptionText($('#setNtTheme')) || '跟随系统')
+  );
+
+  setSectionStatus(
+    'danger',
+    profile ? '当前配置：' + (profile.name || '未命名') + ' · 删除后不可恢复' : '删除 / 清理类操作集中在此'
+  );
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  initOptionsNav();
+  if (window.UI && typeof UI.initTooltip === 'function') UI.initTooltip();
+  // 表单变化时刷新分组状态摘要（仅读值 + 写文本，开销可忽略）
+  document.addEventListener('input', event => {
+    if (event.target && event.target.closest && event.target.closest('.opt-section')) {
+      renderSectionStatuses();
+    }
+  });
   $('#setProvider').addEventListener('change', () => {
     applyProviderPreset();
     persist();
@@ -1254,11 +1459,11 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#setTagSync').addEventListener('change', persistTagSync);
   // 新标签页外观：改动即存，新标签页通过 onChanged 实时生效
   $('#setNtWidth').addEventListener('change', () =>
-    persistNtAppearance('已保存 · 新标签页宽度即时生效')
+    persistNtAppearance('新标签页宽度已保存')
   );
   $('#setNtTheme').addEventListener('change', () => {
     ntBgRowVisible($('#setNtTheme').value === 'custom');
-    persistNtAppearance('已保存 · 新标签页配色即时生效');
+    persistNtAppearance('新标签页配色已保存');
   });
   $('#setNtBg').addEventListener('input', () => {
     $('#setNtBgHex').value = $('#setNtBg').value;
@@ -1276,5 +1481,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('#setNtBgHex').value = NT_DEFAULT_BG;
     await persistNtAppearance('已重置为默认背景色');
   });
-  load();
+  load()
+    .then(renderSectionStatuses)
+    .catch(e => console.warn('[书签管家] 读取设置失败', e));
 });

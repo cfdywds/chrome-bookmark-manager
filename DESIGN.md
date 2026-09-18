@@ -21,6 +21,14 @@ The payload uses revisioned chunks and a head pointer. A reader only applies a c
 - Background AI tagging is opt-in, skips native bulk imports and high-confidence rule matches, and falls back to local rules when a remote request fails.
 - Backups omit LLM settings and API keys. Native tag sync omits bookmark titles, API keys, LLM profiles, and recycle-bin records.
 
+## UI Design System
+
+`css/tokens.css` is the single design-token source for all three extension pages and both themes. Colour literals live once in the `--c-*` scale (`-l` light / `-d` dark variants); the semantic variables that components consume (`--bg`, `--panel`, `--ink`, `--line`, `--primary`, `--danger`, `--field-bg`, `--surface-sub`, …) only map onto those scale values. Dark mode and the new-tab explicit themes (`data-nt-theme`) are variable remaps on `:root`, so component rules contain no dark-mode patch selectors.
+
+`js/ui.js` provides the shared interaction primitives: focus trapping with focus restore for modals and drawers (`UI.focusTrap` / `UI.releaseTrap`), an Esc-handler stack (`UI.onEscape`), one delayed tooltip driven by `data-tip`, level-aware toasts (`UI.toast(message, level, action)`), and a shortcut registry that renders the side-panel help drawer so documentation cannot drift from behaviour.
+
+`icons/sprite.svg` is the only icon source. Pages and scripts reference `icons/sprite.svg#i-*` instead of inlining SVG markup.
+
 ## Trust Boundaries
 
 Chrome bookmark APIs, Chrome bookmark sync, imported JSON, and local extension storage are user-data inputs. Configured LLM endpoints are remote trust boundaries. Network access to an LLM origin requires explicit user approval.

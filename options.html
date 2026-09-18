@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>书签管家 · 设置</title>
+    <link rel="stylesheet" href="css/tokens.css" />
     <link rel="stylesheet" href="css/popup.css" />
   </head>
   <body class="opt-body">
@@ -12,6 +13,7 @@
         <h1>
           <span class="brand-icon"
             ><svg
+              class="ico"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -20,18 +22,19 @@
               stroke-linejoin="round"
               aria-hidden="true"
             >
-              <circle cx="12" cy="12" r="3" />
-              <path
-                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-              /></svg
+              <use href="icons/sprite.svg#i-gear" />
+              </svg
           ></span>
           书签管家 · 设置
         </h1>
         <p><b id="optVersion"></b> · 所有数据仅保存在你的浏览器本地 · 修改即时生效，无需手动保存</p>
       </div>
 
+      <!-- ===== 设置分组导航（P2-3-1：桌面左侧 sticky 锚点导航，窄屏横向滚动）===== -->
+      <nav id="optNav" class="opt-nav" aria-label="设置分组导航"></nav>
+
       <!-- ===== 分组 1：AI 分类 ===== -->
-      <section class="opt-section">
+      <section class="opt-section" id="opt-ai">
         <div class="opt-section-head">
           <div class="opt-section-icon opt-section-icon-ai">
             <svg
@@ -63,12 +66,14 @@
               </button>
             </h2>
           </div>
+          <span class="section-status" data-status-for="ai"></span>
         </div>
 
         <div class="opt-card">
           <div class="opt-card-head">
             <span class="opt-card-icon"
               ><svg
+                class="ico"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -77,10 +82,8 @@
                 stroke-linejoin="round"
                 aria-hidden="true"
               >
-                <circle cx="12" cy="12" r="3" />
-                <path
-                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-                /></svg
+                <use href="icons/sprite.svg#i-gear" />
+                </svg
             ></span>
             <div>
               <div class="opt-card-title">
@@ -102,7 +105,6 @@
             </div>
             <div class="profile-actions">
               <button id="profileNew" type="button" class="btn ghost">新建配置</button>
-              <button id="profileDelete" type="button" class="btn ghost danger-text">删除</button>
             </div>
           </div>
           <div class="opt-grid">
@@ -170,6 +172,7 @@
                   />
                   <span class="model-combo-caret" aria-hidden="true">
                     <svg
+                      class="ico"
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
@@ -177,7 +180,7 @@
                       stroke-linecap="round"
                       stroke-linejoin="round"
                     >
-                      <polyline points="6 9 12 15 18 9" />
+                      <use href="icons/sprite.svg#i-chevron-down" />
                     </svg>
                   </span>
                   <ul
@@ -190,11 +193,11 @@
                 </div>
                 <button id="modelsFetch" type="button" class="btn ghost">获取模型列表</button>
               </div>
-              <span id="modelsMsg" class="settings-msg"></span>
+              <span id="modelsMsg" class="settings-msg" role="alert"></span>
             </div>
           </div>
           <div class="opt-foot">
-            <span id="settingsMsg" class="settings-msg"></span>
+            <span id="settingsMsg" class="settings-msg" role="alert"></span>
             <button id="settingsSave" class="btn ghost">保存配置</button>
             <button id="settingsTest" class="btn primary">测试连接</button>
           </div>
@@ -202,10 +205,11 @@
       </section>
 
       <!-- ===== 分组 2：标签体系 ===== -->
-      <section class="opt-section">
+      <section class="opt-section" id="opt-tags">
         <div class="opt-section-head">
           <div class="opt-section-icon opt-section-icon-tag">
             <svg
+              class="ico"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -213,10 +217,7 @@
               stroke-linecap="round"
               stroke-linejoin="round"
             >
-              <path
-                d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.83z"
-              />
-              <line x1="7" y1="7" x2="7.01" y2="7" />
+              <use href="icons/sprite.svg#i-tag" />
             </svg>
           </div>
           <div class="opt-section-text">
@@ -232,12 +233,14 @@
               </button>
             </h2>
           </div>
+          <span class="section-status" data-status-for="tags"></span>
         </div>
 
         <div class="opt-card opt-card-compact opt-card-tag-tag">
           <div class="opt-card-head">
             <span class="opt-card-icon"
               ><svg
+                class="ico"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -246,10 +249,8 @@
                 stroke-linejoin="round"
                 aria-hidden="true"
               >
-                <path
-                  d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.83z"
-                />
-                <line x1="7" y1="7" x2="7.01" y2="7" /></svg
+                <use href="icons/sprite.svg#i-tag" />
+                </svg
             ></span>
             <div>
               <div class="opt-card-title">
@@ -275,7 +276,7 @@
             ></textarea>
           </div>
           <div class="opt-foot">
-            <span id="fixedTagsMsg" class="settings-msg"></span>
+            <span id="fixedTagsMsg" class="settings-msg" role="alert"></span>
           </div>
         </div>
 
@@ -283,6 +284,7 @@
           <div class="opt-card-head">
             <span class="opt-card-icon"
               ><svg
+                class="ico"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -291,10 +293,8 @@
                 stroke-linejoin="round"
                 aria-hidden="true"
               >
-                <circle cx="12" cy="12" r="3" />
-                <path
-                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-                /></svg
+                <use href="icons/sprite.svg#i-gear" />
+                </svg
             ></span>
             <div>
               <div class="opt-card-title">
@@ -331,16 +331,17 @@
             </div>
           </div>
           <div class="opt-foot">
-            <span id="tagRulesMsg" class="settings-msg"></span>
+            <span id="tagRulesMsg" class="settings-msg" role="alert"></span>
           </div>
         </div>
       </section>
 
       <!-- ===== 分组 3：浏览器集成 ===== -->
-      <section class="opt-section">
+      <section class="opt-section" id="opt-browser">
         <div class="opt-section-head">
           <div class="opt-section-icon opt-section-icon-browser">
             <svg
+              class="ico"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -348,11 +349,7 @@
               stroke-linecap="round"
               stroke-linejoin="round"
             >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="2" y1="12" x2="22" y2="12" />
-              <path
-                d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
-              />
+              <use href="icons/sprite.svg#i-globe" />
             </svg>
           </div>
           <div class="opt-section-text">
@@ -368,6 +365,7 @@
               </button>
             </h2>
           </div>
+          <span class="section-status" data-status-for="browser"></span>
         </div>
 
         <div class="opt-card opt-card-compact opt-card-tag-browser">
@@ -418,6 +416,7 @@
           <div class="opt-card-head">
             <span class="opt-card-icon"
               ><svg
+                class="ico"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -426,10 +425,8 @@
                 stroke-linejoin="round"
                 aria-hidden="true"
               >
-                <polyline points="17 1 21 5 17 9" />
-                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                <polyline points="7 23 3 19 7 15" />
-                <path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg
+                <use href="icons/sprite.svg#i-repeat" />
+                </svg
             ></span>
             <div>
               <div class="opt-card-title">
@@ -451,7 +448,7 @@
             </label>
           </div>
           <div class="opt-foot">
-            <span id="tagSyncMsg" class="settings-msg"></span>
+            <span id="tagSyncMsg" class="settings-msg" role="alert"></span>
             <span id="tagSyncSummary" class="settings-msg"></span>
           </div>
           <div id="tagSyncProgress" class="tag-sync-progress" hidden aria-live="polite">
@@ -471,7 +468,7 @@
       </section>
 
       <!-- ===== 分组 4：新标签页外观 ===== -->
-      <section class="opt-section">
+      <section class="opt-section" id="opt-appearance">
         <div class="opt-section-head">
           <div class="opt-section-icon opt-section-icon-ui">
             <svg
@@ -504,6 +501,7 @@
               </button>
             </h2>
           </div>
+          <span class="section-status" data-status-for="appearance"></span>
         </div>
 
         <div class="opt-card opt-card-compact opt-card-tag-ui">
@@ -587,13 +585,65 @@
             </div>
           </div>
           <div class="opt-foot">
-            <span id="ntAppearMsg" class="settings-msg"></span>
+            <span id="ntAppearMsg" class="settings-msg" role="alert"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 分组 5：危险操作（P2-3-3：不可逆操作集中收敛，不新增任何破坏性功能）===== -->
+      <section class="opt-section danger-zone" id="opt-danger">
+        <div class="opt-section-head">
+          <div class="opt-section-text">
+            <h2>
+              危险操作
+              <button
+                class="help-dot"
+                type="button"
+                data-tip="这里只放不可逆的操作；删除 AI 配置后无法恢复，需要重新填写接口地址、API Key 与模型名。"
+                aria-label="删除 AI 配置后无法恢复，需要重新填写接口地址、API Key 与模型名。"
+              >
+                ?
+              </button>
+            </h2>
+          </div>
+          <span class="section-status" data-status-for="danger"></span>
+        </div>
+
+        <div class="opt-card opt-card-compact">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                class="ico"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <use href="icons/sprite.svg#i-alert" /></svg
+            ></span>
+            <div>
+              <div class="opt-card-title">删除当前选中的 AI 配置</div>
+              <p class="opt-card-desc">
+                删除后该配置的接口地址、API Key 与模型名一并移除且无法恢复（其余配置不受影响）。删除前请先在「AI
+                分类」分组中确认当前选中的配置；标签原生同步只是停止读写、已有数据保留，不属于危险操作。备份恢复与回收站清空位于侧边栏「概览」页，本页不提供入口。
+              </p>
+            </div>
+          </div>
+          <div class="opt-foot">
+            <span id="dangerMsg" class="settings-msg" role="alert"></span>
+            <button id="profileDelete" type="button" class="btn ghost danger-text" data-danger="1">
+              删除 AI 配置
+            </button>
           </div>
         </div>
       </section>
     </div>
 
     <script src="js/lib.js"></script>
+    <script src="js/ui.js"></script>
     <script src="js/options.js"></script>
   </body>
 </html>

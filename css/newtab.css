@@ -1,5 +1,5 @@
 /* ===== 书签管家 · 新标签页 (newtab.css) =====
-   复用 popup.css 的设计变量（--grad / --panel / --ink 等，含暗色模式）
+   设计变量来自 css/tokens.css（唯一来源，含暗色与 data-nt-theme 显式主题）
    整体：居中布局 + 大搜索 + 标签条 + 卡片网格 */
 
 .nt-body {
@@ -13,64 +13,7 @@
 }
 
 /* 显式主题：由 newtab.js 设置 data-nt-theme，变量集中维护在 CSS，避免 JS 双份调色板 */
-:root[data-nt-theme='light'] {
-  --bg: #f3f5f8;
-  --panel: #ffffff;
-  --ink: #101828;
-  --ink-2: #344054;
-  --muted: #667085;
-  --line: #e7ebf0;
-  --line-2: #dce1e8;
-  --primary: #2563eb;
-  --primary-2: #0ea5e9;
-  --primary-3: #7cb8f7;
-  --primary-soft: #e9f1fe;
-  --accent: #06b6d4;
-  --pink: #ec4899;
-  --grad: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  --grad-action: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  --grad-brand: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%);
-  --grad-soft: linear-gradient(135deg, #eaf2fe 0%, #e8f9fd 100%);
-  --danger: #e11d48;
-  --danger-soft: #ffe7ec;
-  --warn: #b45309;
-  --warn-soft: #fdf1d7;
-  --ok: #047857;
-  --ok-strong: #065f46;
-  --ok-soft: #d5f5e7;
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --shadow: 0 6px 20px rgba(15, 23, 42, 0.09);
-  --shadow-lg: 0 16px 48px rgba(15, 23, 42, 0.16);
-}
-:root[data-nt-theme='dark'] {
-  --bg: #0f1117;
-  --panel: #171b24;
-  --ink: #f2f4f8;
-  --ink-2: #c3c9d4;
-  --muted: #8b93a3;
-  --line: #242a36;
-  --line-2: #303845;
-  --primary: #5da2f5;
-  --primary-2: #38bdf8;
-  --primary-3: #93c5fd;
-  --primary-soft: #1a2436;
-  --accent: #22d3ee;
-  --pink: #f472b6;
-  --grad: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  --grad-action: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  --grad-brand: linear-gradient(135deg, #3b82f6 0%, #22d3ee 100%);
-  --grad-soft: linear-gradient(135deg, #182234 0%, #16232c 100%);
-  --danger: #fb7185;
-  --danger-soft: #3a2229;
-  --warn: #fbbf24;
-  --warn-soft: #332a14;
-  --ok: #34d399;
-  --ok-strong: #6ee7b7;
-  --ok-soft: #12332a;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
-}
+/* 主题变量集中在 css/tokens.css（浅/深 + data-nt-theme 显式主题），本文件只写组件形态。 */
 
 .nt-wrap {
   /* 宽度上限由设置页「新标签页外观」控制（--nt-maxw 由 newtab.js 注入） */
@@ -111,8 +54,7 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-  min-width: 32px;
-  min-height: 32px;
+  min-width: 32px; min-height: 32px;
   padding: 7px;
   color: var(--muted);
   font-size: 12px;
@@ -134,36 +76,27 @@
   border-radius: 4px;
 }
 
-/* ---- 大搜索框（滚动时悬浮固定在最顶部） ---- */
+/* ---- 大搜索框（滚动时悬浮固定在最顶部）----
+   尺寸/底色/圆角由 popup.css 的共享 .search-box.lg 提供（P2-4 跨页面一致），
+   本文件只保留 newtab 特有的吸顶与图标细节，避免两份尺寸定义 */
 .nt-search {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 15px 20px;
-  background: var(--panel);
-  border: 2px solid var(--line-2);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
   transition:
     border-color 0.2s,
     box-shadow 0.2s;
   margin-bottom: 16px;
   position: sticky;
   top: 10px;
-  z-index: 30;
+  z-index: var(--z-sticky, 30);
 }
-/* 悬浮吸附状态：毛玻璃 + 加深阴影，提示已固定 */
+/* 悬浮吸附状态：毛玻璃 + 加深阴影，提示已固定（阴影走 --shadow-sticky token） */
 .nt-search.is-stuck {
   background: var(--panel);
   background: color-mix(in srgb, var(--panel) 84%, transparent);
   -webkit-backdrop-filter: blur(12px) saturate(1.3);
   backdrop-filter: blur(12px) saturate(1.3);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-nt-theme]) .nt-search.is-stuck {
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-  }
+  box-shadow: var(--shadow-sticky, 0 8px 24px rgba(15, 23, 42, 0.14));
 }
 .nt-sticky-sentinel {
   height: 1px;
@@ -171,23 +104,14 @@
 .nt-search:focus-within {
   border-color: var(--primary);
   box-shadow:
-    0 0 0 4px rgba(37, 99, 235, 0.15),
+    0 0 0 4px color-mix(in srgb, var(--primary) 15%, transparent),
     var(--shadow);
 }
 .nt-search-ico {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   color: var(--muted);
   flex-shrink: 0;
-}
-.nt-search input {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  outline: none;
-  font-size: 16px;
-  background: transparent;
-  color: var(--ink);
 }
 .nt-search input::placeholder {
   color: var(--muted);
@@ -278,6 +202,12 @@
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
 }
+/* 键盘导航时焦点落在列表容器上（role=listbox + aria-activedescendant 需挂在可聚焦宿主） */
+.nt-grid:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+  border-radius: 16px;
+}
 .nt-card-wrap {
   position: relative;
   width: 100%;
@@ -338,14 +268,16 @@
   overflow: hidden;
   flex-shrink: 0;
   object-fit: contain;
-  background: var(--grad-soft);
+  /* 兜底底色：色相由卡片按 URL 哈希写入父元素 --fav-hue，图标正常时被 .nt-fav-img 覆盖 */
+  background: hsl(var(--fav-hue, 220) 68% 46%);
   border: 1px solid var(--line);
 }
+/* favicon 缺失/加载失败时的首字母兜底（元素本身不带属性，色相靠父级变量） */
 .nt-fav-fallback {
   font-size: 18px;
   line-height: 1;
   font-weight: 800;
-  color: var(--primary);
+  color: #fff;
 }
 .nt-fav-img {
   position: absolute;
@@ -394,14 +326,21 @@
   overflow: hidden;
   white-space: nowrap;
 }
-.nt-card-tag {
+.nt-tag-chip {
   display: inline-flex;
-  font-size: 12px;
+  align-items: center;
+  font-size: 11px;
   padding: 1px 8px;
   border-radius: 999px;
   background: var(--ok-soft);
-  color: var(--ok);
+  color: var(--ok-strong);
   font-weight: 500;
+  border: 1px solid color-mix(in srgb, var(--ok) 24%, transparent);
+}
+.nt-tag-chip.more {
+  background: var(--surface-sub);
+  color: var(--muted);
+  border-color: var(--line-2);
 }
 .nt-card-hidden {
   font-size: 12px;
@@ -544,8 +483,10 @@
 }
 .nt-action.is-copied {
   background: var(--ok-soft, #e4f8ee);
-  border-color: #78cda2;
+  border-color: var(--ok);
+  /* 浅色下与 --ok-strong 同值；保留字面量作为旧浏览器回退，暗色由 token 覆盖 */
   color: #047857;
+  color: var(--ok-strong);
 }
 .nt-action.is-copy-error {
   background: var(--danger-soft, #ffe4e9);
@@ -560,13 +501,7 @@
   height: 18px;
 }
 
-@media (prefers-color-scheme: dark) {
-  /* 仅「跟随系统」时命中；纱罩颜色由 var(--panel) 自适应，无需单独覆盖 */
-  :root:not([data-nt-theme]) .nt-action.is-copied {
-    border-color: var(--ok);
-    color: var(--ok);
-  }
-}
+/* 暗色无需补丁：复制成功态全部走 --ok / --ok-soft / --ok-strong 语义变量 */
 
 /* ===== Inline 编辑浮层 ===== */
 .nt-edit {
@@ -667,13 +602,13 @@
   outline-offset: 2px;
 }
 
-/* ===== Toast ===== */
+/* ===== Toast（级别变体：.info / .warn / .danger；默认 = ok）===== */
 .nt-toast {
   position: fixed;
   left: 50%;
   bottom: 24px;
   transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.82);
+  background: var(--toast-bg);
   color: #fff;
   padding: 8px 16px;
   border-radius: 999px;
@@ -686,8 +621,26 @@
   align-items: center;
   gap: 10px;
 }
+.nt-toast::before {
+  content: '';
+  width: 3px;
+  align-self: stretch;
+  min-height: 14px;
+  border-radius: 999px;
+  background: var(--ok);
+  flex-shrink: 0;
+}
+.nt-toast.info::before {
+  background: var(--primary);
+}
+.nt-toast.warn::before {
+  background: var(--warn);
+}
 .nt-toast.danger {
-  background: rgba(244, 63, 94, 0.92);
+  background: color-mix(in srgb, var(--danger) 92%, transparent);
+}
+.nt-toast.danger::before {
+  background: rgba(255, 255, 255, 0.85);
 }
 .nt-toast-act {
   border: none;
@@ -730,6 +683,9 @@
   .nt-actions,
   .nt-action,
   .nt-tag,
+  .nt-tag-chip,
+  .nt-row-link,
+  .nt-view-btn,
   .nt-fav-img,
   .nt-toast,
   .nt-toast-act,
@@ -761,15 +717,13 @@
   .nt-edit {
     width: 100%;
   }
-  .nt-source-link span {
-    display: none;
-  }
+  .nt-source-link span { display: none; }
+  .nt-grid.is-list .nt-row-tags { display: none; }
+  .nt-grid.is-list .nt-actions { padding-right: 2px; }
 }
 
 @media (max-width: 420px) {
-  .nt-count {
-    display: none;
-  }
+  .nt-count { display: none; }
 }
 
 @media (max-width: 320px) {
@@ -781,6 +735,207 @@
     gap: 6px;
     padding: 8px 12px;
   }
+}
+
+/* ===== 视图切换（卡片网格 / 紧凑列表，P2-2）===== */
+.nt-view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--surface-sub);
+  border: 1px solid var(--line);
+}
+.nt-view-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.nt-view-btn:hover {
+  color: var(--ink);
+  background: var(--surface-sub-hover);
+}
+.nt-view-btn.active {
+  background: var(--panel);
+  color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+.nt-view-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.nt-view-btn .ico {
+  width: 16px;
+  height: 16px;
+}
+
+/* ===== 文件夹筛选条（与标签筛选条并存，AND 关系）===== */
+.nt-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.nt-folder-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--panel);
+}
+.nt-folder-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+#ntFolder {
+  max-width: 260px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+}
+#ntFolder:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ===== 键盘高亮（j/k 与方向键移动，复用 --primary-soft 语义）===== */
+.nt-card-wrap.kb-active {
+  background: var(--primary-soft);
+  border-radius: 12px;
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.nt-card-wrap.kb-active .nt-card {
+  border-color: var(--primary);
+}
+
+/* ===== 虚拟化：结果 >200 条时跳过屏外卡片的布局/绘制（Chrome 原生）===== */
+.nt-grid.is-virt .nt-card-wrap {
+  content-visibility: auto;
+  contain-intrinsic-size: 180px auto;
+}
+
+/* ===== 紧凑列表视图（复用 popup .row 的信息语言，密度高于卡片）===== */
+.nt-grid.is-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nt-grid.is-list .nt-card-wrap {
+  height: auto;
+  border-radius: 10px;
+}
+.nt-grid.is-list .nt-card-wrap:hover,
+.nt-grid.is-list .nt-card-wrap:focus-within {
+  transform: none;
+}
+.nt-row-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.12s;
+}
+.nt-grid.is-list .nt-card-wrap:hover .nt-row-link,
+.nt-grid.is-list .nt-card-wrap:focus-within .nt-row-link {
+  background: var(--surface-sub);
+}
+.nt-row-link:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.nt-row-link .nt-fav {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: none;
+  font-size: 11px;
+}
+.nt-row-link .nt-fav-fallback {
+  font-size: 11px;
+  font-weight: 700;
+}
+.nt-row-link .nt-fav-img {
+  padding: 2px;
+}
+.nt-row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.nt-row-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nt-row-loc {
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nt-row-tags {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+/* 列表视图的动作条：常驻在行尾，不再用渐隐纱罩（避免遮住行内容） */
+.nt-grid.is-list .nt-actions {
+  position: static;
+  inset: auto;
+  padding: 0 8px 0 0;
+  border-radius: 0;
+  background: none;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  pointer-events: auto;
+  flex-shrink: 0;
+}
+.nt-grid.is-list .nt-action {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  padding: 5px;
+  border-radius: 7px;
+}
+.nt-grid.is-list .nt-card-wrap {
+  display: flex;
+  align-items: center;
 }
 
 /* 品牌位使用扩展真实图标（与工具栏一致） */

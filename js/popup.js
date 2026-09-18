@@ -5,6 +5,7 @@ let DATA = null;
 let currentTab = 'overview';
 let overviewDetail = ''; // clean | trash；由概览待办项进入的工具视图
 let SEARCH = ''; // 全局搜索词
+let SEARCH_SCOPE = 'all'; // 搜索范围：all | title | tag | url（由搜索框右侧 chips 切换）
 let searchTimer = null;
 let TAG_FILTER = ''; // 标签筛选：当前选中的标签（'' = 全部）
 let tabRenderToken = 0;
@@ -35,6 +36,13 @@ const TAG_CLEAR_BATCH_SIZE = 400;
 const DELETE_PROGRESS_INTERVAL_MS = 80;
 const TRASH_DELETE_HEARTBEAT_INTERVAL_MS = 5000;
 const SELF_CREATION_MESSAGE = 'bmSelfCreatingBookmark';
+const SEARCH_SCOPE_VALUES = ['all', 'title', 'tag', 'url']; // 搜索范围取值（与 #searchScope chips 的 data-scope 一致）
+const SEARCH_SCOPE_LABELS = { all: '全部', title: '标题', tag: '标签', url: '网址' };
+// 反馈分级：ok | info | warn | danger（info 用于一次性引导等中性提示）
+const TOAST_LEVELS = { ok: 'ok', info: 'info', warn: 'warn', danger: 'danger' };
+// 「组织」页一次性拖拽引导标记（chrome.storage.local 键），失败静默
+const ORGANIZE_TIP_KEY = 'bmOrganizeTipShown';
+const ORGANIZE_TIP_TEXT = '拖动书签行左侧把手可排序，拖到分组标题上可移动分组';
 
 // ---- LLM 设置：服务商预设统一来自 lib.js（DRY，与 options.js 共享同一份配置）----
 const PROVIDERS = BM.PROVIDERS;
@@ -45,9 +53,9 @@ let tagConfigurationSyncFailed = false;
 
 // ---- SVG 图标助手（配合 popup.html 的 <symbol> sprite，替代 emoji）----
 const ICON = name =>
-  `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-${name}"/></svg>`;
+  `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="icons/sprite.svg#i-${name}"/></svg>`;
 const ICON_SM = name =>
-  `<svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-${name}"/></svg>`;
+  `<svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="icons/sprite.svg#i-${name}"/></svg>`;
 // 文件夹行图标（带 f-icon 类，便于 CSS 着色 / 空文件夹弱化）
 const FOLDER_ICON_SM = ICON_SM('folder').replace('ico ico-sm', 'ico ico-sm f-icon');
 
@@ -95,13 +103,20 @@ function highlightHtml(text, q) {
 }
 
 // ---------- 反馈组件：Toast / 进度条 ----------
+// type: 'ok'（默认）| 'info' | 'warn' | 'danger'；未知值一律回落到 'ok'
 function toast(msg, type, action) {
-  type = type || 'ok';
+  // 渲染统一交给共享原语 js/ui.js（与 options 同一实现）；UI 缺失时退回下方本地实现
+  if (window.UI && typeof window.UI.toast === 'function') {
+    window.UI.toast(msg, type, action);
+    return;
+  }
   const box = $('#toasts');
   const el = document.createElement('div');
-  el.className = 'toast ' + type;
-  el.setAttribute('role', type === 'danger' || type === 'warn' ? 'alert' : 'status');
-  el.setAttribute('aria-live', type === 'danger' || type === 'warn' ? 'assertive' : 'polite');
+  // 与 UI.normalizeLevel 保持一致（true → danger），避免兜底路径语义分叉
+  const level = type === true ? 'danger' : TOAST_LEVELS[type] || 'ok';
+  el.className = 'toast ' + level;
+  el.setAttribute('role', level === 'danger' || level === 'warn' ? 'alert' : 'status');
+  el.setAttribute('aria-live', level === 'danger' || level === 'warn' ? 'assertive' : 'polite');
   const txt = document.createElement('span');
   txt.textContent = msg;
   el.appendChild(txt);
@@ -292,6 +307,10 @@ function confirmDialog(opts) {
   opts = opts || {};
   return new Promise(resolve => {
     const wrap = $('#confirmWrap');
+    if (!wrap) {
+      resolve(false);
+      return;
+    }
     const restoreFocusTo = document.activeElement;
     $('#confirmTitle').textContent = opts.title || '确认操作？';
     $('#confirmMsg').innerHTML = opts.message || '';
@@ -312,52 +331,50 @@ function confirmDialog(opts) {
     } else {
       fourth.classList.add('hidden');
     }
-    wrap.classList.remove('hidden');
+    const no = $('#confirmNo');
+    // 弹层内 Tab 循环 / Esc 取消统一走共享 UI 原语；Esc 优先在 wrap 内处理（stopPropagation 防止连带触发页面级 Esc）。
+    let releaseTrap = null;
+    let settled = false;
     const onWrapClick = e => {
       if (e.target === wrap) done(false);
     };
     const done = v => {
+      if (settled) return;
+      settled = true;
       wrap.classList.add('hidden');
       yes.onclick = no.onclick = third.onclick = fourth.onclick = null;
       wrap.removeEventListener('click', onWrapClick);
-      document.removeEventListener('keydown', onKey);
-      if (restoreFocusTo && document.contains(restoreFocusTo)) restoreFocusTo.focus();
+      wrap.removeEventListener('keydown', onKey);
+      // release() 负责归还焦点给触发元素
+      if (typeof releaseTrap === 'function') releaseTrap();
+      else if (restoreFocusTo && document.contains(restoreFocusTo)) restoreFocusTo.focus();
       resolve(v);
     };
-    const no = $('#confirmNo');
     // Enter 仅在焦点不在按钮上时视为确认；焦点在「取消」等按钮时应由按钮自身的点击语义生效。
-    // 弹层内 Tab 循环（与抽屉焦点陷阱一致），避免焦点跑到背景内容。
-    const trapTab = e => {
-      if (e.key !== 'Tab') return;
-      const list = [...wrap.querySelectorAll('button, input')].filter(
-        x => !x.classList.contains('hidden') && !x.disabled && x.offsetParent !== null
-      );
-      if (!list.length) return;
-      if (e.shiftKey && document.activeElement === list[0]) {
-        e.preventDefault();
-        list[list.length - 1].focus();
-      } else if (!e.shiftKey && document.activeElement === list[list.length - 1]) {
-        e.preventDefault();
-        list[0].focus();
-      }
-    };
     const onKey = e => {
       if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
         done(false);
         return;
       }
       if (e.key === 'Enter' && !(e.target.closest && e.target.closest('button'))) {
         done(true);
-        return;
       }
-      trapTab(e);
     };
     yes.onclick = () => done(true);
     no.onclick = () => done(false);
     if (opts.thirdText) third.onclick = () => done('third');
     if (opts.fourthText) fourth.onclick = () => done('fourth');
     wrap.addEventListener('click', onWrapClick);
-    document.addEventListener('keydown', onKey);
+    wrap.addEventListener('keydown', onKey);
+    wrap.classList.remove('hidden');
+    if (window.UI)
+      releaseTrap = window.UI.focusTrap(wrap, {
+        onEscape: () => done(false),
+        autofocus: false,
+        restoreFocusTo
+      });
     yes.focus();
   });
 }
@@ -367,41 +384,56 @@ function promptDialog(opts) {
   opts = opts || {};
   return new Promise(resolve => {
     const wrap = $('#promptWrap');
+    if (!wrap) {
+      resolve(null);
+      return;
+    }
     const restoreFocusTo = document.activeElement;
     $('#promptTitle').textContent = opts.title || '输入';
     $('#promptMsg').textContent = opts.message || '';
     const input = $('#promptInput');
     input.value = opts.value || '';
     input.placeholder = opts.placeholder || '输入内容…';
-    wrap.classList.remove('hidden');
     const yes = $('#promptYes');
     const no = $('#promptNo');
+    let releaseTrap = null;
+    let settled = false;
     const onWrapClick = e => {
       if (e.target === wrap) done(null);
     };
     const done = v => {
+      if (settled) return;
+      settled = true;
       wrap.classList.add('hidden');
       yes.onclick = no.onclick = null;
       wrap.removeEventListener('click', onWrapClick);
-      document.removeEventListener('keydown', onKey);
-      if (restoreFocusTo && document.contains(restoreFocusTo)) restoreFocusTo.focus();
+      wrap.removeEventListener('keydown', onKey);
+      if (typeof releaseTrap === 'function') releaseTrap();
+      else if (restoreFocusTo && document.contains(restoreFocusTo)) restoreFocusTo.focus();
       resolve(v);
     };
     const onKey = e => {
       if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
         done(null);
         return;
       }
       if (e.key === 'Enter' && !(e.target.closest && e.target.closest('button'))) {
         done(input.value.trim() || null);
-        return;
       }
-      trapTab(e);
     };
     yes.onclick = () => done(input.value.trim() || null);
     no.onclick = () => done(null);
     wrap.addEventListener('click', onWrapClick);
-    document.addEventListener('keydown', onKey);
+    wrap.addEventListener('keydown', onKey);
+    wrap.classList.remove('hidden');
+    if (window.UI)
+      releaseTrap = window.UI.focusTrap(wrap, {
+        onEscape: () => done(null),
+        autofocus: false,
+        restoreFocusTo
+      });
     input.focus();
     input.select();
   });
@@ -651,7 +683,7 @@ function itemRow(it, opts) {
     .filter(t => t !== BM.FALLBACK_TAG)
     .map(
       t =>
-        `<button class="tag-chip" data-action="filter-tag" data-tag="${escapeHtml(t)}" title="按标签筛选">#${escapeHtml(t)}</button>`
+        `<button class="tag-chip" data-action="filter-tag" data-tag="${escapeHtml(t)}" data-tip="按标签筛选" aria-label="按标签 #${escapeHtml(t)} 筛选">#${escapeHtml(t)}</button>`
     )
     .join('');
   const deadDot = opts.dead
@@ -661,8 +693,14 @@ function itemRow(it, opts) {
   const urlHtml = q ? highlightHtml(it.url, q) : escapeHtml(it.url);
   const hiddenCls = it.hidden ? ' row-hidden' : '';
   const searchCls = opts.search ? ' search-result-row' : '';
-  const eyeBtn = `<button class="row-eye" data-action="toggle-hidden" data-id="${it.id}" title="${it.hidden ? '取消隐藏' : '隐藏此书签（从日常视图排除）'}">${it.hidden ? ICON_SM('eye-off') : ICON_SM('eye')}</button>`;
-  return `<div class="row clickable draggable${hiddenCls}${searchCls}" data-id="${it.id}" tabindex="0" aria-label="${escapeHtml(it.title)}">
+  const eyeTip = it.hidden ? '取消隐藏' : '隐藏此书签（从日常视图排除）';
+  const eyeBtn = `<button class="row-eye" data-action="toggle-hidden" data-id="${it.id}" data-tip="${eyeTip}" aria-label="${eyeTip}">${it.hidden ? ICON_SM('eye-off') : ICON_SM('eye')}</button>`;
+  const aiTip = (it.tags || []).some(t => t && t !== BM.FALLBACK_TAG)
+    ? 'AI 重新打标（覆盖标签）'
+    : 'AI 打标';
+  const editTip = '编辑书签';
+  return `<div class="row clickable draggable${hiddenCls}${searchCls}" data-id="${it.id}" id="row-${it.id}" tabindex="0" role="option" aria-selected="false" aria-label="${escapeHtml(it.title)}">
+    <button class="drag-handle" type="button" draggable="true" data-action="drag-handle" data-id="${it.id}" data-tip="按住拖拽排序，或拖到分组标题上移动分组" aria-label="拖动 ${escapeHtml(it.title)}">${ICON_SM('drag')}</button>
     <label class="checkbox-slot"><input type="checkbox" class="checkbox sel" data-id="${it.id}" aria-label="选择 ${escapeHtml(it.title)}"></label>
     <div class="meta">
       <div class="title">${deadDot}${it.hidden ? '<span class="tag warn">已隐藏</span> ' : ''}${titleHtml}</div>
@@ -670,9 +708,8 @@ function itemRow(it, opts) {
       <div class="loc"><span>${ICON_SM('folder')} ${escapeHtml(it.path.join(' / '))}</span> ${cat} ${tags}</div>
     </div>
     ${eyeBtn}
-    <button class="row-ai" data-action="ai-tag-single" data-id="${it.id}" title="${(it.tags || []).some(t => t && t !== BM.FALLBACK_TAG) ? 'AI 重新打标（覆盖标签）' : 'AI 打标'}" aria-label="AI 打标 ${escapeHtml(it.title)}">${ICON_SM('sparkles')}</button>
-    <button class="row-edit" data-action="edit-item" data-id="${it.id}" title="编辑书签" aria-label="编辑 ${escapeHtml(it.title)}">${ICON_SM('edit')}</button>
-    <button class="row-drag" draggable="true" data-action="drag-handle" data-id="${it.id}" title="拖动排序 / 移动到其他分组" aria-label="拖动 ${escapeHtml(it.title)}">${ICON_SM('drag')}</button>
+    <button class="row-ai" data-action="ai-tag-single" data-id="${it.id}" data-tip="${aiTip}" aria-label="AI 打标 ${escapeHtml(it.title)}">${ICON_SM('sparkles')}</button>
+    <button class="row-edit" data-action="edit-item" data-id="${it.id}" data-tip="${editTip}" aria-label="编辑 ${escapeHtml(it.title)}">${ICON_SM('edit')}</button>
   </div>`;
 }
 
@@ -681,7 +718,7 @@ function groupWrap(groupKey, icon, name, badgeCls, badgeText, actions, body) {
     <div class="group-head" role="button" tabindex="0" aria-expanded="true">
       <div class="g-title">
         <span>${icon}</span>
-        <span class="g-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+        <span class="g-name" data-tip="${escapeHtml(name)}">${escapeHtml(name)}</span>
         <span class="badge ${badgeCls || ''}">${badgeText}</span>
       </div>
       <div class="actions">${actions}</div>
@@ -690,11 +727,18 @@ function groupWrap(groupKey, icon, name, badgeCls, badgeText, actions, body) {
   </div>`;
 }
 
-function emptyState(icon, title, desc) {
+function emptyState(icon, title, desc, action) {
+  const actionHtml =
+    action && action.label
+      ? `<button class="btn primary empty-action" type="button" data-action="${escapeHtml(
+          action.action || ''
+        )}">${escapeHtml(action.label)}</button>`
+      : '';
   return `<div class="empty-state">
-    <span class="emoji">${icon}</span>
+    <span class="empty-illustration">${icon}</span>
     <div class="title">${escapeHtml(title)}</div>
     <div class="desc">${escapeHtml(desc || '')}</div>
+    ${actionHtml}
   </div>`;
 }
 
@@ -736,46 +780,53 @@ function renderOverview() {
   const stats = d.tagStats || {};
   const entries = Object.entries(stats)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 24);
-  const tagCount = entries.length;
-  // 清理提醒（有待办项优先）
+    .slice(0, 12);
+  const tagCount = Object.keys(stats).length;
+  // 待办入口卡片（有待办项优先；无待办也保留卡片位置，避免首屏跳动）
   const acts = [
     {
       ico: ICON_SM('repeat'),
       name: '重复书签',
+      desc: 'URL 完全相同的书签',
       n: d.exactDuplicates.length,
       jump: 'clean',
       sub: 'repeat',
       cls: 'danger',
-      done: '✓ 无重复'
+      done: '无重复'
     },
     {
-      ico: ICON_SM('trash'),
+      ico: ICON_SM('folder'),
       name: '空文件夹',
+      desc: '没有任何书签的文件夹',
       n: d.emptyFolders.length,
       jump: 'clean',
       sub: 'empty',
       cls: 'warn',
-      done: '✓ 无空夹'
+      done: '无空文件夹'
     },
     {
       ico: ICON_SM('archive'),
       name: '回收站',
+      desc: '30 天内可恢复',
       n: trashN,
       jump: 'trash',
-      cls: 'info',
-      done: '✓ 回收站为空'
+      cls: '',
+      done: '空'
     }
   ].sort((a, b) => (b.n > 0) - (a.n > 0));
 
-  const actRow = a => {
+  const entryCard = a => {
     const done = a.n === 0;
-    return `<div class="act-item ${a.cls}" ${done ? '' : `data-jump="${a.jump}" data-sub="${a.sub}"`}>
-      <span class="act-badge ${done ? 'done' : ''}">${done ? ICON('check') : a.n}</span>
-      <div class="act-info">
-        <div class="act-name">${a.ico} ${a.name}</div>
+    const attrs = done ? '' : ` data-jump="${a.jump}"${a.sub ? ` data-sub="${a.sub}"` : ''}`;
+    // 计数为 0 时没有动作，不能渲染成可聚焦的伪按钮（会误导键盘与读屏用户）
+    const a11y = done ? ' aria-disabled="true"' : ' role="button" tabindex="0"';
+    return `<div class="entry-card${done ? ' done' : ''}"${attrs}${a11y} aria-label="${a.name}：${done ? a.done : a.n}">
+      <span class="entry-icon ${a.cls}">${a.ico}</span>
+      <div>
+        <div class="entry-title">${a.name}</div>
+        <div class="entry-desc">${a.desc}</div>
       </div>
-      <span class="act-go">${done ? a.done : '去处理 ' + ICON_SM('arrow-r')}</span>
+      <span class="entry-count">${done ? a.done : a.n}</span>
     </div>`;
   };
 
@@ -791,23 +842,22 @@ function renderOverview() {
       <div class="card" data-jump="trash"><b>${trashN}</b><span>回收站</span></div>
     </div>
     <div class="search-hero">
-      <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"/></svg>
+      <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="icons/sprite.svg#i-search"/></svg>
       <input id="heroSearch" type="text" placeholder="搜索标题、网址、域名、标签" autocomplete="off" spellcheck="false" />
+    </div>
+    <div class="overview-entries" role="group" aria-label="快捷入口">
+      ${acts.map(entryCard).join('')}
     </div>
     ${
       tagCount
         ? `
     <div class="tag-cloud-card">
-      <div class="cloud-head">${ICON_SM('tag')} 热门标签</div>
+      <div class="cloud-head">${ICON_SM('tag')} 热门标签 <button class="btn small ghost" data-action="filter-tag" data-tag="" data-tip="查看全部标签" aria-label="查看全部标签">更多</button></div>
       <div class="tag-cloud-wrap">${entries.map(([t, n]) => tagChip(t, n)).join('')}</div>
     </div>`
         : `
     <div class="empty-state"><span class="emoji">${ICON('tag')}</span><div class="title">还没有标签</div></div>`
     }
-    <div class="act-card">
-      <div class="act-head">${ICON_SM('sparkles')} 待清理</div>
-      ${acts.map(actRow).join('')}
-    </div>
     <div class="backup-card">
       <div>
         <div class="b-title">${ICON_SM('download')} 书签备份 / 恢复 ${helpDot('导出全部书签为 JSON 文件；恢复时默认合并完整 URL 相同的书签与标签，也可选择保留副本。单书签最多 6 个标签，已有标签优先保留。')}</div>
@@ -829,6 +879,7 @@ function renderOverview() {
       $('#searchInput').value = q;
       SEARCH = q.toLowerCase();
       $('#searchClear').classList.remove('hidden');
+      syncSearchScopeVisibility();
       renderSearch();
     });
   hero &&
@@ -887,13 +938,13 @@ function renderBreadcrumb(cur) {
   } else {
     // 路径过长：首 + … + 末，点 … 展开中间祖先
     crumbs = crumbHtml(chain[0], 0, chain.length) +
-      '<button class="crumb crumb-more" data-action="crumb-expand" title="展开中间路径">…</button>' +
+      '<button class="crumb crumb-more" data-action="crumb-expand" data-tip="展开中间路径" aria-label="展开中间路径">…</button>' +
       crumbHtml(chain[chain.length - 1], chain.length - 1, chain.length);
   }
   html += crumbs;
   html += `<span class="crumb-stats"><b>${cur.childFolders.length}</b> 夹 · <b>${cur.bookmarkIds.length}</b> 签</span>`;
   if (chain.length > 1)
-    html += `<button class="crumb crumb-back" data-action="folder-up" title="返回上层">⬑</button>`;
+    html += `<button class="crumb crumb-back" data-action="folder-up" data-tip="返回上层" aria-label="返回上层">⬑</button>`;
   html += '</div>';
   return html;
 }
@@ -913,13 +964,13 @@ function folderRow(f) {
   }
   const empty = f.directCount === 0;
   const cls = `row folder-row clickable draggable${empty ? ' f-empty' : ''}`;
-  return `<div class="${cls}" data-id="${f.id}" data-type="folder" tabindex="0" aria-label="文件夹 ${escapeHtml(f.title)}">
+  return `<div class="${cls}" data-id="${f.id}" data-type="folder" id="row-${f.id}" tabindex="0" role="option" aria-selected="false" aria-label="文件夹 ${escapeHtml(f.title)}">
     <label class="checkbox-slot"><input type="checkbox" class="checkbox sel" data-id="${f.id}" data-type="folder" aria-label="选择 ${escapeHtml(f.title)}"></label>
     ${FOLDER_ICON_SM}
     <span class="f-name">${escapeHtml(f.title)}</span>
     <span class="f-count">${f.directCount} 项</span>
-    <button class="f-menu" data-action="folder-menu" data-id="${f.id}" title="文件夹操作" aria-label="操作 ${escapeHtml(f.title)}">⋮</button>
-    <button class="row-drag" draggable="true" data-action="drag-handle" data-id="${f.id}" data-type="folder" title="拖动排序 / 移动" aria-label="拖动 ${escapeHtml(f.title)}">${ICON_SM('drag')}</button>
+    <button class="f-menu" data-action="folder-menu" data-id="${f.id}" data-tip="文件夹操作" aria-label="操作 ${escapeHtml(f.title)}">⋮</button>
+    <button class="row-drag" draggable="true" data-action="drag-handle" data-id="${f.id}" data-type="folder" data-tip="拖动排序 / 移动" aria-label="拖动 ${escapeHtml(f.title)}">${ICON_SM('drag')}</button>
   </div>`;
 }
 
@@ -942,12 +993,21 @@ function folderRowEdit(f, mode) {
 
 // ---------- 组织页：标签视图 + 文件夹视图双视图统一入口 ----------
 function renderOrganize() {
+  // 首次进入「组织」页：一次性拖拽引导（chrome.storage.local 标记位，失败静默）
+  maybeShowOrganizeTip();
   const view = ORG_VIEW === 'folders' ? 'folders' : 'tags';
-  content().innerHTML = orgBarHtml(view) + '<div id="orgBody"></div>';
+  content().innerHTML = orgBarHtml(view) + orgHintHtml(view) + '<div id="orgBody"></div>';
   const body = $('#orgBody');
   if (!body) return;
   if (view === 'folders') renderFolders(body);
   else renderTags(body);
+}
+
+// 「组织」页副标题（P2-1）：一句话说明这一页能做什么，降低理解成本
+function orgHintHtml(view) {
+  return view === 'folders'
+    ? '<p class="org-hint">浏览 Chrome 真实文件夹结构；新建 / 重命名 / 删除文件夹，拖行首把手排序或跨层移动</p>'
+    : '<p class="org-hint">按标签浏览与筛选（一个书签可以有多个标签），点 #标签 快速过滤</p>';
 }
 
 function orgBarHtml(view) {
@@ -957,11 +1017,11 @@ function orgBarHtml(view) {
     const cur = currentFolder();
     const sortLabel = FOLDER_SORT === 'name' ? '名称' : FOLDER_SORT === 'added' ? '时间' : '手动';
     tools = `<input id="folderSearch" class="org-search" type="text" value="${escapeHtml(FOLDER_SEARCH)}" placeholder="搜索当前层的文件夹或书签…" autocomplete="off" spellcheck="false">`
-      + `<button class="org-btn" data-action="folder-sort" title="切换排序">排序:${sortLabel}</button>`
-      + `<button class="org-btn" data-action="open-tree" title="目录树（浏览 / 跨层移动）">${ICON_SM('folder')}目录树</button>`
-      + (cur ? `<button class="org-btn primary" data-action="new-folder" data-id="${cur.id}" title="新建子文件夹">${ICON_SM('plus')}新建</button>` : '');
+      + `<button class="org-btn" data-action="folder-sort" data-tip="切换排序" aria-label="切换排序，当前 ${sortLabel}">排序:${sortLabel}</button>`
+      + `<button class="org-btn" data-action="open-tree" data-tip="目录树（浏览 / 跨层移动）" aria-label="打开目录树">${ICON_SM('folder')}目录树</button>`
+      + (cur ? `<button class="org-btn primary" data-action="new-folder" data-id="${cur.id}" data-tip="新建子文件夹" aria-label="新建子文件夹">${ICON_SM('plus')}新建</button>` : '');
   } else {
-    tools = `<button class="org-btn" data-action="open-tree" title="目录树（浏览 / 跨层移动）">${ICON_SM('folder')}目录树</button>`;
+    tools = `<button class="org-btn" data-action="open-tree" data-tip="目录树（浏览 / 跨层移动）" aria-label="打开目录树">${ICON_SM('folder')}目录树</button>`;
   }
   return `<div class="org-bar">
     <div class="org-seg" role="tablist" aria-label="组织视图">
@@ -1056,7 +1116,7 @@ function ensureTreeOverlay() {
       <div class="tree-head">
         <input id="treeSearch" type="text" placeholder="搜索文件夹…" autocomplete="off" spellcheck="false">
         <span class="tree-mode" id="treeMode">目录树</span>
-        <button class="icon-btn" id="treeClose" title="关闭" aria-label="关闭">✕</button>
+        <button class="icon-btn" id="treeClose" data-tip="关闭" aria-label="关闭">✕</button>
       </div>
       <div class="tree-body" id="treeBody" data-mode="navigate"></div>
     </div>`;
@@ -1076,6 +1136,12 @@ function openFolderTree() {
   $('#treeSearch').value = '';
   renderFolderTree();
   $('#treeOverlay').classList.remove('hidden');
+  // 弹层焦点陷阱：Esc 关闭（与抽屉 / 弹层一致）
+  if (window.UI && typeof UI.focusTrap === 'function')
+    UI.focusTrap($('#treeOverlay').querySelector('.tree-panel'), {
+      onEscape: () => closeTreeOverlay(),
+      initialFocus: $('#treeSearch')
+    });
   setTimeout(() => $('#treeSearch').focus(), 0);
 }
 
@@ -1089,12 +1155,21 @@ function openMoveToPicker(ids) {
   $('#treeSearch').value = '';
   renderFolderTree();
   $('#treeOverlay').classList.remove('hidden');
+  if (window.UI && typeof UI.focusTrap === 'function')
+    UI.focusTrap($('#treeOverlay').querySelector('.tree-panel'), {
+      onEscape: () => closeTreeOverlay(),
+      initialFocus: $('#treeSearch')
+    });
   setTimeout(() => $('#treeSearch').focus(), 0);
 }
 
 function closeTreeOverlay() {
   const ov = $('#treeOverlay');
-  if (ov) ov.classList.add('hidden');
+  if (ov) {
+    ov.classList.add('hidden');
+    const panel = ov.querySelector('.tree-panel');
+    if (panel && window.UI && typeof UI.releaseTrap === 'function') UI.releaseTrap(panel);
+  }
   treePickerIds = [];
 }
 
@@ -1395,7 +1470,7 @@ function renderTags(container) {
       <span class="sep">|</span><span><b>${entries.length}</b> 个标签</span>${helpDot('标签后的数字表示书签数量。')}
       ${looseKinds ? `<span class="sep">|</span><span><span class="dot" style="background:var(--warn)"></span><b>${looseKinds}</b> 个散落标签</span>` : ''}
       <span style="margin-left:auto; display:flex; gap:6px;">
-        <button class="btn small ghost" data-jump="hidden" title="查看隐藏书签">${ICON_SM('eye-off')} 隐藏（${hiddenCount}）</button>
+        <button class="btn small ghost" data-jump="hidden" data-tip="查看隐藏书签" aria-label="查看隐藏书签（${hiddenCount}）">${ICON_SM('eye-off')} 隐藏（${hiddenCount}）</button>
         <button class="btn small primary" data-action="ai-tag-all" ${untaggedCount ? '' : 'disabled'}>${ICON_SM('sparkles')} 打标未标（${untaggedCount}）</button>
         <button class="btn small ghost" data-action="ai-tag-all-force">${ICON_SM('refresh')} 全量重打</button>
       </span>
@@ -1699,6 +1774,8 @@ function clearSearch(renderPage) {
   if (searchInput) searchInput.value = '';
   const searchClear = $('#searchClear');
   if (searchClear) searchClear.classList.add('hidden');
+  const searchScope = $('#searchScope');
+  if (searchScope) searchScope.classList.add('hidden');
   if (renderPage !== false) render(currentTab);
 }
 
@@ -1710,11 +1787,57 @@ function openTagFilter(tag) {
   switchTab('organize');
 }
 
+// ---------- 搜索范围（#searchScope chips） ----------
+// 按范围取该 item 的可匹配字段文本：all = 标题 + 网址 + 域名 + 标签（现状）；title / tag / url 各自收窄。
+// 调用形态：
+//   applySearchScope(item, scope)              → 返回匹配字段文本（供调用方自行判断）
+//   applySearchScope(item, terms, scope)       → terms 为数组时返回 AND 匹配结果（布尔）
+function applySearchScope(item, terms, scope) {
+  const it = item || {};
+  if (typeof terms === 'string' && scope === undefined) {
+    scope = terms;
+    terms = null;
+  }
+  const asScope = SEARCH_SCOPE_VALUES.includes(scope) ? scope : 'all';
+  const title = String(it.title || '').toLowerCase();
+  const url = String(it.url || '').toLowerCase();
+  const host = String(it.host || '').toLowerCase();
+  const tagList = (it.tags || []).map(t => String(t).toLowerCase());
+  let hay;
+  if (asScope === 'title') hay = title;
+  else if (asScope === 'tag') hay = tagList.join(' ');
+  else if (asScope === 'url') hay = url + ' ' + host;
+  else hay = title + ' ' + url + ' ' + host + ' ' + tagList.join(' ');
+  if (!terms) return hay;
+  const list = Array.isArray(terms) ? terms : [terms];
+  return list.every(t => hay.includes(String(t).toLowerCase()));
+}
+
+// 切换搜索范围：同步 chip 的 aria-pressed / .active，并立即重渲染结果
+function setSearchScope(scope) {
+  SEARCH_SCOPE = SEARCH_SCOPE_VALUES.includes(scope) ? scope : 'all';
+  document.querySelectorAll('#searchScope .scope-chip').forEach(chip => {
+    const on = chip.dataset.scope === SEARCH_SCOPE;
+    chip.classList.toggle('active', on);
+    if (chip.setAttribute) chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  if (SEARCH) renderSearch();
+}
+
+// 输入框有内容时才显示范围 chips，清空时收起（顶部搜索与概览大搜索框共用）
+function syncSearchScopeVisibility() {
+  const box = $('#searchScope');
+  if (!box) return;
+  const input = $('#searchInput');
+  const hasText = !!String((input && input.value) || '').trim();
+  box.classList.toggle('hidden', !hasText);
+}
+
 function renderSearch() {
   const q = SEARCH;
   const hiddenScope = currentTab === 'hidden';
   const sourceItems = hiddenScope ? DATA.items.filter(it => it.hidden) : DATA.items;
-  // 与标签页搜索口径一致：支持 #标签 前缀、空格多词 AND、并匹配标签。
+  // 与标签页搜索口径一致：支持 #标签 前缀、空格多词 AND；范围 chips 决定匹配哪些字段。
   const trimmed = String(q || '').trim();
   let tagTerm = '';
   let textTerms = [];
@@ -1729,40 +1852,42 @@ function renderSearch() {
     textTerms = trimmed.split(/\s+/).filter(Boolean);
   }
   const hasTerm = Boolean(tagTerm || textTerms.length);
+  // 范围过滤：按 scope 决定匹配字段（#标签 语法优先）。
+  // 本函数会被单测单独 eval，故对模块级状态与助手做 typeof 兜底。
+  const scope = typeof SEARCH_SCOPE === 'string' ? SEARCH_SCOPE : 'all';
+  const inScope = (it, terms) =>
+    typeof applySearchScope === 'function'
+      ? applySearchScope(it, terms, scope)
+      : terms.every(t => String(it.title || '').toLowerCase().includes(t));
   const hits = hasTerm
     ? sourceItems.filter(it => {
-        const tagList = (it.tags || []).map(t => String(t).toLowerCase());
-        if (tagTerm && !tagList.includes(tagTerm)) return false;
+        // #标签 语法优先级最高：先按语法筛选，再按当前范围收窄
+        if (tagTerm) {
+          const tagList = (it.tags || []).map(t => String(t).toLowerCase());
+          if (!tagList.includes(tagTerm)) return false;
+        }
         if (!textTerms.length) return true;
-        const hay = (
-          (it.title || '') +
-          ' ' +
-          (it.url || '') +
-          ' ' +
-          (it.host || '') +
-          ' ' +
-          tagList.join(' ')
-        ).toLowerCase();
-        return textTerms.every(t => hay.includes(t));
+        return inScope(it, textTerms);
       })
     : [];
+  const scopeLabel = scope === 'all' ? '' : SEARCH_SCOPE_LABELS[scope] || scope;
   content().innerHTML = `
     <section class="search-results">
       <header class="search-results-head">
         <div class="search-query">
           <span class="search-query-icon">${ICON('search')}</span>
           <div class="search-query-copy">
-            <span>${hiddenScope ? '隐藏书签搜索' : '搜索结果'}</span>
-            <b title="${escapeHtml(q)}">${escapeHtml(q)}</b>
+            <span>${hiddenScope ? '隐藏书签搜索' : '搜索结果'}${scopeLabel ? ' · ' + scopeLabel : ''}</span>
+            <b data-tip="${escapeHtml(q)}">${escapeHtml(q)}</b>
           </div>
         </div>
         <div class="search-result-actions">
           <span class="search-result-count"><b>${hits.length}</b> 个匹配</span>
-          <button class="search-result-clear" data-action="clear-search" title="清除搜索" aria-label="清除搜索">${ICON_SM('x')}</button>
+          <button class="search-result-clear" data-action="clear-search" data-tip="清除搜索" aria-label="清除搜索">${ICON_SM('x')}</button>
         </div>
       </header>
-      <div class="search-results-list${hits.length === 1 ? ' single' : ''}">
-        ${hits.length ? renderItemRows(hits, 'search-' + currentTab + '-' + q, FIRST_LIST_COUNT, FIRST_LIST_COUNT, { highlight: q, search: true }) : emptyState(ICON('search'), hiddenScope ? '没有匹配的隐藏书签' : '没有匹配结果', '换个关键词，或检查是否有拼写错误')}
+      <div class="search-results-list${hits.length === 1 ? ' single' : ''}" role="listbox" aria-label="搜索结果">
+        ${hits.length ? renderItemRows(hits, 'search-' + currentTab + '-' + q, FIRST_LIST_COUNT, FIRST_LIST_COUNT, { highlight: q, search: true }) : emptyState(ICON('search'), hiddenScope ? '没有匹配的隐藏书签' : '没有匹配结果', '换个关键词，或检查是否有拼写错误', { label: '清空搜索', action: 'clear-search' })}
       </div>
     </section>`;
   updateBulk();
@@ -1965,7 +2090,7 @@ async function applyPlan() {
       title: '删除选中的 ' + ids.length + ' 个书签？',
       message:
         '每组将保留 1 个。删除后 30 天内可在「回收站」恢复；本次产生的空文件夹将同步清理（文件夹不可恢复）。',
-      confirmText: '删除'
+      confirmText: '移入回收站'
     });
     if (!ok) return;
     const r = await softDelete(ids, '删除中', { pruneEmptyFolders: true });
@@ -1992,7 +2117,7 @@ async function bulkCleanEmpty() {
   const ok = await confirmDialog({
     title: '清空 ' + ids.length + ' 个空文件夹？',
     message: '空文件夹删除后不可恢复（回收站仅保护书签）。',
-    confirmText: '清空'
+    confirmText: '直接删除'
   });
   if (!ok) return;
   // emptyFolders 已按子目录优先收集，必须串行删除才能继续清掉随后变空的父目录。
@@ -2142,7 +2267,7 @@ async function deleteFolder(id) {
     const ok = await confirmDialog({
       title: '删除空文件夹？',
       message: '「' + escapeHtml(node.title) + '」是空文件夹，删除后不可恢复。',
-      confirmText: '删除'
+      confirmText: '直接删除'
     });
     if (!ok) return;
     try {
@@ -2164,7 +2289,7 @@ async function deleteFolder(id) {
       '</b> 个直属子项（共 ' +
       node.totalCount +
       ' 个书签）。书签将进入回收站（30 天可恢复），文件夹结构不可恢复。',
-    confirmText: '删除'
+    confirmText: '直接删除'
   });
   if (!ok) return;
   try {
@@ -2322,7 +2447,7 @@ async function softDeleteBookmark(id) {
   const ok = await confirmDialog({
     title: '删除书签？',
     message: '删除后 30 天内可在回收站恢复。',
-    confirmText: '删除'
+    confirmText: '移入回收站'
   });
   if (!ok) return;
   try {
@@ -2340,8 +2465,11 @@ function getSelectedIds() {
 }
 
 function updateBulk() {
+  // 悬浮 pill 批量栏出现时，让 #app 让出底部空间（#toasts 随之上移）
+  const app = document.getElementById ? document.getElementById('app') : null;
   if (planMode) {
     $('#bulkBar').classList.add('hidden');
+    if (app) app.classList.toggle('has-bulk', false);
     return;
   }
   const checked = getSelectedIds();
@@ -2352,6 +2480,7 @@ function updateBulk() {
   } else {
     bar.classList.add('hidden');
   }
+  if (app) app.classList.toggle('has-bulk', checked.length > 0);
 }
 
 // ---------- 书签备份 / 恢复（JSON 导出 / 导入） ----------
@@ -2470,7 +2599,8 @@ function render(tab) {
   else if (tab === 'overview' && overviewDetail === 'trash') renderTrashView();
   else if (tab === 'overview') renderOverview();
   else if (tab === 'hidden') renderHidden();
-  else if (tab === 'organize') renderOrganize();
+  // 兼容历史页签 id（tags → organize），避免旧 data-tab / data-jump 值渲染空白
+  else if (tab === 'organize' || tab === 'tags') renderOrganize();
   applyCollapsed(); // 恢复折叠状态（sessionStorage 记忆）
   updateBulk();
 }
@@ -2514,9 +2644,48 @@ let kbRow = null;
 function kbRows() {
   return [...document.querySelectorAll('#content .row.clickable')];
 }
+// 高亮行的可选祖先容器（屏幕阅读器用 aria-activedescendant 感知当前项）
+function kbListFor(row) {
+  if (!row) return content();
+  return row.closest('.group-body') || row.closest('.search-results-list') || content();
+}
 function kbHighlight(row) {
   kbRow = row;
-  kbRows().forEach(r => r.classList.toggle('kb-focus', r === row));
+  const rows = kbRows();
+  rows.forEach(r => {
+    const on = r === row;
+    r.classList.toggle('kb-focus', on);
+    // kb-active：css/popup.css 用它让键盘高亮行的拖拽把手保持可见
+    r.classList.toggle('kb-active', on);
+    if (r.setAttribute) r.setAttribute('aria-selected', on ? 'true' : 'false');
+    // 稳定 id：供 aria-activedescendant 引用
+    if (r.dataset && r.dataset.id && !r.id) r.id = 'row-' + r.dataset.id;
+  });
+  const list = kbListFor(row);
+  if (list && list.setAttribute) {
+    // #content 本身是 role="tabpanel"，不能在运行时改写成 listbox；
+    // 只有真正的列表容器（分组体 / 搜索结果列表 / #orgBody）才能当 listbox。
+    if (list === content()) {
+      // 隐藏视图的行直接挂在 #content 下：不写 listbox 语义，只清掉可能残留的
+      // aria-activedescendant；行自身带 role="option" + tabindex，仍可逐项读出。
+      if (list.removeAttribute) list.removeAttribute('aria-activedescendant');
+    } else {
+      list.setAttribute('role', 'listbox');
+      // aria-activedescendant 必须挂在拥有焦点的元素上：让列表容器可被脚本聚焦，
+      // 并在焦点还在列表之外（如 body）时把焦点交给它，读屏才会播报高亮行。
+      list.setAttribute('tabindex', '-1');
+      if (row && row.id) list.setAttribute('aria-activedescendant', row.id);
+      else if (list.removeAttribute) list.removeAttribute('aria-activedescendant');
+      const trapOpen = window.UI && typeof UI.hasOpenTrap === 'function' && UI.hasOpenTrap();
+      if (!trapOpen && typeof list.focus === 'function' && !list.contains(document.activeElement)) {
+        try {
+          list.focus({ preventScroll: true });
+        } catch (e) {
+          /* 老实现无 options 参数时忽略 */
+        }
+      }
+    }
+  }
   if (row) row.scrollIntoView({ block: 'nearest' });
 }
 function kbMove(dir) {
@@ -2526,13 +2695,14 @@ function kbMove(dir) {
   const next = Math.max(0, Math.min(rows.length - 1, idx + dir));
   kbHighlight(rows[next]);
 }
-function kbOpen(row) {
+// background 为 true 时后台打开（不切换当前标签页），默认前台打开
+function kbOpen(row, background) {
   if (row.dataset.type === 'folder') {
     enterFolder(row.dataset.id);
     return;
   }
   const it = getItemById(row.dataset.id);
-  if (it && it.url) openBookmarkUrl(it.url, false);
+  if (it && it.url) openBookmarkUrl(it.url, !background);
 }
 // Ctrl/⌘ + ↑/↓：在所在文件夹内上下移动当前高亮书签（键盘替代拖拽）
 async function kbMoveBookmark(dir) {
@@ -2557,10 +2727,55 @@ async function kbMoveBookmark(dir) {
 // ---------- 拖拽排序 / 跨组移动（HTML5 drag & drop） ----------
 let dragState = null; // { id, fromParent }
 
+// ---------- FLIP 落位动画（投放后 200ms，仅改 transform，动画结束移除类）----------
+const FLIP_DURATION_MS = 200;
+function flipKey(el) {
+  if (el.classList.contains('group-head')) {
+    const group = el.closest('.group');
+    return 'head:' + ((group && group.dataset.group) || '');
+  }
+  return 'row:' + ((el.dataset && el.dataset.id) || '');
+}
+// 记录可投放元素的当前位置（首）
+function flipSnapshot() {
+  const map = new Map();
+  document.querySelectorAll('#content .row.clickable.draggable, #content .group-head').forEach(el => {
+    const rect = el.getBoundingClientRect();
+    map.set(flipKey(el), { top: rect.top, left: rect.left });
+  });
+  return map;
+}
+// 与投放后的位置比较，对发生位移的元素播放 transform 过渡（末）
+function playFlip(before) {
+  if (!before || !before.size || typeof requestAnimationFrame !== 'function') return;
+  requestAnimationFrame(() => {
+    document.querySelectorAll('#content .row.clickable.draggable, #content .group-head').forEach(el => {
+      const prev = before.get(flipKey(el));
+      if (!prev) return;
+      const rect = el.getBoundingClientRect();
+      const dx = prev.left - rect.left;
+      const dy = prev.top - rect.top;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+      el.style.transition = 'none';
+      el.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+      requestAnimationFrame(() => {
+        el.classList.add('flip-in');
+        el.style.transition = 'transform ' + FLIP_DURATION_MS + 'ms ease';
+        el.style.transform = '';
+        setTimeout(() => {
+          el.classList.remove('flip-in');
+          el.style.transition = '';
+        }, FLIP_DURATION_MS + 40);
+      });
+    });
+  });
+}
+
 function bindDrag() {
   const contentEl = content();
   contentEl.addEventListener('dragstart', e => {
-    const handle = e.target.closest('.row-drag');
+    // 拖拽把手：书签行为 .drag-handle（行首），文件夹行为 .row-drag
+    const handle = e.target.closest('.row-drag, .drag-handle');
     const row = handle ? handle.closest('.row.clickable.draggable') : null;
     if (!row || !row.dataset.id) return;
     const id = row.dataset.id;
@@ -2584,6 +2799,8 @@ function bindDrag() {
   contentEl.addEventListener('dragend', () => {
     clearDragHints();
     dragState = null;
+    // 拖拽取消（未投放）时清掉行内残留的拖拽态
+    contentEl.querySelectorAll('.row.dragging').forEach(row => row.classList.remove('dragging'));
   });
   contentEl.addEventListener('dragover', e => {
     const row = e.target.closest('.row.clickable.draggable');
@@ -2595,6 +2812,7 @@ function bindDrag() {
     if (row) {
       const rect = row.getBoundingClientRect();
       const isFolderRow = row.dataset.type === 'folder';
+      row.classList.add('drop-target');
       // 拖文件夹到文件夹行 = 排序（前后指示）；拖书签到文件夹行 = 移入（drop-inside）
       if (isFolderRow && dragState && dragState.type === 'folder') {
         row.classList.add(e.clientY < rect.top + rect.height / 2 ? 'drop-before' : 'drop-after');
@@ -2604,6 +2822,7 @@ function bindDrag() {
         row.classList.add(e.clientY < rect.top + rect.height / 2 ? 'drop-before' : 'drop-after');
       }
     } else if (head) {
+      head.classList.add('drop-target');
       head.closest('.group').classList.add('drag-target');
     }
   });
@@ -2614,6 +2833,8 @@ function bindDrag() {
     // 导致 "Cannot read properties of null (reading 'fromParent')"。
     const drag = dragState;
     if (!drag) return;
+    // FLIP：记录投放前的位置（首），重扫后再比对末位置播放落位动画
+    const flipBefore = flipSnapshot();
     const row = e.target.closest('.row.clickable.draggable');
     const head = e.target.closest('.group-head');
     try {
@@ -2640,15 +2861,20 @@ function bindDrag() {
     } finally {
       dragState = null;
       clearDragHints();
-      refresh();
+      // 重扫完成后播放落位动画（失败静默）
+      refresh()
+        .then(() => playFlip(flipBefore))
+        .catch(() => {});
     }
   });
 }
 
 function clearDragHints() {
   document
-    .querySelectorAll('#content .drop-before, #content .drop-after, #content .drop-inside, #content .group.drag-target')
-    .forEach(el => el.classList.remove('drop-before', 'drop-after', 'drop-inside', 'drag-target'));
+    .querySelectorAll(
+      '#content .drop-before, #content .drop-after, #content .drop-inside, #content .drop-target, #content .group.drag-target'
+    )
+    .forEach(el => el.classList.remove('drop-before', 'drop-after', 'drop-inside', 'drop-target', 'drag-target'));
 }
 
 // 拖到书签行：排序 / 插入到目标行所在文件夹的对应位置
@@ -2764,6 +2990,51 @@ async function dropInheritTags(row, drag) {
   refresh();
 }
 
+// ---------- 快捷键注册表：帮助抽屉据此生成，避免文档与实现漂移 ----------
+function registerShortcuts() {
+  if (!window.UI || typeof UI.registerShortcut !== 'function') return;
+  const R = entry => UI.registerShortcut(entry);
+  R({ keys: '/', desc: '聚焦搜索框', group: '键盘快捷键' });
+  R({ keys: 'Ctrl / ⌘ + K', desc: '聚焦搜索框', group: '键盘快捷键' });
+  R({ keys: 'j / k', desc: '上下移动高亮行', group: '键盘快捷键' });
+  R({ keys: 'Enter', desc: '打开高亮书签', group: '键盘快捷键' });
+  R({ keys: 'Shift + Enter', desc: '后台打开高亮书签', group: '键盘快捷键' });
+  R({ keys: 'Ctrl / ⌘ + ↑ / ↓', desc: '在文件夹内移动书签', group: '键盘快捷键' });
+  R({ keys: 'N / F2 / Delete', desc: '组织页：新建 / 重命名 / 删除文件夹', group: '组织页' });
+  R({ keys: '?', desc: '打开本指南', group: '键盘快捷键' });
+  R({ keys: 'Esc', desc: '关闭抽屉 / 弹层，或退出方案预览', group: '键盘快捷键' });
+}
+
+// 「组织」页一次性拖拽引导：仅在从未标记过时提示一次，storage 失败静默
+let organizeTipChecked = false;
+function maybeShowOrganizeTip() {
+  if (organizeTipChecked) return;
+  organizeTipChecked = true;
+  // 单测会单独 eval 本函数，故对模块级常量做 typeof 兜底
+  const key = typeof ORGANIZE_TIP_KEY === 'string' ? ORGANIZE_TIP_KEY : 'bmOrganizeTipShown';
+  const text =
+    typeof ORGANIZE_TIP_TEXT === 'string'
+      ? ORGANIZE_TIP_TEXT
+      : '拖动书签行左侧把手可排序，拖到分组标题上可移动分组';
+  try {
+    if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) return;
+    const store = chrome.storage.local;
+    store.get(key, res => {
+      try {
+        if (res && res[key]) return;
+        const ui = (typeof UI !== 'undefined' && UI) || (typeof window !== 'undefined' && window.UI) || null;
+        if (ui && typeof ui.toast === 'function') ui.toast(text, 'info');
+        else toast(text, 'info');
+        store.set({ [key]: true });
+      } catch (e) {
+        /* ignore */
+      }
+    });
+  } catch (e) {
+    /* ignore */
+  }
+}
+
 // ---------- 初始化 ----------
 async function init() {
   // 设置只影响 AI 操作；与首轮书签分析并行读取，避免首屏多等待一次 storage。
@@ -2786,6 +3057,7 @@ async function init() {
   searchInput.addEventListener('input', () => {
     SEARCH = searchInput.value.trim().toLowerCase();
     searchClear.classList.toggle('hidden', !SEARCH);
+    syncSearchScopeVisibility();
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       if (SEARCH) renderSearch();
@@ -2795,6 +3067,17 @@ async function init() {
   searchClear.addEventListener('click', () => {
     clearSearch();
   });
+
+  // 搜索范围 chips：切换 scope（aria-pressed / .active 同步在 setSearchScope 内）
+  const searchScope = $('#searchScope');
+  if (searchScope) {
+    searchScope.addEventListener('click', e => {
+      const chip = e.target.closest('.scope-chip');
+      if (!chip) return;
+      setSearchScope(chip.dataset.scope || 'all');
+      searchInput.focus();
+    });
+  }
 
   // 文件夹视图内搜索（实时过滤当前层书签，防抖 + 重渲染后恢复焦点/光标）
   let folderSearchTimer = null;
@@ -2813,13 +3096,14 @@ async function init() {
 
   // 内容区事件委托
   content().addEventListener('click', e => {
-    // KPI / 行动清单从概览进入工具视图，不增加顶级页签。
+    // KPI / 行动清单 / 概览快捷卡片从概览进入工具视图，不增加顶级页签。
     const jmp = e.target.closest('[data-jump]');
     if (jmp) {
       const t = jmp.dataset.jump;
       const sub = jmp.dataset.sub || '';
       if (t === 'clean' || t === 'trash') openOverviewDetail(t, sub);
-      else switchTab(t);
+      // 兼容历史 data-jump="tags"（页签 id 现为 organize），保留旧值不破坏现有断言
+      else switchTab(t === 'tags' ? 'organize' : t);
       return;
     }
     const btn = e.target.closest('button[data-action]');
@@ -2839,7 +3123,7 @@ async function init() {
         confirmDialog({
           title: '清理这组重复书签？',
           message: `将删除 <b>${ids.length}</b> 个重复项，保留「${escapeHtml(g.items[0].title)}」。删除后 30 天内可在回收站恢复；本次产生的空文件夹将同步清理（文件夹不可恢复）。`,
-          confirmText: '删除'
+          confirmText: '移入回收站'
         }).then(ok => {
           if (!ok) return;
           softDelete(ids, '清理重复项', { pruneEmptyFolders: true }).then(r => {
@@ -2922,7 +3206,7 @@ async function init() {
         confirmDialog({
           title: '删除空文件夹？',
           message: '「' + escapeHtml(btn.dataset.title || '') + '」是空文件夹，删除后不可恢复。',
-          confirmText: '删除'
+          confirmText: '直接删除'
         }).then(ok => {
           if (!ok) return;
           removeForIds([btn.dataset.id], '删除中', { clearTags: false }).then(removal => {
@@ -2948,7 +3232,7 @@ async function init() {
         confirmDialog({
           title: '永久删除该记录？',
           message: '书签本身早已删除，此操作仅清空回收站记录，<b>不可撤销</b>。',
-          confirmText: '永久删除'
+          confirmText: '直接删除'
         }).then(ok => {
           if (!ok) return;
           BM.discardTrashItem(btn.dataset.id)
@@ -3114,7 +3398,7 @@ async function init() {
         (isMass
           ? `<div class="confirm-warn">⚠️ 你选择了 <b>${ids.length}</b> 项，属于大范围操作，请再次确认无误。</div>`
           : '') + '删除后 30 天内可在「回收站」恢复，恢复时优先放回原位置。',
-      confirmText: isMass ? '确认删除 ' + ids.length + ' 项' : '删除'
+      confirmText: isMass ? '移入回收站 ' + ids.length + ' 项' : '移入回收站'
     }).then(ok => {
       if (!ok) return;
       softDelete(ids, '删除中').then(r => {
@@ -3148,7 +3432,11 @@ async function init() {
   // 批量打标签
   $('#bulkTag').addEventListener('click', bulkTagSelected);
   // 标签管理弹层
-  $('#tagMgrClose').addEventListener('click', () => $('#tagMgrWrap').classList.add('hidden'));
+  $('#tagMgrClose').addEventListener('click', closeTagManager);
+  // 点击遮罩关闭弹层（与确认 / 输入弹层一致）
+  $('#tagMgrWrap').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeTagManager();
+  });
   $('#tagMgrList').addEventListener('click', e => {
     const btn = e.target.closest('[data-mgr]');
     if (!btn) return;
@@ -3166,6 +3454,11 @@ async function init() {
     const typing =
       tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
     if (e.key === 'Escape') {
+      // 已被抽屉 / 弹层（js/ui.js 的 Esc 处理器栈）消费的 Esc 不再二次处理
+      if (e.defaultPrevented) return;
+      // 有弹层 / 抽屉打开时，Esc 完全交给 js/ui.js 的陷阱处理；
+      // 否则会在关闭弹层的同时连带触发「退出文件夹」等页面级动作
+      if (window.UI && typeof UI.hasOpenTrap === 'function' && UI.hasOpenTrap()) return;
       const treeOv = $('#treeOverlay');
       if (treeOv && !treeOv.classList.contains('hidden')) {
         closeTreeOverlay();
@@ -3194,6 +3487,8 @@ async function init() {
       }
       return;
     }
+    // 弹层 / 抽屉打开时页面级快捷键一律让位，键盘完全归弹层陷阱管理
+    if (window.UI && typeof UI.hasOpenTrap === 'function' && UI.hasOpenTrap()) return;
     if (typing) return;
     // 组织页快捷键：N 新建文件夹 / F2 重命名 / Delete 删除
     if (currentTab === 'organize') {
@@ -3214,14 +3509,15 @@ async function init() {
         return;
       }
     }
-    if (e.key === '/') {
+    if (e.key === '/' || e.code === 'Slash') {
+      if (e.target === searchInput) return; // 已在搜索框内输入斜杠
       e.preventDefault();
-      $('#searchInput').focus();
+      searchInput.focus();
       return;
     }
     if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
       e.preventDefault();
-      $('#searchInput').focus();
+      searchInput.focus();
       return;
     }
     if (e.key === '?') {
@@ -3240,7 +3536,8 @@ async function init() {
       return;
     }
     if (e.key === 'Enter' && kbRow && tag !== 'button') {
-      kbOpen(kbRow);
+      // Enter：打开高亮书签；Shift+Enter：后台打开（不切换当前标签页）
+      kbOpen(kbRow, e.shiftKey);
     }
   });
 
@@ -3275,6 +3572,13 @@ async function init() {
       if (e.key === 'Escape') { e.preventDefault(); cancelFolderEdit(); return; }
       return;
     }
+    // 概览快捷入口卡片：Enter / 空格 激活（等价点击，走同一 data-jump 分支）
+    const entryCard = e.target.closest ? e.target.closest('.entry-card[data-jump]') : null;
+    if (entryCard && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      entryCard.click();
+      return;
+    }
     const row = e.target.closest ? e.target.closest('.row.clickable') : null;
     if (row && e.key === 'Enter') {
       e.preventDefault();
@@ -3283,7 +3587,8 @@ async function init() {
         return;
       }
       const it = getItemById(row.dataset.id);
-      if (it && it.url) openBookmarkUrl(it.url, false);
+      // Enter 前台打开；Shift+Enter 后台打开
+      if (it && it.url) openBookmarkUrl(it.url, !e.shiftKey);
       return;
     }
     const head = e.target.closest ? e.target.closest('.group-head') : null;
@@ -3316,25 +3621,16 @@ async function init() {
     }
   });
 
-  // ---------- 抽屉焦点陷阱（Tab 循环）+ 关闭恢复焦点 ----------
-  ['#addDrawer', '#helpDrawer'].forEach(sel => {
-    const el = $(sel);
-    if (!el) return;
-    el.addEventListener('keydown', e => {
-      if (e.key !== 'Tab') return;
-      const list = [...el.querySelectorAll('button, input, select, textarea, a[href]')].filter(
-        x => !x.disabled && x.offsetParent !== null
-      );
-      if (!list.length) return;
-      if (e.shiftKey && document.activeElement === list[0]) {
-        e.preventDefault();
-        list[list.length - 1].focus();
-      } else if (!e.shiftKey && document.activeElement === list[list.length - 1]) {
-        e.preventDefault();
-        list[0].focus();
-      }
-    });
-  });
+  // ---------- 抽屉焦点陷阱改由 js/ui.js 的 focusTrap 接管（见 openHelp / openAddDrawer） ----------
+  if (window.UI) UI.initTooltip();
+  // 版本号：直接读 manifest，保证与实际安装版本一致（与 newtab / options 统一 v1.0.1 格式）
+  try {
+    const versionEl = $('#popupVersion');
+    if (versionEl) versionEl.textContent = 'v' + chrome.runtime.getManifest().version;
+  } catch (e) {
+    /* noop */
+  }
+  registerShortcuts();
 
   // ---------- 拖拽排序 / 跨组移动 ----------
   bindDrag();
@@ -3420,6 +3716,16 @@ async function init() {
         }
         refresh();
       }
+      // 后台水合把远端隐藏状态写入 bmHiddenIds 时，刷新当前视图并失效缓存，
+      // 否则已打开的侧边栏会一直把已同步隐藏的书签当作可见。
+      if (area === 'local' && changes.bmHiddenIds) {
+        try {
+          BM.invalidateHiddenIds();
+        } catch (e) {
+          /* noop */
+        }
+        refresh();
+      }
     });
   } catch (e) {
     /* 存储事件不可用时忽略 */
@@ -3478,9 +3784,18 @@ async function loadSettings() {
 function openHelp() {
   closeDrawers();
   lastFocus = document.activeElement;
+  // 快捷键表由 js/ui.js 的注册表生成，避免文档与实现漂移
+  if (window.UI && window.UI.shortcutHtml) $('#helpShortcuts').innerHTML = UI.shortcutHtml();
   $('#drawerOverlay').classList.remove('hidden');
   $('#helpDrawer').classList.remove('hidden');
-  $('#helpClose').focus();
+  if (window.UI && typeof UI.focusTrap === 'function')
+    UI.focusTrap($('#helpDrawer'), {
+      onEscape: () => closeDrawers(),
+      initialFocus: $('#helpClose'),
+      restoreFocusTo: lastFocus
+    });
+  const closeBtn = $('#helpClose');
+  if (closeBtn) closeBtn.focus();
 }
 
 // 抽屉打开前的焦点（关闭后恢复）
@@ -3488,8 +3803,16 @@ let lastFocus = null;
 
 function closeDrawers() {
   $('#drawerOverlay').classList.add('hidden');
-  $('#addDrawer').classList.add('hidden');
-  $('#helpDrawer').classList.add('hidden');
+  const addDrawer = $('#addDrawer');
+  const helpDrawer = $('#helpDrawer');
+  if (addDrawer) addDrawer.classList.add('hidden');
+  if (helpDrawer) helpDrawer.classList.add('hidden');
+  // 释放抽屉焦点陷阱（restore:false：焦点归还由下方 lastFocus 统一处理）
+  if (window.UI && typeof UI.releaseTrap === 'function') {
+    UI.releaseTrap(addDrawer, { restore: false });
+    UI.releaseTrap(helpDrawer, { restore: false });
+    if (typeof UI.hideTip === 'function') UI.hideTip();
+  }
   // 恢复打开前的焦点（键盘可达性）
   if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
   lastFocus = null;
@@ -3548,6 +3871,12 @@ function openAddDrawer(item) {
   renderTagSuggest();
   $('#drawerOverlay').classList.remove('hidden');
   $('#addDrawer').classList.remove('hidden');
+  if (window.UI && typeof UI.focusTrap === 'function')
+    UI.focusTrap($('#addDrawer'), {
+      onEscape: () => closeDrawers(),
+      initialFocus: $('#addUrl'),
+      restoreFocusTo: lastFocus
+    });
   $('#addUrl').focus();
 }
 
@@ -4414,6 +4743,26 @@ function openTagManager() {
       })
       .join('') || '<div class="tag-mgr-empty">固定池为空</div>';
   $('#tagMgrWrap').classList.remove('hidden');
+  // 焦点陷阱（Esc 关闭）：先记住触发元素，便于关闭后归还焦点
+  tagMgrFocus = document.activeElement;
+  if (window.UI && typeof UI.focusTrap === 'function')
+    UI.focusTrap($('#tagMgrWrap'), {
+      onEscape: () => closeTagManager(),
+      initialFocus: $('#tagMgrClose'),
+      restoreFocusTo: tagMgrFocus
+    });
+  const closeBtn = $('#tagMgrClose');
+  if (closeBtn) closeBtn.focus();
+}
+
+// 标签管理弹层关闭：释放焦点陷阱并归还焦点
+let tagMgrFocus = null;
+function closeTagManager() {
+  const wrap = $('#tagMgrWrap');
+  if (wrap) wrap.classList.add('hidden');
+  if (window.UI && typeof UI.releaseTrap === 'function') UI.releaseTrap(wrap, { restore: false });
+  if (tagMgrFocus && document.contains(tagMgrFocus)) tagMgrFocus.focus();
+  tagMgrFocus = null;
 }
 
 // 批量打标签：选中书签 → 追加指定标签（去重、限数）

@@ -1,3 +1,10 @@
+/**
+ * 侧边栏性能与结构回归
+ *
+ * 说明：ui-redesign（tokens.css 单一变量来源 / js/ui.js 共享原语 / 雪碧图）之后，
+ * 调色板断言改读 css/tokens.css；涉及换行与缩进的源码断言统一用 flat() 归一化空白，
+ * 避免 prettier 重排导致断言失效。
+ */
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -7,8 +14,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const popupSource = readFileSync(join(__dirname, '..', 'js', 'popup.js'), 'utf-8');
 const popupHtml = readFileSync(join(__dirname, '..', 'popup.html'), 'utf-8');
 const popupCss = readFileSync(join(__dirname, '..', 'css', 'popup.css'), 'utf-8');
+const tokensCss = readFileSync(join(__dirname, '..', 'css', 'tokens.css'), 'utf-8');
 const libSource = readFileSync(join(__dirname, '..', 'js', 'lib.js'), 'utf-8');
 const manifest = JSON.parse(readFileSync(join(__dirname, '..', 'manifest.json'), 'utf-8'));
+// 归一化空白：断言只关心声明/调用本身，不关心 prettier 的换行与缩进
+const flat = source => source.replace(/\s+/g, ' ');
 
 function getFunctionSource(name) {
   const functionStart = popupSource.indexOf(`function ${name}(`);
@@ -43,10 +53,11 @@ describe('弹窗大列表渲染', () => {
 
   it('标签按钮悬浮态使用低透明度底色', () => {
     const rule = popupCss.match(/\.tag-chip:hover,\s*\.tag-chip:focus-visible\s*\{([^}]*)\}/)?.[1] || '';
-    expect(rule).toContain('background: rgba(22, 163, 74, .12)');
+    expect(flat(rule)).toMatch(/background: rgba\(22, 163, 74, 0?\.12\)/);
     expect(rule).toContain('color: var(--ok-strong)');
-    expect(popupCss).toContain('--ok-strong: #047857');
-    expect(popupCss).toContain('.tag-chip:focus-visible { outline: 2px solid var(--ok-strong)');
+    // 语义色统一由 css/tokens.css 定义，popup.css 只消费变量
+    expect(tokensCss).toContain('--c-ok-strong-l: #047857');
+    expect(flat(popupCss)).toContain('.tag-chip:focus-visible { outline: 2px solid var(--ok-strong)');
   });
 
   it('待清理卡片仅保留动作名称，不重复展示说明', () => {
@@ -75,9 +86,9 @@ describe('弹窗大列表渲染', () => {
 });
 
 describe('侧边栏导航', () => {
-  it('提供概览、标签和独立隐藏书签页签', () => {
+  it('提供概览、组织和独立隐藏书签页签', () => {
     const tabs = [...popupHtml.matchAll(/data-tab="([^"]+)"/g)].map(match => match[1]);
-    expect(tabs).toEqual(['overview', 'tags', 'hidden']);
+    expect(tabs).toEqual(['overview', 'organize', 'hidden']);
   });
 
   it('标签页仅说明标签数字含义，不重复编码数量', () => {
@@ -299,7 +310,7 @@ describe('侧边栏首屏', () => {
   it('在脚本和书签数据就绪前显示加载态，并以 defer 释放首次绘制', () => {
     expect(popupHtml).toContain('<div class="loading" role="status">正在扫描书签…</div>');
     expect([...popupHtml.matchAll(/<script defer src="([^"]+)"><\/script>/g)].map(match => match[1]))
-      .toEqual(['js/lib.js', 'js/analyzer.js', 'js/popup.js']);
+      .toEqual(['js/lib.js', 'js/ui.js', 'js/analyzer.js', 'js/popup.js']);
   });
 
   it('同步水合不阻塞本地书签首屏，设置读取与首轮扫描并行', () => {
@@ -307,8 +318,8 @@ describe('侧边栏首屏', () => {
     expect(popupSource).toContain('settingsReady = loadSettings();');
     expect(getFunctionSource('runRefresh')).not.toContain('waitForInitialTagConfiguration');
     expect(popupSource).toContain('await Promise.all([settingsReady, refresh(true)]);');
-    expect(popupSource).toContain('void tagConfigurationReady.then(async initialChanged =>');
-    expect(popupSource).toContain('if (initialChanged) { BM.invalidateTags(); await refresh(true); }');
+    expect(flat(popupSource)).toContain('void tagConfigurationReady .then(async initialChanged =>');
+    expect(flat(popupSource)).toContain('if (initialChanged) { BM.invalidateTags(); await refresh(true); }');
     expect(popupSource).toContain('BM.watchTagConfiguration');
   });
 
@@ -412,7 +423,7 @@ describe('AI 批量打标', () => {
   });
 
   it('未完成时不将已打标比例四舍五入为 100%', () => {
-    expect(popupSource).toContain('taggedCount === total ? 100 : Math.floor(taggedCount / total * 100)');
+    expect(flat(popupSource)).toContain('taggedCount === total ? 100 : Math.floor((taggedCount / total) * 100)');
   });
 
   it('续打启动锁覆盖权限检查和确认阶段，避免重复点击发起并发请求', () => {
@@ -599,6 +610,7 @@ describe('书签运行时索引', () => {
     const getSameUrlGroups = eval(`(${getFunctionSource('getSameUrlGroups')})`);
     const emptyState = () => '<div>empty</div>';
     const ICON = () => '';
+    const ICON_SM = () => '';
     const renderExact = eval(`(${getFunctionSource('renderExact')})`);
     const container = { innerHTML: '' };
 
@@ -901,7 +913,15 @@ describe('页签切换调度', () => {
     let tabRenderToken = 0;
     let frameCallback;
     const renderedTabs = [];
-    const document = { querySelectorAll: () => [{ dataset: { tab: 'overview' }, classList: { toggle() {} } }] };
+    const document = {
+      querySelectorAll: () => [
+        {
+          dataset: { tab: 'overview' },
+          classList: { toggle() {} },
+          setAttribute() {}
+        }
+      ]
+    };
     const page = { innerHTML: '现有内容' };
     const content = () => page;
     const requestAnimationFrame = callback => { frameCallback = callback; };
@@ -933,7 +953,11 @@ describe('页签切换调度', () => {
     let PLAN = { type: 'delete' };
     let currentTab = 'tags';
     let tabRenderToken = 4;
-    const document = { querySelectorAll: () => [{ dataset: { tab: 'overview' }, classList: { toggle: vi.fn() } }] };
+    const document = {
+      querySelectorAll: () => [
+        { dataset: { tab: 'overview' }, classList: { toggle: vi.fn() }, setAttribute: vi.fn() }
+      ]
+    };
     const DATA = {};
     const render = vi.fn();
     const openOverviewDetail = eval(`(${getFunctionSource('openOverviewDetail')})`);
@@ -1019,16 +1043,19 @@ describe('搜索清除', () => {
     expect(render).toHaveBeenCalledWith('overview');
   });
 
-  it('点击搜索结果中的标签会退出搜索并进入标签筛选', () => {
+  it('点击搜索结果中的标签会退出搜索并进入组织页标签筛选', () => {
     let TAG_FILTER = '';
+    let ORG_VIEW = '';
     const clearSearch = vi.fn();
     const switchTab = vi.fn();
+    const sessionStorage = { setItem: vi.fn(), getItem: () => null };
     const openTagFilter = eval(`(${getFunctionSource('openTagFilter')})`);
 
     openTagFilter('AI');
 
     expect(TAG_FILTER).toBe('AI');
+    expect(ORG_VIEW).toBe('tags');
     expect(clearSearch).toHaveBeenCalledWith(false);
-    expect(switchTab).toHaveBeenCalledWith('tags');
+    expect(switchTab).toHaveBeenCalledWith('organize');
   });
 });

@@ -1126,6 +1126,10 @@
     if (hiddenCache.has(id)) { hiddenCache.delete(id); nowHidden = false; }
     else { hiddenCache.add(id); nowHidden = true; }
     try { await chrome.storage.local.set({ [HIDDEN_KEY]: [...hiddenCache] }); } catch (e) { /* ignore */ }
+    // 与 setTags 保持一致：显式触发一次防抖发布。MV3 下 storage.onChanged
+    // 不会唤醒已休眠的 Service Worker，仅靠后台监听可能漏掉隐藏状态变更，
+    // 导致标签已同步而隐藏状态从未写入内部书签目录。
+    scheduleSyncTags();
     return nowHidden;
   }
 

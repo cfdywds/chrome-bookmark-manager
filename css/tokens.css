@@ -1,0 +1,332 @@
+/* =========================================================
+   书签管家 · 设计 token（Design Tokens）
+   —— 全站唯一变量定义文件：popup / newtab / options 三页共用
+
+   加载顺序（三个页面一致）：tokens.css → popup.css → newtab.css
+   维护约定：
+   1) 组件样式只消费「语义变量」（--bg/--panel/--ink/...），
+      禁止在 @media (prefers-color-scheme: dark) 内写组件选择器；
+   2) 色值只在「1. 原始色阶」出现一次（-l = 浅色，-d = 深色），
+      下面各主题映射块只做赋值，不再写死色值；
+   3) 新增变量必须落在本文件对应分区。
+   ========================================================= */
+
+/* ---------------------------------------------------------
+   1. 原始色阶（唯一数值来源）
+   --------------------------------------------------------- */
+:root {
+  /* 中性色阶（Slate 系） */
+  --c-slate-100: #f3f5f8;
+  --c-slate-200: #e7ebf0;
+  --c-slate-300: #dce1e8;
+  --c-slate-500: #667085;
+  --c-slate-700: #344054;
+  --c-slate-900: #101828;
+  --c-slate-950: #0f1117;
+
+  /* 语义色 · 浅色 */
+  --c-bg-l: #f3f5f8;
+  --c-panel-l: #ffffff;
+  --c-ink-l: #101828;
+  --c-ink-2-l: #344054;
+  /* WCAG AA 4.5:1 达标（#667085 在 #ffffff 上 ≈ 4.8:1） */
+  --c-muted-l: #667085;
+  --c-line-l: #e7ebf0;
+  --c-line-2-l: #dce1e8;
+  --c-primary-l: #2563eb;
+  --c-primary-2-l: #0ea5e9;
+  --c-primary-3-l: #7cb8f7;
+  --c-primary-soft-l: #e9f1fe;
+  --c-accent-l: #06b6d4;
+  --c-pink-l: #ec4899;
+  --c-grad-l: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  --c-grad-action-l: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  --c-grad-brand-l: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%);
+  --c-grad-soft-l: linear-gradient(135deg, #eaf2fe 0%, #e8f9fd 100%);
+  --c-danger-l: #be123c;
+  --c-danger-soft-l: #ffe7ec;
+  --c-warn-l: #b45309;
+  --c-warn-soft-l: #fdf1d7;
+  --c-ok-l: #059669;
+  --c-ok-strong-l: #047857;
+  --c-ok-soft-l: #d5f5e7;
+  --c-shadow-sm-l: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --c-shadow-l: 0 6px 20px rgba(15, 23, 42, 0.09);
+  --c-shadow-lg-l: 0 16px 48px rgba(15, 23, 42, 0.16);
+
+  /* 语义色 · 深色 */
+  --c-bg-d: #0f1117;
+  --c-panel-d: #171b24;
+  --c-ink-d: #f2f4f8;
+  --c-ink-2-d: #c3c9d4;
+  --c-muted-d: #8b93a3;
+  --c-line-d: #242a36;
+  --c-line-2-d: #303845;
+  --c-primary-d: #5da2f5;
+  --c-primary-2-d: #38bdf8;
+  --c-primary-3-d: #93c5fd;
+  --c-primary-soft-d: #1a2436;
+  --c-accent-d: #22d3ee;
+  --c-pink-d: #f472b6;
+  --c-grad-d: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  --c-grad-action-d: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  --c-grad-brand-d: linear-gradient(135deg, #3b82f6 0%, #22d3ee 100%);
+  --c-grad-soft-d: linear-gradient(135deg, #182234 0%, #16232c 100%);
+  --c-danger-d: #fb7185;
+  --c-danger-soft-d: #3a2229;
+  --c-warn-d: #fbbf24;
+  --c-warn-soft-d: #332a14;
+  --c-ok-d: #34d399;
+  --c-ok-strong-d: #6ee7b7;
+  --c-ok-soft-d: #12332a;
+  --c-shadow-sm-d: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --c-shadow-d: 0 6px 20px rgba(0, 0, 0, 0.45);
+  --c-shadow-lg-d: 0 16px 48px rgba(0, 0, 0, 0.55);
+  /* 吸顶搜索框的悬浮阴影（浅色带蓝调、深色纯黑，避免组件里写暗色补丁） */
+  --c-shadow-sticky-l: 0 8px 24px rgba(15, 23, 42, 0.14);
+  --c-shadow-sticky-d: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  /* 组件表面 · 浅色（暗色补丁变量化的落点） */
+  --c-sub-l: #f3f5f8;
+  --c-sub-hover-l: #e7ebf0;
+  --c-foot-l: #ffffff;
+  --c-field-l: #ffffff;
+  --c-toast-bg-l: rgba(27, 30, 44, 0.97);
+  --c-mark-bg-l: #fde68a;
+  --c-mark-ink-l: inherit;
+  --c-progress-l: #ffffff;
+  --c-plan-keep-l: #d5f5e7;
+  --c-fav-l: #f3f5f8;
+  --c-hint-line-l: #cfe3f9;
+
+  /* 组件表面 · 深色 */
+  --c-sub-d: #1b202b;
+  --c-sub-hover-d: #202633;
+  --c-foot-d: #141822;
+  --c-field-d: #1e2430;
+  --c-toast-bg-d: rgba(10, 12, 18, 0.96);
+  --c-mark-bg-d: #7a5d10;
+  --c-mark-ink-d: #ffffff;
+  --c-progress-d: rgba(20, 24, 34, 0.97);
+  --c-plan-keep-d: rgba(16, 185, 129, 0.14);
+  --c-fav-d: #242a36;
+  --c-hint-line-d: #26364f;
+}
+/* ---------------------------------------------------------
+   2. 主题映射：语义变量 → 原始色阶
+   （组件只消费语义变量；newtab 的显式主题选择器优先级高于
+     系统深色媒体查询，因此放在媒体查询之后）
+   --------------------------------------------------------- */
+:root {
+  --bg: var(--c-bg-l);
+  --panel: var(--c-panel-l);
+  --ink: var(--c-ink-l);
+  --ink-2: var(--c-ink-2-l);
+  --muted: var(--c-muted-l);
+  --line: var(--c-line-l);
+  --line-2: var(--c-line-2-l);
+  --primary: var(--c-primary-l);
+  --primary-2: var(--c-primary-2-l);
+  --primary-3: var(--c-primary-3-l);
+  --primary-soft: var(--c-primary-soft-l);
+  --accent: var(--c-accent-l);
+  --pink: var(--c-pink-l);
+  --grad: var(--c-grad-l);
+  --grad-action: var(--c-grad-action-l);
+  --grad-brand: var(--c-grad-brand-l);
+  --grad-soft: var(--c-grad-soft-l);
+  --danger: var(--c-danger-l);
+  --danger-soft: var(--c-danger-soft-l);
+  --warn: var(--c-warn-l);
+  --warn-soft: var(--c-warn-soft-l);
+  --ok: var(--c-ok-l);
+  --ok-strong: var(--c-ok-strong-l);
+  --ok-soft: var(--c-ok-soft-l);
+  --shadow-sm: var(--c-shadow-sm-l);
+  --shadow: var(--c-shadow-l);
+  --shadow-lg: var(--c-shadow-lg-l);
+  --shadow-sticky: var(--c-shadow-sticky-l);
+  --surface-sub: var(--c-sub-l);
+  --surface-sub-hover: var(--c-sub-hover-l);
+  --surface-foot: var(--c-foot-l);
+  --field-bg: var(--c-field-l);
+  --toast-bg: var(--c-toast-bg-l);
+  --mark-bg: var(--c-mark-bg-l);
+  --mark-ink: var(--c-mark-ink-l);
+  --progress-bg: var(--c-progress-l);
+  --plan-keep-bg: var(--c-plan-keep-l);
+  --fav-bg: var(--c-fav-l);
+  --hint-line: var(--c-hint-line-l);
+  /* emoji 插画的暗色饱和度衰减（P0-2：1 = 原色，暗色下 0.7 降噪） */
+  --emoji-saturate: 1;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: var(--c-bg-d);
+    --panel: var(--c-panel-d);
+    --ink: var(--c-ink-d);
+    --ink-2: var(--c-ink-2-d);
+    --muted: var(--c-muted-d);
+    --line: var(--c-line-d);
+    --line-2: var(--c-line-2-d);
+    --primary: var(--c-primary-d);
+    --primary-2: var(--c-primary-2-d);
+    --primary-3: var(--c-primary-3-d);
+    --primary-soft: var(--c-primary-soft-d);
+    --accent: var(--c-accent-d);
+    --pink: var(--c-pink-d);
+    --grad: var(--c-grad-d);
+    --grad-action: var(--c-grad-action-d);
+    --grad-brand: var(--c-grad-brand-d);
+    --grad-soft: var(--c-grad-soft-d);
+    --danger: var(--c-danger-d);
+    --danger-soft: var(--c-danger-soft-d);
+    --warn: var(--c-warn-d);
+    --warn-soft: var(--c-warn-soft-d);
+    --ok: var(--c-ok-d);
+    --ok-strong: var(--c-ok-strong-d);
+    --ok-soft: var(--c-ok-soft-d);
+    --shadow-sm: var(--c-shadow-sm-d);
+    --shadow: var(--c-shadow-d);
+    --shadow-lg: var(--c-shadow-lg-d);
+    --shadow-sticky: var(--c-shadow-sticky-d);
+    --surface-sub: var(--c-sub-d);
+    --surface-sub-hover: var(--c-sub-hover-d);
+    --surface-foot: var(--c-foot-d);
+    --field-bg: var(--c-field-d);
+    --toast-bg: var(--c-toast-bg-d);
+    --mark-bg: var(--c-mark-bg-d);
+    --mark-ink: var(--c-mark-ink-d);
+    --progress-bg: var(--c-progress-d);
+    --plan-keep-bg: var(--c-plan-keep-d);
+    --fav-bg: var(--c-fav-d);
+    --hint-line: var(--c-hint-line-d);
+    /* emoji 插画的暗色饱和度衰减（P0-2：暗色下 0.7 降噪） */
+    --emoji-saturate: 0.7;
+  }
+}
+
+/* newtab 显式主题（由 newtab.js 写入 data-nt-theme，覆盖系统偏好） */
+:root[data-nt-theme='light'] {
+  --bg: var(--c-bg-l);
+  --panel: var(--c-panel-l);
+  --ink: var(--c-ink-l);
+  --ink-2: var(--c-ink-2-l);
+  --muted: var(--c-muted-l);
+  --line: var(--c-line-l);
+  --line-2: var(--c-line-2-l);
+  --primary: var(--c-primary-l);
+  --primary-2: var(--c-primary-2-l);
+  --primary-3: var(--c-primary-3-l);
+  --primary-soft: var(--c-primary-soft-l);
+  --accent: var(--c-accent-l);
+  --pink: var(--c-pink-l);
+  --grad: var(--c-grad-l);
+  --grad-action: var(--c-grad-action-l);
+  --grad-brand: var(--c-grad-brand-l);
+  --grad-soft: var(--c-grad-soft-l);
+  --danger: var(--c-danger-l);
+  --danger-soft: var(--c-danger-soft-l);
+  --warn: var(--c-warn-l);
+  --warn-soft: var(--c-warn-soft-l);
+  --ok: var(--c-ok-l);
+  --ok-strong: var(--c-ok-strong-l);
+  --ok-soft: var(--c-ok-soft-l);
+  --shadow-sm: var(--c-shadow-sm-l);
+  --shadow: var(--c-shadow-l);
+  --shadow-lg: var(--c-shadow-lg-l);
+  --shadow-sticky: var(--c-shadow-sticky-l);
+  --surface-sub: var(--c-sub-l);
+  --surface-sub-hover: var(--c-sub-hover-l);
+  --surface-foot: var(--c-foot-l);
+  --field-bg: var(--c-field-l);
+  --toast-bg: var(--c-toast-bg-l);
+  --mark-bg: var(--c-mark-bg-l);
+  --mark-ink: var(--c-mark-ink-l);
+  --progress-bg: var(--c-progress-l);
+  --plan-keep-bg: var(--c-plan-keep-l);
+  --fav-bg: var(--c-fav-l);
+  --hint-line: var(--c-hint-line-l);
+  /* 显式浅色必须重置暗色媒体查询里的饱和度衰减 */
+  --emoji-saturate: 1;
+  color-scheme: light;
+}
+
+:root[data-nt-theme='dark'] {
+  --bg: var(--c-bg-d);
+  --panel: var(--c-panel-d);
+  --ink: var(--c-ink-d);
+  --ink-2: var(--c-ink-2-d);
+  --muted: var(--c-muted-d);
+  --line: var(--c-line-d);
+  --line-2: var(--c-line-2-d);
+  --primary: var(--c-primary-d);
+  --primary-2: var(--c-primary-2-d);
+  --primary-3: var(--c-primary-3-d);
+  --primary-soft: var(--c-primary-soft-d);
+  --accent: var(--c-accent-d);
+  --pink: var(--c-pink-d);
+  --grad: var(--c-grad-d);
+  --grad-action: var(--c-grad-action-d);
+  --grad-brand: var(--c-grad-brand-d);
+  --grad-soft: var(--c-grad-soft-d);
+  --danger: var(--c-danger-d);
+  --danger-soft: var(--c-danger-soft-d);
+  --warn: var(--c-warn-d);
+  --warn-soft: var(--c-warn-soft-d);
+  --ok: var(--c-ok-d);
+  --ok-strong: var(--c-ok-strong-d);
+  --ok-soft: var(--c-ok-soft-d);
+  --shadow-sm: var(--c-shadow-sm-d);
+  --shadow: var(--c-shadow-d);
+  --shadow-lg: var(--c-shadow-lg-d);
+  --shadow-sticky: var(--c-shadow-sticky-d);
+  --surface-sub: var(--c-sub-d);
+  --surface-sub-hover: var(--c-sub-hover-d);
+  --surface-foot: var(--c-foot-d);
+  --field-bg: var(--c-field-d);
+  --toast-bg: var(--c-toast-bg-d);
+  --mark-bg: var(--c-mark-bg-d);
+  --mark-ink: var(--c-mark-ink-d);
+  --progress-bg: var(--c-progress-d);
+  --plan-keep-bg: var(--c-plan-keep-d);
+  --fav-bg: var(--c-fav-d);
+  --hint-line: var(--c-hint-line-d);
+  /* emoji 插画的暗色饱和度衰减（P0-2：.empty-state .emoji 消费 --emoji-saturate） */
+  --emoji-saturate: 0.7;
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------
+   3. 尺寸 / 间距 / 圆角 / 层级 / 动效
+   --------------------------------------------------------- */
+:root {
+  --radius-xs: 7px;
+  --radius-sm: 10px;
+  --radius: 14px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+
+  --z-sticky: 30;
+  --z-overlay: 60;
+  --z-drawer: 80;
+  --z-tooltip: 90;
+  --z-modal: 100;
+  --z-toast: 200;
+
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* 组件级通用表面 */
+  --overlay-bg: rgba(20, 16, 60, 0.35);
+  --focus-ring: 2px solid var(--primary);
+}

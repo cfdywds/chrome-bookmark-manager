@@ -94,7 +94,7 @@ describe('LLM 多配置', () => {
     // 获取模型列表后仅可从列表选择：输入框切换为只读
     expect(optionsSource).toContain('function setModelReadonly(');
     expect(optionsSource).toContain('input.readOnly = !!on;');
-    expect(optionsSource).toContain('setModelReadonly(true);   // 列表已就绪：只能从列表中选择模型');
+    expect(optionsSource).toMatch(/setModelReadonly\(true\);\s*\/\/ 列表已就绪：只能从列表中选择模型/);
   });
 
   it('刷新模型列表时保留当前手动选择的模型，下拉支持大小写不敏感过滤', () => {
@@ -409,7 +409,7 @@ describe('LLM 多配置', () => {
     expect(optionsSource).not.toContain('chrome.storage.sync.set({ bmSettings');
     expect(optionsSource).toContain("$('#setDomainTagRules').addEventListener('change', persistTagRules)");
     expect(optionsSource).toContain("$('#setKeywordTagRules').addEventListener('change', persistTagRules)");
-    expect(getFunctionSource('persistTagSync')).toContain('renderTagSyncStatus(tagSyncStatus');
+    expect(getFunctionSource('persistTagSync')).toMatch(/renderTagSyncStatus\(\s*tagSyncStatus/);
     expect(getFunctionSource('persistTagSync')).not.toContain('await BM.initializeSyncedTagConfiguration();');
     expect(optionsSource).not.toContain("$('#setDomainTagRules').addEventListener('input', persistTagRules)");
   });

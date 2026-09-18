@@ -97,7 +97,7 @@ describe('新标签页搜索', () => {
     });
 
     expect(html).toContain('class="nt-card-hidden">已隐藏</span>');
-    expect(html).toContain('title="取消隐藏"');
+    expect(html).toContain('data-tip="取消隐藏"');
   });
 
   it('对标题进行 HTML 转义，并禁用非 HTTP(S) 链接', () => {
