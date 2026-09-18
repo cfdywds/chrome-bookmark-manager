@@ -151,6 +151,31 @@ describe('新标签页搜索', () => {
     expect((html.match(/data-nt-act=/g) || [])).toHaveLength(4);
   });
 
+  it('列表行把图标、主信息和标签状态拆成稳定区域，并收敛标签数量', () => {
+    const esc = eval(`(${getFunctionSource('esc')})`);
+    const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
+    const faviconUrl = () => '';
+    const ICON = () => '<svg></svg>';
+    const rowHtml = eval(`(${getFunctionSource('rowHtml')})`);
+
+    const html = rowHtml({
+      id: 'row',
+      title: '列表书签',
+      host: 'example.com',
+      url: 'https://example.com/docs',
+      path: ['书签栏', '资料'],
+      tags: ['工作', '项目', '资料'],
+      hidden: true
+    });
+
+    expect(html).toContain('class="nt-row-main"');
+    expect(html).toContain('class="nt-row-tags"');
+    expect(html).toContain('class="nt-tag-chip">#工作</span>');
+    expect(html).toContain('class="nt-tag-chip more">+2</span>');
+    expect(html).toContain('class="nt-card-hidden">已隐藏</span>');
+    expect(html).not.toContain('#项目</span>');
+  });
+
   it('复制动作保留书签的完整原始链接', async () => {
     const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
     let copied = '';
@@ -177,6 +202,21 @@ describe('新标签页搜索', () => {
     expect(newtabCss).toContain('background: linear-gradient(90deg, transparent, var(--panel) 42%);');
     expect(newtabCss).not.toMatch(/\.nt-actions[^}]*border-left/);
     expect(newtabCss).not.toMatch(/\.nt-actions[^}]*backdrop-filter/);
+  });
+
+  it('列表视图的操作栏默认收起，触屏设备保持可操作', () => {
+    expect(newtabCss).toContain('.nt-grid.is-list .nt-actions {');
+    expect(newtabCss).toContain('opacity: 0;');
+    expect(newtabCss).toContain('.nt-grid.is-list .nt-card-wrap:hover .nt-actions');
+    expect(newtabCss).toContain('.nt-grid.is-list .nt-actions {\n    opacity: 1;\n    pointer-events: auto;\n  }');
+  });
+
+  it('隐藏和删除成功提示使用轻量模式，并先更新当前列表', () => {
+    expect(newtabSource).toContain("showToast('已隐藏', 'ok'");
+    expect(newtabSource).toContain("showToast('已移入回收站', 'ok'");
+    expect(newtabSource).toContain('removeDeletedItemFromData(it);');
+    expect(newtabSource).toContain('const toastOptions = compact ? { compact: true } : undefined;');
+    expect(newtabCss).toContain('.toast.compact {');
   });
 
   it('窄屏保留仓库图标，并隐藏非关键的书签计数', () => {

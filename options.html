@@ -590,7 +590,7 @@
         </div>
       </section>
 
-      <!-- ===== 分组 5：危险操作（P2-3-3：不可逆操作集中收敛，不新增任何破坏性功能）===== -->
+      <!-- ===== 分组 5：危险操作（P2-3-3：备份恢复与不可逆操作集中收敛）===== -->
       <section class="opt-section danger-zone" id="opt-danger">
         <div class="opt-section-head">
           <div class="opt-section-text">
@@ -599,14 +599,71 @@
               <button
                 class="help-dot"
                 type="button"
-                data-tip="这里只放不可逆的操作；删除 AI 配置后无法恢复，需要重新填写接口地址、API Key 与模型名。"
-                aria-label="删除 AI 配置后无法恢复，需要重新填写接口地址、API Key 与模型名。"
+                data-tip="备份恢复、清空回收站和删除 AI 配置都可能造成不可逆的数据变化，请先确认操作范围。"
+                aria-label="备份恢复、清空回收站和删除 AI 配置都可能造成不可逆的数据变化。"
               >
                 ?
               </button>
             </h2>
           </div>
           <span class="section-status" data-status-for="danger"></span>
+        </div>
+
+        <div class="opt-card opt-card-compact danger-data-card">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                class="ico"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <use href="icons/sprite.svg#i-download" /></svg
+            ></span>
+            <div>
+              <div class="opt-card-title">书签备份 / 恢复</div>
+              <p class="opt-card-desc">
+                导出全部书签为 V4 JSON 文件；恢复时默认合并相同网址的书签与标签，也可以选择保留副本。恢复会写入书签和扩展标签数据，请先确认备份文件来源。
+              </p>
+            </div>
+          </div>
+          <div class="opt-foot danger-actions">
+            <span id="backupMsg" class="settings-msg" role="alert"></span>
+            <button id="backupExport" type="button" class="btn ghost">导出备份</button>
+            <button id="backupImport" type="button" class="btn danger">恢复备份</button>
+          </div>
+        </div>
+
+        <div class="opt-card opt-card-compact danger-data-card">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                class="ico"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <use href="icons/sprite.svg#i-trash" /></svg
+            ></span>
+            <div>
+              <div class="opt-card-title">清空回收站</div>
+              <p class="opt-card-desc">
+                永久删除当前回收站中的所有记录，待恢复书签将无法找回。侧边栏仍可查看和恢复单条记录。
+              </p>
+            </div>
+          </div>
+          <div class="opt-foot danger-actions">
+            <span id="trashMsg" class="settings-msg" role="alert"></span>
+            <button id="trashClear" type="button" class="btn danger">清空回收站</button>
+          </div>
         </div>
 
         <div class="opt-card opt-card-compact">
@@ -628,7 +685,7 @@
               <div class="opt-card-title">删除当前选中的 AI 配置</div>
               <p class="opt-card-desc">
                 删除后该配置的接口地址、API Key 与模型名一并移除且无法恢复（其余配置不受影响）。删除前请先在「AI
-                分类」分组中确认当前选中的配置；标签原生同步只是停止读写、已有数据保留，不属于危险操作。备份恢复与回收站清空位于侧边栏「概览」页，本页不提供入口。
+                分类」分组中确认当前选中的配置；标签原生同步只是停止读写、已有数据保留，不属于危险操作。
               </p>
             </div>
           </div>
@@ -640,6 +697,27 @@
           </div>
         </div>
       </section>
+    </div>
+
+    <div id="toasts"></div>
+
+    <div
+      id="confirmWrap"
+      class="modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirmTitle"
+      aria-describedby="confirmMsg"
+    >
+      <div class="modal-card">
+        <div class="modal-title" id="confirmTitle">确认操作？</div>
+        <div class="modal-msg" id="confirmMsg"></div>
+        <div class="modal-actions">
+          <button id="confirmThird" class="btn ghost hidden" type="button">保留副本</button>
+          <button id="confirmNo" class="btn ghost" type="button">取消</button>
+          <button id="confirmYes" class="btn danger" type="button">确认</button>
+        </div>
+      </div>
     </div>
 
     <script src="js/lib.js"></script>

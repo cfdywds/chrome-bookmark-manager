@@ -243,11 +243,12 @@
     return host;
   }
 
-  function toast(msg, level, action) {
+  function toast(msg, level, action, options) {
     var host = toastHost();
     var kind = normalizeLevel(level);
+    var compact = !!(options && options.compact);
     var el = document.createElement('div');
-    el.className = 'toast ' + kind;
+    el.className = 'toast ' + kind + (compact ? ' compact' : '');
     var alert = kind === 'danger' || kind === 'warn';
     el.setAttribute('role', alert ? 'alert' : 'status');
     el.setAttribute('aria-live', alert ? 'assertive' : 'polite');
@@ -273,7 +274,7 @@
           el.remove();
         }, 320);
       },
-      action ? 10000 : 2500
+      compact ? (action ? 5200 : 1700) : action ? 10000 : 2500
     );
     return el;
   }

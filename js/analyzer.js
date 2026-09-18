@@ -252,6 +252,20 @@
       if (!seenIds.has(id)) metadataCache.delete(id);
     });
 
+    const annotateVisibleCounts = node => {
+      const directVisible = (node.bookmarkIds || []).reduce(
+        (count, id) => count + (itemById.get(id) && !itemById.get(id).hidden ? 1 : 0),
+        0
+      );
+      const childVisible = (node.childFolders || []).reduce(
+        (count, child) => count + annotateVisibleCounts(child),
+        0
+      );
+      node.visibleCount = directVisible + childVisible;
+      return node.visibleCount;
+    };
+    folderTree.roots.forEach(annotateVisibleCounts);
+
     const exactDuplicates = [];
     byUrl.forEach((groupItems, url) => {
       if (groupItems.length > 1) exactDuplicates.push({ url, items: groupItems });

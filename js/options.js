@@ -85,6 +85,80 @@ function setDangerMsg(text, cls) {
   el.className = 'settings-msg' + (cls ? ' ' + cls : '');
 }
 
+function setBackupMsg(text, cls) {
+  const el = $('#backupMsg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'settings-msg' + (cls ? ' ' + cls : '');
+}
+
+function setTrashMsg(text, cls) {
+  const el = $('#trashMsg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'settings-msg' + (cls ? ' ' + cls : '');
+}
+
+function confirmDialog(opts) {
+  opts = opts || {};
+  return new Promise(resolve => {
+    const wrap = $('#confirmWrap');
+    if (!wrap) {
+      resolve(false);
+      return;
+    }
+    const restoreFocusTo = document.activeElement;
+    const yes = $('#confirmYes');
+    const no = $('#confirmNo');
+    const third = $('#confirmThird');
+    let releaseTrap = null;
+    let settled = false;
+    $('#confirmTitle').textContent = opts.title || '确认操作？';
+    $('#confirmMsg').innerHTML = opts.message || '';
+    yes.textContent = opts.confirmText || '确认';
+    yes.className = 'btn ' + (opts.danger === false ? 'primary' : 'danger');
+    if (opts.thirdText) {
+      third.textContent = opts.thirdText;
+      third.classList.remove('hidden');
+    } else {
+      third.classList.add('hidden');
+    }
+    const done = value => {
+      if (settled) return;
+      settled = true;
+      wrap.classList.add('hidden');
+      yes.onclick = no.onclick = third.onclick = null;
+      wrap.removeEventListener('click', onWrapClick);
+      wrap.removeEventListener('keydown', onKey);
+      if (typeof releaseTrap === 'function') releaseTrap();
+      else if (restoreFocusTo && document.contains(restoreFocusTo)) restoreFocusTo.focus();
+      resolve(value);
+    };
+    const onWrapClick = event => {
+      if (event.target === wrap) done(false);
+    };
+    const onKey = event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        done(false);
+      } else if (event.key === 'Enter' && !(event.target.closest && event.target.closest('button'))) {
+        done(true);
+      }
+    };
+    yes.onclick = () => done(true);
+    no.onclick = () => done(false);
+    third.onclick = () => done('third');
+    wrap.addEventListener('click', onWrapClick);
+    wrap.addEventListener('keydown', onKey);
+    wrap.classList.remove('hidden');
+    if (window.UI && typeof UI.focusTrap === 'function') {
+      releaseTrap = UI.focusTrap(wrap, { onEscape: () => done(false), autofocus: false, restoreFocusTo });
+    }
+    yes.focus();
+  });
+}
+
 // 保存反馈统一（P2-3-4）：成功提示走全局 toast，内联 settings-msg 只保留错误 / 校验文案。
 function notifySaved(message, level) {
   if (window.UI && typeof UI.toast === 'function') UI.toast(message, level || 'ok');
@@ -654,7 +728,12 @@ async function createLlmProfile() {
 async function deleteActiveLlmProfile() {
   const profile = activeLlmProfile();
   if (!profile) return;
-  if (!window.confirm('删除配置「' + profile.name + '」？此操作无法恢复。')) return;
+  const confirmed = await confirmDialog({
+    title: '删除配置「' + profile.name + '」？',
+    message: '该配置的接口地址、API Key 与模型名将一并移除，<b>无法恢复</b>。',
+    confirmText: '删除配置'
+  });
+  if (!confirmed) return;
   const currentIndex = llmProfiles.findIndex(item => item.id === profile.id);
   const remaining = llmProfiles.filter(item => item.id !== profile.id);
   if (!remaining.length) {
@@ -668,6 +747,99 @@ async function deleteActiveLlmProfile() {
     renderSectionStatuses();
   } catch (e) {
     setDangerMsg('删除失败：' + (e.message || e), 'err');
+  }
+}
+
+async function exportBackup() {
+  try {
+    const result = await BM.exportBookmarksJSON();
+    const blob = new Blob([result.json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'bookmark-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    notifySaved('已导出 ' + result.count + ' 个书签备份 ✓');
+    setBackupMsg('', '');
+  } catch (e) {
+    setBackupMsg('导出失败：' + (e.message || e), 'err');
+    try { BM.logError('backup-export', e); } catch (ignored) { /* ignore */ }
+  }
+}
+
+let backupFileInput = null;
+function ensureBackupInput() {
+  if (backupFileInput) return backupFileInput;
+  backupFileInput = document.createElement('input');
+  backupFileInput.type = 'file';
+  backupFileInput.accept = 'application/json,.json';
+  backupFileInput.hidden = true;
+  document.body.appendChild(backupFileInput);
+  backupFileInput.addEventListener('change', async () => {
+    const file = backupFileInput.files && backupFileInput.files[0];
+    backupFileInput.value = '';
+    if (!file) return;
+    const button = $('#backupImport');
+    if (button) button.disabled = true;
+    try {
+      const json = await file.text();
+      const stats = await BM.importBookmarksJSON(json, { dryRun: true });
+      const choice = await confirmDialog({
+        title: '恢复书签备份？',
+        message:
+          `备份将新增 <b>${stats.folders}</b> 个文件夹、<b>${stats.bookmarks}</b> 个书签` +
+          (stats.merged ? `，合并 <b>${stats.merged}</b> 个相同网址书签及其标签` : '') +
+          (stats.skipped ? `（跳过 ${stats.skipped} 个）` : '') +
+          '。顶级同名文件夹会自动复用。',
+        confirmText: stats.merged ? '合并并恢复' : '开始恢复',
+        thirdText: stats.merged ? '保留副本' : '',
+        danger: false
+      });
+      if (!choice) return;
+      const result = await BM.importBookmarksJSON(json, {
+        dryRun: false,
+        keepDuplicates: choice === 'third'
+      });
+      notifySaved(
+        `恢复完成：新增 ${result.bookmarks} 个书签、${result.folders} 个文件夹` +
+          (result.merged ? `，合并 ${result.merged} 个相同网址书签` : '') + ' ✓'
+      );
+      setBackupMsg('', '');
+    } catch (e) {
+      setBackupMsg('恢复失败：' + (e.message || e), 'err');
+      try { BM.logError('backup-import', e); } catch (ignored) { /* ignore */ }
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
+  return backupFileInput;
+}
+
+async function clearTrash() {
+  const records = (await BM.getTrash()) || [];
+  if (!records.length) {
+    setTrashMsg('回收站已经是空的。', '');
+    return;
+  }
+  const confirmed = await confirmDialog({
+    title: '清空回收站？',
+    message: `当前有 <b>${records.length}</b> 条记录，清空后待恢复书签将永久丢失，<b>不可撤销</b>。`,
+    confirmText: '永久清空'
+  });
+  if (!confirmed) return;
+  const button = $('#trashClear');
+  if (button) button.disabled = true;
+  try {
+    await BM.clearTrash();
+    notifySaved('回收站已清空 ✓', 'warn');
+    setTrashMsg('', '');
+  } catch (e) {
+    setTrashMsg('清空失败：' + (e.message || e), 'err');
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
@@ -1438,6 +1610,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('#profileNew').addEventListener('click', createLlmProfile);
   $('#profileDelete').addEventListener('click', deleteActiveLlmProfile);
+  $('#backupExport').addEventListener('click', exportBackup);
+  $('#backupImport').addEventListener('click', () => ensureBackupInput().click());
+  $('#trashClear').addEventListener('click', clearTrash);
   $('#settingsSave').addEventListener('click', saveWithLlmPermission);
   $('#settingsTest').addEventListener('click', testConnection);
   $('#modelsFetch').addEventListener('click', fetchModelList);

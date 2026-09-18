@@ -633,10 +633,6 @@ mark {
   height: 12px;
   vertical-align: -2px;
 }
-.ico-lg {
-  width: 18px;
-  height: 18px;
-}
 .icon-btn .ico,
 .tab .ico,
 .btn .ico,
@@ -1422,29 +1418,6 @@ mark {
   border-top: 1px dashed var(--line);
 }
 
-/* ===== 页面功能说明条 ===== */
-.page-hint {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  background: var(--grad-soft);
-  border: 1px solid var(--hint-line);
-  border-radius: var(--radius);
-  padding: 9px 12px;
-  font-size: 12px;
-  color: var(--ink-2);
-  line-height: 1.6;
-  margin-bottom: 10px;
-}
-.page-hint .ph-ico {
-  font-size: 14px;
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-.page-hint b {
-  color: var(--primary);
-}
-
 /* ===== 操作指南抽屉 ===== */
 .help-group {
   margin-bottom: 16px;
@@ -1553,11 +1526,6 @@ mark {
 .rec-hint b {
   font-weight: 700;
 }
-.page-hint .ph-ico {
-  display: inline-flex;
-  margin-top: 1px;
-}
-
 /* ===== 批量栏：全选 / 反选 ===== */
 .bulk-extra {
   display: flex;
@@ -1640,13 +1608,6 @@ mark {
 
 /* ===== 05 空 / 加载 / 错误态 ===== */
 
-/* 分组内超出 50 条的提示 */
-.more-hint {
-  padding: 8px 14px;
-  font-size: 12px;
-  color: var(--muted, #888);
-  text-align: center;
-}
 .more-items {
   display: block;
   width: 100%;
@@ -1870,164 +1831,6 @@ mark {
   color: var(--ok);
 }
 
-/* ===== 行动清单（概览） ===== */
-.act-card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 6px 10px 8px;
-  margin-bottom: 14px;
-  box-shadow: var(--shadow-sm);
-}
-.act-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 700;
-  font-size: 13px;
-  padding: 8px 6px 6px;
-}
-.act-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 46px;
-  padding: 8px 6px;
-  border-radius: var(--radius-sm);
-  cursor: default;
-  transition:
-    background 0.14s,
-    border-color 0.14s;
-}
-.act-item + .act-item {
-  border-top: 1px solid var(--line);
-  border-radius: 0;
-}
-.act-item[data-jump] {
-  cursor: pointer;
-}
-.act-item[data-jump]:hover {
-  background: var(--primary-soft);
-}
-.act-badge {
-  min-width: 30px;
-  height: 30px;
-  padding: 0 6px;
-  border-radius: 9px;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  font-weight: 700;
-}
-.act-item.danger .act-badge {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-.act-item.warn .act-badge {
-  background: var(--warn-soft);
-  color: var(--warn);
-}
-.act-item.info .act-badge {
-  background: var(--primary-soft);
-  color: var(--primary);
-}
-.act-badge.done {
-  background: var(--ok-soft);
-  color: var(--ok);
-}
-.act-info {
-  flex: 1;
-  min-width: 0;
-}
-.act-name {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-weight: 600;
-  font-size: 12.5px;
-}
-.act-go {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 12.5px;
-  color: var(--muted);
-  flex-shrink: 0;
-}
-.act-item[data-jump] .act-go {
-  color: var(--primary);
-  font-weight: 600;
-}
-
-/* ===== 整理向导卡 ===== */
-.wizard-card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 14px;
-  margin-bottom: 14px;
-  box-shadow: var(--shadow-sm);
-}
-.wizard-title {
-  font-weight: 700;
-  font-size: 13.5px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 2px;
-}
-.wizard-sub {
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 10px;
-}
-.wizard-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  transition: background 0.12s;
-}
-.wizard-item:hover {
-  background: var(--bg);
-}
-.wizard-item .w-ico {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 15px;
-}
-.wizard-item .w-ico.todo {
-  background: var(--primary-soft);
-}
-.wizard-item .w-ico.done {
-  background: var(--ok-soft);
-}
-.wizard-item .w-info {
-  flex: 1;
-  min-width: 0;
-}
-.wizard-item .w-name {
-  font-weight: 600;
-  font-size: 12.5px;
-}
-.wizard-item .w-desc {
-  font-size: 12px;
-  color: var(--muted);
-}
-.wizard-item .w-status {
-  font-size: 12px;
-  color: var(--ok);
-  font-weight: 600;
-}
-
 /* ===== tip 提示卡 ===== */
 .tip-card {
   background: var(--grad-soft);
@@ -2246,42 +2049,6 @@ mark {
 .kpi .card.big b {
   font-size: 26px;
 }
-.act-badge .ico,
-.w-ico .ico {
-  width: 15px;
-  height: 15px;
-}
-
-/* ===== 备份 / 恢复卡片（概览页） ===== */
-.backup-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 11px 13px;
-  margin-bottom: 14px;
-  box-shadow: var(--shadow-sm);
-}
-.backup-card .b-title {
-  font-weight: 700;
-  font-size: 12.5px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.backup-card .b-desc {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-.backup-card .b-actions {
-  margin-left: auto;
-  display: flex;
-  gap: 6px;
-}
 /* ===== 概览页快捷入口卡片（P2-1：重复书签 / 空文件夹 / 回收站改为卡片入口） ===== */
 .overview-entries {
   display: grid;
@@ -2404,27 +2171,6 @@ mark {
 }
 .plan-count b {
   color: var(--primary);
-}
-.plan-prefix {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--ink-2);
-}
-.plan-prefix input {
-  width: 118px;
-  padding: 4px 8px;
-  font-size: 12px;
-  border: 1px solid var(--line-2);
-  border-radius: 8px;
-  outline: none;
-  background: var(--field-bg);
-  font-family: inherit;
-}
-.plan-prefix input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 .plan-grp-toggle {
   display: flex;
@@ -2720,14 +2466,6 @@ mark {
 /* =========================================================
    组织页视图切换（segmented control）
    ========================================================= */
-.org-switch {
-  display: flex;
-  gap: 4px;
-  padding: 6px;
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-  margin-bottom: 10px;
-}
 .org-tab {
   flex: 1;
   display: inline-flex;
@@ -2942,25 +2680,8 @@ mark {
 .ft-node.hidden > .ft-children { display: none; }
 
 /* =========================================================
-   阶段4：文件夹工具条 / 操作后定位闪烁 / 面包屑展开
+   阶段4：操作后定位闪烁 / 面包屑展开
    ========================================================= */
-.folder-tools {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.folder-tools #folderSearch {
-  flex: 1;
-  min-width: 0;
-  border: 1px solid var(--line-2);
-  border-radius: 8px;
-  padding: 5px 10px;
-  font-size: 12.5px;
-  background: var(--panel);
-  color: var(--ink);
-  outline: none;
-}
-.folder-tools #folderSearch:focus { border-color: var(--primary); }
 .row.flash { animation: bm-flash 1.3s ease; }
 .breadcrumb .crumb-more {
   color: var(--muted);
@@ -3361,14 +3082,6 @@ mark {
   margin-top: 5px;
   font-size: 12px;
 }
-.opt-tip {
-  font-size: 12.5px;
-  color: var(--muted);
-  margin-top: 24px;
-  line-height: 1.7;
-  text-align: center;
-}
-
 /* ===== 分组（section）===== */
 .opt-section {
   margin-top: 36px;
@@ -3482,9 +3195,6 @@ mark {
 }
 
 /* 卡左侧色条：每组用对应主题色，强化"分组"识别 */
-.opt-card-tag-ai {
-  border-left: 3px solid #2563eb;
-}
 .opt-card-tag-tag {
   border-left: 3px solid #14b8a6;
 }
@@ -3494,7 +3204,6 @@ mark {
 .opt-card-tag-ui {
   border-left: 3px solid #38bdf8;
 }
-.opt-card-tag-ai:first-of-type,
 .opt-card:not(.opt-card-compact) {
   border-left: 3px solid #2563eb;
 }
@@ -3639,6 +3348,12 @@ mark {
 }
 .danger-zone .opt-section-head h2 {
   color: var(--danger);
+}
+.danger-data-card {
+  border-left: 3px solid var(--danger-soft);
+}
+.danger-actions .btn.danger {
+  margin-left: 0;
 }
 
 /* ===== 09 键盘 / 拖拽 / 动效 / utilities ===== */

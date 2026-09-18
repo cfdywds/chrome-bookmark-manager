@@ -19,6 +19,7 @@
   let viewMode = 'grid';
   let activeFolder = ''; // 文件夹筛选（folderTree.folderById 的 id）
   let kbIndex = -1; // 键盘高亮位置（当前渲染出的卡片/行序号）
+  const pendingHidden = new Map();
 
   function waitForInitialTagSync(task) {
     return new Promise(resolve => {
@@ -263,8 +264,8 @@
     for (let i = 0; i < seed.length; i += 1) hue = (hue * 31 + seed.charCodeAt(i)) % 360;
     const tagList = it.tags || [];
     const chips =
-      tagList.slice(0, 2).map(t => `<span class="nt-tag-chip">#${esc(t)}</span>`).join('') +
-      (tagList.length > 2 ? `<span class="nt-tag-chip more">+${tagList.length - 2}</span>` : '');
+      tagList.slice(0, 1).map(t => `<span class="nt-tag-chip">#${esc(t)}</span>`).join('') +
+      (tagList.length > 1 ? `<span class="nt-tag-chip more">+${tagList.length - 1}</span>` : '');
     const loc = [it.host || '', (it.path || []).slice(-1)[0] || ''].filter(Boolean).join(' · ');
     const hiddenLabel = it.hidden ? '取消隐藏' : '隐藏';
     const actions = `
@@ -276,13 +277,15 @@
       </div>`;
     return `<div class="nt-card-wrap nt-row" id="nt-card-${esc(it.id)}" data-nt-id="${esc(it.id)}" role="option" aria-selected="false">
       <a class="nt-row-link"${href ? ` href="${esc(href)}" target="_blank" rel="noopener"` : ' aria-disabled="true"'} data-tip="${esc(it.title)}">
-        <span class="nt-fav" aria-hidden="true" style="--fav-hue: ${hue}">
-          <span class="nt-fav-fallback">${initial}</span>
-          ${favicon ? `<img class="nt-fav-img" src="${esc(favicon)}" alt="" loading="lazy" />` : ''}
-        </span>
-        <span class="nt-row-body">
-          <span class="nt-row-title">${esc(it.title)}</span>
-          <span class="nt-row-loc">${esc(loc)}</span>
+        <span class="nt-row-main">
+          <span class="nt-fav" aria-hidden="true" style="--fav-hue: ${hue}">
+            <span class="nt-fav-fallback">${initial}</span>
+            ${favicon ? `<img class="nt-fav-img" src="${esc(favicon)}" alt="" loading="lazy" />` : ''}
+          </span>
+          <span class="nt-row-body">
+            <span class="nt-row-title">${esc(it.title)}</span>
+            <span class="nt-row-loc">${esc(loc)}</span>
+          </span>
         </span>
         <span class="nt-row-tags">${chips}${it.hidden ? '<span class="nt-card-hidden">已隐藏</span>' : ''}</span>
       </a>${actions}
@@ -370,34 +373,88 @@
     const tree = (DATA && DATA.folderTree) || {};
     const roots = tree.roots || [];
     const byId = tree.folderById || new Map();
-    // 签名覆盖 id / 父级 / 标题 / 计数：重命名或跨层移动（自身计数不变）后不会显示旧结构。
+    if (activeFolder && !byId.has(String(activeFolder))) activeFolder = '';
+    // 签名覆盖根节点、父级、标题、计数和子目录顺序：重命名、跨层移动或重排后不会显示旧结构。
     // 树对象未变时跳过全量拼接，避免每次输入防抖都做一次 O(n) 字符串拼接。
     if (tree !== folderTreeRef) {
       folderTreeRef = tree;
-      folderSignature =
-        byId.size +
-        ':' +
-        Array.from(byId.values())
-          .map(node => node.id + '/' + node.parentId + '/' + node.title + '/' + node.totalCount)
-          .join(',');
+      const nodes = [];
+      const visit = list => {
+        for (const node of list) {
+          nodes.push(
+            node.id + '/' +
+              node.parentId + '/' +
+              node.title + '/' +
+              node.totalCount + '/' +
+              node.visibleCount + '/' +
+              (node.childFolders || []).map(child => child.id).join('|')
+          );
+          visit(node.childFolders || []);
+        }
+      };
+      visit(roots);
+      folderSignature = roots.map(node => node.id).join('|') + ':' + nodes.join(',');
     }
     const renderKey = folderSignature + ':' + activeFolder;
     if (renderKey === folderRenderKey) return;
     folderRenderKey = renderKey;
-    if (activeFolder && !byId.has(String(activeFolder))) activeFolder = '';
     const options = ['<option value="">全部文件夹</option>'];
-    const walk = (nodes, depth) => {
-      for (const node of nodes) {
-        const pad = '— '.repeat(depth);
+    const folderChoices = [{ value: '', title: '全部文件夹', count: DATA.total || 0, depth: 0, prefix: '' }];
+    const walk = (nodes, depth, ancestors) => {
+      nodes.forEach((node, index) => {
+        const isLast = index === nodes.length - 1;
+        const treePrefix = depth
+          ? ancestors.map(hasNext => (hasNext ? '│  ' : '   ')).join('') + (isLast ? '└─ ' : '├─ ')
+          : '▾ ';
         options.push(
-          `<option value="${esc(node.id)}">${pad}${esc(node.title)}（${node.totalCount}）</option>`
+          `<option value="${esc(node.id)}">${treePrefix}${esc(node.title)}（${node.visibleCount}）</option>`
         );
-        walk(node.childFolders || [], depth + 1);
-      }
+        folderChoices.push({
+          value: String(node.id),
+          title: node.title,
+          count: node.visibleCount,
+          depth,
+          prefix: treePrefix
+        });
+        walk(node.childFolders || [], depth + 1, depth ? ancestors.concat(!isLast) : [!isLast]);
+      });
     };
-    walk(roots, 0);
+    walk(roots, 0, []);
     select.innerHTML = options.join('');
     select.value = activeFolder;
+    const menu = $('#ntFolderMenu');
+    if (menu) {
+      menu.innerHTML = folderChoices
+        .map(
+          choice => `<div class="nt-folder-option" role="option" tabindex="-1" data-value="${esc(choice.value)}" aria-selected="${
+            String(choice.value) === String(activeFolder)
+          }" style="--folder-depth: ${choice.depth}">
+            <span class="nt-folder-option-label"><span class="nt-folder-option-prefix" aria-hidden="true">${esc(choice.prefix)}</span>${esc(choice.title)}</span>
+            <span class="nt-folder-option-count">${choice.count}</span>
+          </div>`
+        )
+        .join('');
+    }
+    const selectedNode = activeFolder ? byId.get(String(activeFolder)) : null;
+    const filter = $('#ntFolderFilter');
+    const summary = $('#ntFolderSummary');
+    const status = $('#ntFolderTreeStatus');
+    if (filter) {
+      filter.classList.remove('is-loading');
+      filter.setAttribute('aria-busy', 'false');
+    }
+    if (summary) summary.textContent = selectedNode ? `${selectedNode.visibleCount} 个可见书签` : `${roots.length} 个顶级目录`;
+    const trigger = $('#ntFolderTrigger');
+    const value = $('#ntFolderValue');
+    if (trigger) trigger.setAttribute('aria-expanded', trigger.getAttribute('aria-expanded') === 'true' ? 'true' : 'false');
+    if (value) value.textContent = selectedNode ? selectedNode.title : '全部文件夹';
+    if (status) {
+      status.textContent = selectedNode
+        ? `当前目录：${selectedNode.title}`
+        : roots.length
+          ? '可按目录及其子目录筛选'
+          : '暂无可用文件夹';
+    }
   }
 
   // 视图切换：同步 .active / aria-pressed 并持久化到 storage
@@ -655,6 +712,75 @@
       render();
     });
   }
+  const folderTrigger = $('#ntFolderTrigger');
+  const folderMenu = $('#ntFolderMenu');
+  if (folderTrigger && folderMenu) {
+    const menuOptions = () => [...folderMenu.querySelectorAll('[role="option"]')];
+    const closeFolderMenu = restoreFocus => {
+      folderMenu.hidden = true;
+      folderTrigger.setAttribute('aria-expanded', 'false');
+      if (restoreFocus) folderTrigger.focus();
+    };
+    const focusFolderOption = index => {
+      const options = menuOptions();
+      if (!options.length) return;
+      const next = Math.max(0, Math.min(index, options.length - 1));
+      options[next].focus({ preventScroll: true });
+    };
+    const chooseFolder = option => {
+      if (!option) return;
+      activeFolder = option.dataset.value || '';
+      closeFolderMenu(true);
+      render();
+    };
+    folderTrigger.addEventListener('click', () => {
+      const opening = folderMenu.hidden;
+      folderMenu.hidden = !opening;
+      folderTrigger.setAttribute('aria-expanded', String(opening));
+      if (opening) {
+        const selected = menuOptions().find(option => option.getAttribute('aria-selected') === 'true');
+        if (selected) selected.focus({ preventScroll: true });
+      }
+    });
+    folderTrigger.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        folderTrigger.click();
+      } else if (e.key === 'Escape' && !folderMenu.hidden) {
+        e.preventDefault();
+        closeFolderMenu(false);
+      }
+    });
+    folderMenu.addEventListener('click', e => chooseFolder(e.target.closest('[role="option"]')));
+    folderMenu.addEventListener('keydown', e => {
+      const options = menuOptions();
+      const index = options.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        focusFolderOption(index + 1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        focusFolderOption(index - 1);
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        focusFolderOption(0);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        focusFolderOption(options.length - 1);
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        chooseFolder(options[index]);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeFolderMenu(true);
+      }
+    });
+    document.addEventListener('click', e => {
+      if (!folderMenu.hidden && !folderTrigger.contains(e.target) && !folderMenu.contains(e.target)) {
+        closeFolderMenu(false);
+      }
+    });
+  }
 
   // 搜索框滚动悬浮：越过顶栏后加深阴影提示已固定（IntersectionObserver，无滚动抖动）
   const searchBar = $('.nt-search');
@@ -705,20 +831,25 @@
       }
     } else if (act === 'toggle-hidden') {
       const wasHidden = it.hidden;
-      await window.BM.toggleHidden(it.id);
-      render();
+      const hiddenTask = setHiddenOptimistic(it, !wasHidden);
       if (!wasHidden) {
-        showToast('已隐藏书签', false, {
+        showToast('已隐藏', 'ok', {
           label: '撤销',
           onClick: async () => {
-            await window.BM.toggleHidden(it.id);
-            DATA = await window.BMAnalyzer.analyze();
-            render();
+            try {
+              await setHiddenOptimistic(it, false);
+              showToast('已取消隐藏', 'ok', undefined, { compact: true });
+            } catch (err) {
+              showToast('撤销失败：' + (err.message || err), 'danger');
+            }
           }
-        });
+        }, { compact: true });
       } else {
-        showToast('已取消隐藏 ✓', false);
+        showToast('已取消隐藏', 'ok', undefined, { compact: true });
       }
+      hiddenTask.catch(err =>
+        showToast((wasHidden ? '取消隐藏' : '隐藏') + '失败：' + (err.message || err), 'danger')
+      );
     } else if (act === 'edit') {
       openInlineEditor(it, btn.closest('.nt-card-wrap'));
     } else if (act === 'delete') {
@@ -776,6 +907,64 @@
   }
 
   // 软删除：加入收藏站 + 从 Chrome 移除
+  function removeDeletedItemFromData(it) {
+    if (!DATA) return;
+    const itemId = String(it.id);
+    DATA.items = DATA.items.filter(item => String(item.id) !== itemId);
+    DATA.total = Math.max(0, Number(DATA.total || 0) - 1);
+    if (DATA.itemById && typeof DATA.itemById.delete === 'function') DATA.itemById.delete(it.id);
+    if (!it.hidden) {
+      for (const tag of it.tags || []) {
+        if (!DATA.tagStats || !DATA.tagStats[tag]) continue;
+        DATA.tagStats[tag] -= 1;
+        if (DATA.tagStats[tag] <= 0) delete DATA.tagStats[tag];
+      }
+    }
+    const tree = DATA.folderTree;
+    const byId = tree && tree.folderById;
+    if (byId && typeof byId.get === 'function') {
+      const visited = new Set();
+      let node = byId.get(String(it.parentId));
+      while (node && !visited.has(node.id)) {
+        visited.add(node.id);
+        node.totalCount = Math.max(0, Number(node.totalCount || 0) - 1);
+        if (!it.hidden) node.visibleCount = Math.max(0, Number(node.visibleCount || 0) - 1);
+        node = byId.get(String(node.parentId));
+      }
+    }
+    folderTreeRef = null;
+    folderSignature = '';
+    folderRenderKey = '';
+  }
+
+  function setHiddenOptimistic(it, nextHidden) {
+    const itemId = String(it.id);
+    const pending = pendingHidden.get(itemId);
+    if (pending) return pending.then(() => setHiddenOptimistic(it, nextHidden));
+    const previous = !!it.hidden;
+    it.hidden = nextHidden;
+    render();
+    const task = window.BM.toggleHidden(it.id)
+      .then(actual => {
+        if (actual !== nextHidden) {
+          it.hidden = actual;
+          render();
+        }
+        return actual;
+      })
+      .catch(error => {
+        it.hidden = previous;
+        render();
+        throw error;
+      });
+    let tracked;
+    tracked = task.finally(() => {
+      if (pendingHidden.get(itemId) === tracked) pendingHidden.delete(itemId);
+    });
+    pendingHidden.set(itemId, tracked);
+    return tracked;
+  }
+
   async function softDeleteBookmark(it) {
     try {
       const ok = await confirmDialog({
@@ -785,12 +974,12 @@
       });
       if (!ok) return;
       // 拿一下父级信息（回收站需要 parentId/title 等）
-      const bm = await chrome.bookmarks.get(it.id).catch(() => null);
+      const bm = it.parentId ? null : await chrome.bookmarks.get(it.id).catch(() => null);
       const trashItem = {
         id: it.id,
         title: it.title,
         url: it.url,
-        parentId: bm && bm[0] ? bm[0].parentId : undefined
+        parentId: it.parentId || (bm && bm[0] ? bm[0].parentId : undefined)
       };
       const added = await window.BM.addToTrash([trashItem], { deletionPending: true });
       if (added !== 1) throw new Error('未能完整写入回收站');
@@ -804,21 +993,9 @@
         }
         throw e;
       }
-      try {
-        await window.BM.completeTrashDelete([it.id], []);
-      } catch {
-        /* 保留保护记录 */
-      }
-      // 清掉本地 tags 缓存（防引用）
-      try {
-        await window.BM.setTags(it.id, []);
-      } catch (e) {
-        /* noop */
-      }
-      // 立即刷新
-      DATA = await window.BMAnalyzer.analyze();
+      removeDeletedItemFromData(it);
       render();
-      showToast('已移入回收站 · 30 天内可恢复', false, {
+      showToast('已移入回收站', 'ok', {
         label: '撤销',
         onClick: async () => {
           try {
@@ -833,7 +1010,20 @@
             showToast('恢复失败：' + (err.message || err), true);
           }
         }
-      });
+      }, { compact: true });
+      // 删除后的回收站确认和标签清理不阻塞列表反馈。
+      void (async () => {
+        try {
+          await window.BM.completeTrashDelete([it.id], []);
+        } catch {
+          /* 保留保护记录 */
+        }
+        try {
+          await window.BM.setTags(it.id, []);
+        } catch {
+          /* noop */
+        }
+      })();
     } catch (e) {
       showToast('删除失败：' + (e.message || e), true);
     }
@@ -841,7 +1031,9 @@
 
   // Toast 简易提示（可附带撤销等动作按钮）
   // 兼容旧签名 showToast(msg, danger, action)，并支持分级字符串 'ok' | 'info' | 'warn' | 'danger'
-  function showToast(msg, level, action) {
+  function showToast(msg, level, action, options) {
+    const compact = !!(options && options.compact);
+    const toastOptions = compact ? { compact: true } : undefined;
     const kind =
       level === true
         ? 'danger'
@@ -850,8 +1042,12 @@
           : level
             ? 'danger'
             : 'ok';
+    if (window.UI && typeof UI.toast === 'function') {
+      UI.toast(msg, kind, action, toastOptions);
+      return;
+    }
     const t = document.createElement('div');
-    t.className = 'nt-toast' + (kind === 'ok' ? '' : ' ' + kind);
+    t.className = 'nt-toast' + (kind === 'ok' ? '' : ' ' + kind) + (compact ? ' compact' : '');
     const alert = kind === 'danger' || kind === 'warn';
     t.setAttribute('role', alert ? 'alert' : 'status');
     t.setAttribute('aria-live', alert ? 'assertive' : 'polite');
@@ -870,7 +1066,7 @@
       t.appendChild(btn);
     }
     document.body.appendChild(t);
-    const hold = action ? 8000 : 2200;
+    const hold = compact ? (action ? 5200 : 1700) : action ? 8000 : 2200;
     setTimeout(() => {
       t.classList.add('nt-toast-out');
       setTimeout(() => t.remove(), 220);

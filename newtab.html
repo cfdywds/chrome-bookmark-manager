@@ -117,12 +117,42 @@
 
       <!-- 文件夹筛选（与标签筛选条并存） -->
       <div class="nt-filter-bar">
-        <label class="nt-folder-filter">
-          <span class="nt-folder-label">文件夹</span>
-          <select id="ntFolder" aria-label="按文件夹筛选书签">
-            <option value="">全部文件夹</option>
-          </select>
-        </label>
+        <div class="nt-folder-filter is-loading" id="ntFolderFilter" aria-busy="true">
+          <span class="nt-folder-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <use href="icons/sprite.svg#i-folder" />
+            </svg>
+          </span>
+          <span class="nt-folder-heading">
+            <span class="nt-folder-label">文件夹</span>
+            <span class="nt-folder-summary" id="ntFolderSummary">正在加载目录…</span>
+          </span>
+          <span class="nt-folder-select-wrap">
+            <button
+              class="nt-folder-trigger"
+              id="ntFolderTrigger"
+              type="button"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-controls="ntFolderMenu"
+              aria-label="按文件夹筛选书签"
+            >
+              <span id="ntFolderValue">正在加载目录…</span>
+              <span class="nt-folder-chevron" aria-hidden="true">⌄</span>
+            </button>
+            <div
+              class="nt-folder-menu"
+              id="ntFolderMenu"
+              role="listbox"
+              aria-label="文件夹目录"
+              hidden
+            ></div>
+            <select id="ntFolder" class="nt-folder-native" tabindex="-1" aria-hidden="true">
+              <option value="" disabled selected>正在加载目录…</option>
+            </select>
+          </span>
+        </div>
+        <span class="nt-folder-tree-status" id="ntFolderTreeStatus" aria-live="polite"></span>
       </div>
 
       <!-- 标签筛选条 -->

@@ -154,6 +154,12 @@ describe('共享 UI 原语', () => {
     expect(UI.normalizeLevel('unexpected')).toBe('ok');
   });
 
+  it('compact toast 使用短样式和短停留时间', () => {
+    const toast = UI.toast('已隐藏', 'ok', undefined, { compact: true });
+    expect(toast.className).toContain('toast ok compact');
+    expect(timers[timers.length - 1].delay).toBe(1700);
+  });
+
   it('快捷键注册表按分组渲染帮助文档，避免文档与实现漂移', () => {
     const html = UI.shortcutHtml([
       { keys: 'j / k', desc: '上下移动高亮行', group: '键盘快捷键' },

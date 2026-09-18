@@ -205,12 +205,35 @@ describe('交互规范', () => {
     expect(flat(popupCss)).toContain('pointer-events: auto;');
   });
 
+  it('newtab toast 复用共享 UI 原语，统一自动消失时长与动作按钮行为', () => {
+    expect(newtabJs).toContain("if (window.UI && typeof UI.toast === 'function')");
+    expect(newtabJs).toContain('UI.toast(msg, kind, action, toastOptions);');
+    expect(uiJs).toContain("compact ? (action ? 5200 : 1700) : action ? 10000 : 2500");
+  });
+
   it('文件夹下拉签名包含父级与标题，重命名 / 跨层移动后不会残留旧结构', () => {
-    expect(newtabJs).toContain(
-      ".map(node => node.id + '/' + node.parentId + '/' + node.title + '/' + node.totalCount)"
-    );
+    expect(flat(newtabJs)).toContain("node.id + '/' + node.parentId + '/' + node.title + '/' + node.totalCount + '/' + node.visibleCount");
+    expect(flat(newtabJs)).toContain("(node.childFolders || []).map(child => child.id).join('|')");
+    expect(flat(newtabJs)).toContain("folderSignature = roots.map(node => node.id).join('|')");
     // 树对象未变时跳过全量拼接，避免每次输入防抖都做一次 O(n) 字符串拼接
     expect(newtabJs).toContain('if (tree !== folderTreeRef)');
+  });
+
+  it('危险操作集中到 options 页面底部，popup 不再提供备份和清空回收站入口', () => {
+    expect(optionsHtml).toContain('id="backupExport"');
+    expect(optionsHtml).toContain('id="backupImport"');
+    expect(optionsHtml).toContain('id="trashClear"');
+    expect(optionsHtml).toContain('id="confirmWrap"');
+    expect(popupJs).not.toContain('data-action="backup-export"');
+    expect(popupJs).not.toContain('data-action="backup-import"');
+    expect(popupJs).not.toContain("action === 'trash-clear'");
+    expect(optionsJs).not.toContain('window.confirm');
+  });
+
+  it('清理改造前遗留的未使用 CSS 选择器', () => {
+    ['.act-card', '.wizard-card', '.backup-card', '.page-hint', '.plan-prefix', '.org-switch'].forEach(
+      selector => expect(popupCss).not.toContain(selector)
+    );
   });
 });
 
@@ -275,9 +298,18 @@ describe('P2 结构与信息架构', () => {
   it('新标签页提供紧凑列表视图、文件夹筛选与卡片标签', () => {
     expect(newtabHtml).toContain('id="ntViewList"');
     expect(newtabHtml).toContain('id="ntFolder"');
+    expect(newtabHtml).toContain('id="ntFolderFilter"');
+    expect(newtabHtml).toContain('id="ntFolderSummary"');
+    expect(newtabHtml).toContain('id="ntFolderTrigger"');
+    expect(newtabHtml).toContain('id="ntFolderMenu"');
     expect(newtabJs).toContain('bmNewtabView');
     expect(flat(newtabCss)).toContain('content-visibility: auto');
     expect(newtabJs).toContain('nt-tag-chip');
+    expect(newtabJs).toContain("'└─ '");
+    expect(newtabJs).toContain('chooseFolder');
+    expect(flat(newtabCss)).toContain('.nt-folder-filter.is-loading');
+    expect(flat(newtabCss)).toContain('.nt-folder-option[aria-selected=\'true\']');
+    expect(flat(newtabCss)).toContain('.nt-row-main');
   });
 
   it('新标签页键盘导航可完整操作卡片', () => {

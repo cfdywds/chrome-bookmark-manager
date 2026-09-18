@@ -857,16 +857,7 @@ function renderOverview() {
     </div>`
         : `
     <div class="empty-state"><span class="emoji">${ICON('tag')}</span><div class="title">还没有标签</div></div>`
-    }
-    <div class="backup-card">
-      <div>
-        <div class="b-title">${ICON_SM('download')} 书签备份 / 恢复 ${helpDot('导出全部书签为 JSON 文件；恢复时默认合并完整 URL 相同的书签与标签，也可选择保留副本。单书签最多 6 个标签，已有标签优先保留。')}</div>
-      </div>
-      <div class="b-actions">
-        <button class="btn small ghost" data-action="backup-export">${ICON_SM('download')} 导出备份</button>
-        <button class="btn small" data-action="backup-import">${ICON_SM('upload')} 恢复</button>
-      </div>
-    </div>`;
+    }`;
   // 首页大搜索框联动顶部搜索
   const hero = $('#heroSearch');
   if (hero)
@@ -1674,7 +1665,6 @@ function renderTrash(container) {
       <span class="sec-title">共 <b>${list.length}</b> 项待恢复${list.length >= (BM.TRASH_MAX || 1000) ? `（已达上限，最早的记录会被新删除项挤出）` : ''}</span>
       <div class="toolbar-actions">
         <button class="btn small primary" data-action="trash-restore-all">${ICON_SM('undo')} 一键恢复</button>
-        <button class="btn small danger" data-action="trash-clear">${ICON_SM('trash')} 清空回收站</button>
       </div>
     </div>`;
   const now = Date.now();
@@ -2483,84 +2473,6 @@ function updateBulk() {
   if (app) app.classList.toggle('has-bulk', checked.length > 0);
 }
 
-// ---------- 书签备份 / 恢复（JSON 导出 / 导入） ----------
-async function exportBackup() {
-  if (!DATA) {
-    toast('书签还在扫描中，完成后就能导出', 'warn');
-    return;
-  }
-  try {
-    const r = await BM.exportBookmarksJSON();
-    const blob = new Blob([r.json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'bookmark-backup-' + new Date().toISOString().slice(0, 10) + '.json';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-    toast('已导出 ' + r.count + ' 个书签备份 ✓', 'ok');
-  } catch (e) {
-    toast('导出失败：' + (e.message || e), 'danger');
-    try {
-      BM.logError('backup-export', e);
-    } catch (e2) {
-      /* ignore */
-    }
-  }
-}
-
-let backupFileInput = null;
-function ensureBackupInput() {
-  if (backupFileInput) return backupFileInput;
-  backupFileInput = document.createElement('input');
-  backupFileInput.type = 'file';
-  backupFileInput.accept = 'application/json,.json';
-  backupFileInput.style.display = 'none';
-  document.body.appendChild(backupFileInput);
-  backupFileInput.addEventListener('change', async () => {
-    const f = backupFileInput.files && backupFileInput.files[0];
-    backupFileInput.value = '';
-    if (!f) return;
-    try {
-      const text = await f.text();
-      // 第一步：dryRun 统计 → 预览确认
-      const stats = await BM.importBookmarksJSON(text, { dryRun: true });
-      const choice = await confirmDialog({
-        title: '恢复书签备份？',
-        message:
-          `备份将新增 <b>${stats.folders}</b> 个文件夹、<b>${stats.bookmarks}</b> 个书签` +
-          (stats.merged ? `，合并 <b>${stats.merged}</b> 个相同网址书签及其标签` : '') +
-          (stats.skipped ? `（跳过 ${stats.skipped} 个）` : '') +
-          (stats.merged ? '。单书签最多保留 6 个标签，已有标签优先。' : '。') +
-          '顶级同名文件夹会自动复用。',
-        confirmText: stats.merged ? '合并并恢复' : '开始恢复',
-        thirdText: stats.merged ? '保留副本' : '',
-        danger: false
-      });
-      if (!choice) return;
-      const keepDuplicates = choice === 'third';
-      const real = await BM.importBookmarksJSON(text, { dryRun: false, keepDuplicates });
-      toast(
-        `恢复完成：新增 ${real.bookmarks} 个书签、${real.folders} 个文件夹` +
-          (real.merged ? `，合并 ${real.merged} 个相同网址书签` : '') +
-          ' ✓',
-        'ok'
-      );
-      refresh();
-    } catch (e) {
-      toast('恢复失败：' + (e.message || e), 'danger');
-      try {
-        BM.logError('backup-import', e);
-      } catch (e2) {
-        /* ignore */
-      }
-    }
-  });
-  return backupFileInput;
-}
-
 // ---------- 标签切换与渲染分发 ----------
 function switchTab(tab) {
   const changed = currentTab !== tab;
@@ -3242,31 +3154,9 @@ async function init() {
             })
             .catch(e => toast('永久删除失败：' + (e.message || e), 'danger'));
         });
-      } else if (action === 'trash-clear') {
-        if (trashRestoreInProgress) {
-          toast('回收站恢复中，请稍候', 'warn');
-          return;
-        }
-        confirmDialog({
-          title: '清空回收站？',
-          message: '所有待恢复书签将<b>永久丢失</b>，不可恢复。',
-          confirmText: '清空'
-        }).then(ok => {
-          if (!ok) return;
-          BM.clearTrash()
-            .then(() => {
-              toast('回收站已清空 ✓', 'ok');
-              refresh();
-            })
-            .catch(e => toast('清空回收站失败：' + (e.message || e), 'danger'));
-        });
       } else if (action === 'edit-item') {
         const it = getItemById(btn.dataset.id);
         if (it) openAddDrawer(it);
-      } else if (action === 'backup-export') {
-        exportBackup();
-      } else if (action === 'backup-import') {
-        ensureBackupInput().click();
       } else if (action === 'org-view') {
         ORG_VIEW = btn.dataset.view === 'folders' ? 'folders' : 'tags';
         try { sessionStorage.setItem('bm-org-view', ORG_VIEW); } catch (e) { /* ignore */ }
@@ -3454,8 +3344,6 @@ async function init() {
     const typing =
       tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
     if (e.key === 'Escape') {
-      // 已被抽屉 / 弹层（js/ui.js 的 Esc 处理器栈）消费的 Esc 不再二次处理
-      if (e.defaultPrevented) return;
       // 有弹层 / 抽屉打开时，Esc 完全交给 js/ui.js 的陷阱处理；
       // 否则会在关闭弹层的同时连带触发「退出文件夹」等页面级动作
       if (window.UI && typeof UI.hasOpenTrap === 'function' && UI.hasOpenTrap()) return;
