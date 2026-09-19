@@ -1408,7 +1408,15 @@ function optionsSections() {
 
 function sectionNavLabel(section) {
   const head = section.querySelector('.opt-section-head h2');
-  const text = head ? head.textContent.replace(/\s+/g, ' ').trim() : '';
+  if (!head) return section.id;
+  // 标题里的「?」说明按钮也属于 h2 的子节点，直接读 textContent 会把「?」
+  // 一起带进导航标签（如「AI 分类 ?」），这里先剔除说明按钮再取文本。
+  const text = Array.from(head.childNodes)
+    .filter(node => !(node.nodeType === 1 && node.classList.contains('help-dot')))
+    .map(node => node.textContent)
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
   return text || section.id;
 }
 

@@ -171,9 +171,10 @@ describe('新标签页搜索', () => {
     expect(html).toContain('class="nt-row-main"');
     expect(html).toContain('class="nt-row-tags"');
     expect(html).toContain('class="nt-tag-chip">#工作</span>');
-    expect(html).toContain('class="nt-tag-chip more">+2</span>');
+    expect(html).toContain('class="nt-tag-chip">#项目</span>');
+    expect(html).toContain('class="nt-tag-chip">#资料</span>');
     expect(html).toContain('class="nt-card-hidden">已隐藏</span>');
-    expect(html).not.toContain('#项目</span>');
+    expect(html).not.toContain('nt-tag-chip more');
   });
 
   it('复制动作保留书签的完整原始链接', async () => {
@@ -256,5 +257,25 @@ describe('新标签页搜索', () => {
     expect(leaveOptions).toEqual({ once: true });
     leaveHandler();
     expect(activeClasses.has('nt-card-opening')).toBe(false);
+  });
+
+  it('目录下拉的引导线按层级生成，末枝才收束', () => {
+    const folderGuideHtml = eval(`(${getFunctionSource('folderGuideHtml')})`);
+
+    expect(folderGuideHtml([], false)).toBe('');
+    expect(folderGuideHtml([true], false)).toBe('<i class="nt-folder-guide is-branch"></i>');
+    expect(folderGuideHtml([false], true)).toBe('<i class="nt-folder-guide is-branch is-last"></i>');
+    expect(folderGuideHtml([true, true], false)).toBe(
+      '<i class="nt-folder-guide has-line"></i><i class="nt-folder-guide is-branch"></i>'
+    );
+    expect(folderGuideHtml([false, true], false)).toBe(
+      '<i class="nt-folder-guide"></i><i class="nt-folder-guide is-branch"></i>'
+    );
+    expect(folderGuideHtml([true, false], true)).toBe(
+      '<i class="nt-folder-guide has-line"></i><i class="nt-folder-guide is-branch is-last"></i>'
+    );
+    expect(folderGuideHtml([true, true], true)).toBe(
+      '<i class="nt-folder-guide has-line"></i><i class="nt-folder-guide is-branch"></i>'
+    );
   });
 });

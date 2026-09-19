@@ -10,153 +10,156 @@
   </head>
   <body class="nt-body">
     <div class="nt-wrap">
-      <!-- 顶栏：品牌 + 打开管理面板 -->
-      <header class="nt-top">
-        <div class="nt-brand">
-          <img class="brand-icon" src="icons/icon48.png" alt="" width="22" height="22" />
-          <span>书签管家</span>
-          <span class="nt-version" id="ntVersion" data-tip="扩展版本号"></span>
-        </div>
-        <div class="nt-top-actions">
-          <span class="nt-count" id="ntCount"></span>
-          <a
-            class="nt-source-link"
-            href="https://github.com/cfdywds/chrome-bookmark-manager"
-            target="_blank"
-            rel="noopener noreferrer"
-            data-tip="查看开源仓库"
-            aria-label="查看开源仓库"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <use href="icons/sprite.svg#i-external" />
-            </svg>
-            <span>开源仓库</span>
-          </a>
-          <button id="ntOpenPanel" class="btn small ghost">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="ico ico-sm"
-            >
-              <use href="icons/sprite.svg#i-gear" />
-            </svg>
-            打开管理面板
-          </button>
-          <div class="nt-view-toggle" role="group" aria-label="视图切换">
-            <button
-              id="ntViewGrid"
-              class="nt-view-btn active"
-              type="button"
-              data-tip="卡片视图"
-              aria-label="卡片视图"
-              aria-pressed="true"
-            >
-              <svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <use href="icons/sprite.svg#i-grid" />
-              </svg>
-            </button>
-            <button
-              id="ntViewList"
-              class="nt-view-btn"
-              type="button"
-              data-tip="紧凑列表视图"
-              aria-label="紧凑列表视图"
-              aria-pressed="false"
-            >
-              <svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <use href="icons/sprite.svg#i-list" />
-              </svg>
-            </button>
+      <!-- 吸顶容器：logo / 搜索 / 文件夹 / 标签固定在顶部，仅下方书签列表滚动 -->
+      <div class="nt-head" id="ntHead">
+        <!-- 顶栏：品牌 + 打开管理面板 -->
+        <header class="nt-top">
+          <div class="nt-brand">
+            <img class="brand-icon" src="icons/icon48.png" alt="" width="22" height="22" />
+            <span>书签管家</span>
+            <span class="nt-version" id="ntVersion" data-tip="扩展版本号"></span>
           </div>
-        </div>
-      </header>
-
-      <!-- 搜索（滚动时悬浮固定在最顶部） -->
-      <div class="nt-search search-box lg" id="ntSearchBar">
-        <svg
-          class="nt-search-ico"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <use href="icons/sprite.svg#i-search" />
-        </svg>
-        <input
-          id="ntSearch"
-          type="text"
-          placeholder="搜索标题、网址、域名、标签"
-          autocomplete="off"
-          spellcheck="false"
-        />
-        <button
-          class="help-dot"
-          type="button"
-          data-tip="多个词会同时匹配；以 #标签名开头可按标签精确筛选。"
-          aria-label="多个词会同时匹配；以标签名开头可按标签精确筛选。"
-        >
-          ?
-        </button>
-        <span id="ntResultCount" class="nt-result-count hidden"></span>
-        <button id="ntClear" class="nt-clear hidden" data-tip="清空搜索" aria-label="清空搜索">✕</button>
-      </div>
-
-      <!-- 文件夹筛选（与标签筛选条并存） -->
-      <div class="nt-filter-bar">
-        <div class="nt-folder-filter is-loading" id="ntFolderFilter" aria-busy="true">
-          <span class="nt-folder-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <use href="icons/sprite.svg#i-folder" />
-            </svg>
-          </span>
-          <span class="nt-folder-heading">
-            <span class="nt-folder-label">文件夹</span>
-            <span class="nt-folder-summary" id="ntFolderSummary">正在加载目录…</span>
-          </span>
-          <span class="nt-folder-select-wrap">
-            <button
-              class="nt-folder-trigger"
-              id="ntFolderTrigger"
-              type="button"
-              aria-haspopup="listbox"
-              aria-expanded="false"
-              aria-controls="ntFolderMenu"
-              aria-label="按文件夹筛选书签"
+          <div class="nt-top-actions">
+            <span class="nt-count" id="ntCount"></span>
+            <a
+              class="nt-source-link"
+              href="https://github.com/cfdywds/chrome-bookmark-manager"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-tip="查看开源仓库"
+              aria-label="查看开源仓库"
             >
-              <span id="ntFolderValue">正在加载目录…</span>
-              <span class="nt-folder-chevron" aria-hidden="true">⌄</span>
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <use href="icons/sprite.svg#i-external" />
+              </svg>
+              <span>开源仓库</span>
+            </a>
+            <button id="ntOpenPanel" class="btn small ghost">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="ico ico-sm"
+              >
+                <use href="icons/sprite.svg#i-gear" />
+              </svg>
+              打开管理面板
             </button>
-            <div
-              class="nt-folder-menu"
-              id="ntFolderMenu"
-              role="listbox"
-              aria-label="文件夹目录"
-              hidden
-            ></div>
-            <select id="ntFolder" class="nt-folder-native" tabindex="-1" aria-hidden="true">
-              <option value="" disabled selected>正在加载目录…</option>
-            </select>
-          </span>
-        </div>
-        <span class="nt-folder-tree-status" id="ntFolderTreeStatus" aria-live="polite"></span>
-      </div>
+            <div class="nt-view-toggle" role="group" aria-label="视图切换">
+              <button
+                id="ntViewGrid"
+                class="nt-view-btn active"
+                type="button"
+                data-tip="卡片视图"
+                aria-label="卡片视图"
+                aria-pressed="true"
+              >
+                <svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <use href="icons/sprite.svg#i-grid" />
+                </svg>
+              </button>
+              <button
+                id="ntViewList"
+                class="nt-view-btn"
+                type="button"
+                data-tip="紧凑列表视图"
+                aria-label="紧凑列表视图"
+                aria-pressed="false"
+              >
+                <svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <use href="icons/sprite.svg#i-list" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </header>
 
-      <!-- 标签筛选条 -->
-      <div class="nt-tags" id="ntTags"></div>
+        <!-- 搜索（随吸顶头部固定在顶部） -->
+        <div class="nt-search search-box lg" id="ntSearchBar">
+          <svg
+            class="nt-search-ico"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <use href="icons/sprite.svg#i-search" />
+          </svg>
+          <input
+            id="ntSearch"
+            type="text"
+            placeholder="搜索标题、网址、域名、标签"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button
+            class="help-dot"
+            type="button"
+            data-tip="多个词会同时匹配；以 #标签名开头可按标签精确筛选。"
+            aria-label="多个词会同时匹配；以标签名开头可按标签精确筛选。"
+          >
+            ?
+          </button>
+          <span id="ntResultCount" class="nt-result-count hidden"></span>
+          <button id="ntClear" class="nt-clear hidden" data-tip="清空搜索" aria-label="清空搜索">✕</button>
+        </div>
+
+        <!-- 文件夹筛选（与标签筛选条并存） -->
+        <div class="nt-filter-bar">
+          <div class="nt-folder-filter is-loading" id="ntFolderFilter" aria-busy="true">
+            <span class="nt-folder-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <use href="icons/sprite.svg#i-folder" />
+              </svg>
+            </span>
+            <span class="nt-folder-heading">
+              <span class="nt-folder-label">文件夹</span>
+              <span class="nt-folder-summary" id="ntFolderSummary">正在加载目录…</span>
+            </span>
+            <span class="nt-folder-select-wrap">
+              <button
+                class="nt-folder-trigger"
+                id="ntFolderTrigger"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                aria-controls="ntFolderMenu"
+                aria-label="按文件夹筛选书签"
+              >
+                <span class="nt-folder-value" id="ntFolderValue">正在加载目录…</span>
+                <span class="nt-folder-chevron" aria-hidden="true"></span>
+              </button>
+              <div
+                class="nt-folder-menu"
+                id="ntFolderMenu"
+                role="listbox"
+                aria-label="文件夹目录"
+                hidden
+              ></div>
+              <select id="ntFolder" class="nt-folder-native" tabindex="-1" aria-hidden="true">
+                <option value="" disabled selected>正在加载目录…</option>
+              </select>
+            </span>
+          </div>
+          <span class="nt-folder-tree-status" id="ntFolderTreeStatus" aria-live="polite"></span>
+        </div>
+
+        <!-- 标签筛选条 -->
+        <div class="nt-tags" id="ntTags"></div>
+      </div>
 
       <!-- 书签卡片网格 -->
       <main class="nt-main">

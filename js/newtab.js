@@ -263,9 +263,7 @@
     let hue = 0;
     for (let i = 0; i < seed.length; i += 1) hue = (hue * 31 + seed.charCodeAt(i)) % 360;
     const tagList = it.tags || [];
-    const chips =
-      tagList.slice(0, 1).map(t => `<span class="nt-tag-chip">#${esc(t)}</span>`).join('') +
-      (tagList.length > 1 ? `<span class="nt-tag-chip more">+${tagList.length - 1}</span>` : '');
+    const chips = tagList.map(t => `<span class="nt-tag-chip">#${esc(t)}</span>`).join('');
     const loc = [it.host || '', (it.path || []).slice(-1)[0] || ''].filter(Boolean).join(' · ');
     const hiddenLabel = it.hidden ? '取消隐藏' : '隐藏';
     const actions = `
@@ -367,6 +365,14 @@
   let folderSignature = '';
   let folderTreeRef = null;
   let folderRenderKey = '';
+  function folderGuideHtml(ancestors, isLast) {
+    if (!ancestors.length) return '';
+    const parentHasNext = ancestors[ancestors.length - 1] === true;
+    return ancestors
+      .slice(0, -1)
+      .map(hasNext => `<i class="nt-folder-guide${hasNext ? ' has-line' : ''}"></i>`)
+      .join('') + `<i class="nt-folder-guide is-branch${isLast && !parentHasNext ? ' is-last' : ''}"></i>`;
+  }
   function renderFolders() {
     const select = $('#ntFolder');
     if (!select) return;
@@ -399,7 +405,7 @@
     if (renderKey === folderRenderKey) return;
     folderRenderKey = renderKey;
     const options = ['<option value="">全部文件夹</option>'];
-    const folderChoices = [{ value: '', title: '全部文件夹', count: DATA.total || 0, depth: 0, prefix: '' }];
+    const folderChoices = [{ value: '', title: '全部文件夹', count: DATA.total || 0, depth: 0, guides: '' }];
     const walk = (nodes, depth, ancestors) => {
       nodes.forEach((node, index) => {
         const isLast = index === nodes.length - 1;
@@ -414,7 +420,7 @@
           title: node.title,
           count: node.visibleCount,
           depth,
-          prefix: treePrefix
+          guides: folderGuideHtml(ancestors, isLast)
         });
         walk(node.childFolders || [], depth + 1, depth ? ancestors.concat(!isLast) : [!isLast]);
       });
@@ -426,10 +432,12 @@
     if (menu) {
       menu.innerHTML = folderChoices
         .map(
-          choice => `<div class="nt-folder-option" role="option" tabindex="-1" data-value="${esc(choice.value)}" aria-selected="${
+          choice => `<div class="nt-folder-option${choice.value ? '' : ' is-all'}" role="option" tabindex="-1" data-value="${esc(choice.value)}" aria-selected="${
             String(choice.value) === String(activeFolder)
-          }" style="--folder-depth: ${choice.depth}">
-            <span class="nt-folder-option-label"><span class="nt-folder-option-prefix" aria-hidden="true">${esc(choice.prefix)}</span>${esc(choice.title)}</span>
+          }">
+            <span class="nt-folder-option-guides" aria-hidden="true">${choice.guides}</span>
+            <span class="nt-folder-option-icon" aria-hidden="true">${ICON('folder')}</span>
+            <span class="nt-folder-option-label">${esc(choice.title)}</span>
             <span class="nt-folder-option-count">${choice.count}</span>
           </div>`
         )
@@ -782,18 +790,29 @@
     });
   }
 
-  // 搜索框滚动悬浮：越过顶栏后加深阴影提示已固定（IntersectionObserver，无滚动抖动）
-  const searchBar = $('.nt-search');
-  if (searchBar && typeof IntersectionObserver === 'function') {
+  // 头部整体吸顶：越过顶部后加毛玻璃与阴影提示已固定（IntersectionObserver，无滚动抖动）
+  const head = $('#ntHead');
+  if (head) {
     const sentinel = document.createElement('div');
     sentinel.className = 'nt-sticky-sentinel';
-    searchBar.parentNode.insertBefore(sentinel, searchBar);
-    new IntersectionObserver(
-      entries => {
-        searchBar.classList.toggle('is-stuck', !(entries[0] && entries[0].isIntersecting));
-      },
-      { threshold: 0 }
-    ).observe(sentinel);
+    head.parentNode.insertBefore(sentinel, head);
+    if (typeof IntersectionObserver === 'function') {
+      new IntersectionObserver(
+        entries => {
+          head.classList.toggle('is-stuck', !(entries[0] && entries[0].isIntersecting));
+        },
+        { threshold: 0 }
+      ).observe(sentinel);
+    }
+    // 头部高度写入 CSS 变量：键盘导航 scrollIntoView 时避免卡片被吸顶头部挡住
+    const syncHeadHeight = () =>
+      document.documentElement.style.setProperty(
+        '--nt-head-h',
+        `${Math.round(head.getBoundingClientRect().height)}px`
+      );
+    syncHeadHeight();
+    if (typeof ResizeObserver === 'function') new ResizeObserver(syncHeadHeight).observe(head);
+    else window.addEventListener('resize', syncHeadHeight);
   }
 
   $('#ntGrid').addEventListener('click', e => {

@@ -2810,7 +2810,9 @@ mark {
   padding: 30px 20px 64px;
 }
 .opt-wrap {
-  max-width: 660px;
+  /* 桌面宽度要同时放下「左侧导航 200px + 双列表单」：
+     原 660px 下右侧内容仅剩约 446px，「模型名」等长字段被挤到只剩几十像素 */
+  max-width: 1040px;
   margin: 0 auto;
 }
 .opt-hero {
@@ -3021,7 +3023,9 @@ mark {
   border: 1px solid var(--line-2);
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
-  max-height: 248px;
+  /* 矮屏下不越过视口底部；窄容器下保证模型名有可读宽度 */
+  max-height: min(248px, 45vh);
+  min-width: min(240px, calc(100vw - 40px));
   overflow-y: auto;
 }
 .model-combo-list[hidden] {
@@ -3064,7 +3068,8 @@ mark {
 }
 .model-combo-item .mc-label {
   min-width: 0;
-  word-break: break-all;
+  /* 模型名带连字符/斜杠：优先在这些位置断行，实在放不下才逐字符断，避免整串被打散 */
+  overflow-wrap: anywhere;
 }
 .model-combo-item mark {
   background: transparent;
@@ -3247,12 +3252,13 @@ mark {
   flex-direction: column;
   gap: 2px;
 }
+/* 分组导航卡内的标题留白与卡片内边距对齐 */
 .opt-nav-title {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.4px;
   color: var(--muted);
-  padding: 0 8px 6px;
+  padding: 2px 10px 8px;
 }
 .opt-nav-link {
   display: block;
@@ -3300,15 +3306,23 @@ mark {
 @media (min-width: 720px) {
   .opt-wrap {
     display: grid;
-    grid-template-columns: 190px minmax(0, 1fr);
-    gap: 24px;
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: 28px;
     align-items: start;
   }
   .opt-nav {
     position: sticky;
-    top: 16px;
+    top: 20px;
     /* 跨满整列：sticky 才能随页面滚动保持可见 */
     grid-row: 1 / -1;
+    /* 分组导航收成一张卡：与右侧设置卡同表面，滚动时与画布边界更清晰 */
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--panel);
+    box-shadow: var(--shadow-sm);
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
   }
   .opt-hero,
   .opt-section,
@@ -3401,6 +3415,12 @@ mark {
   to {
     opacity: 1;
     transform: none;
+  }
+}
+/* 半宽窗口 / 窄屏：桌面左侧导航仍在，双列表单已放不下（Base URL 会被截断），退回单列 */
+@media (max-width: 900px) {
+  .opt-grid {
+    grid-template-columns: 1fr;
   }
 }
 @media (max-width: 540px) {
