@@ -151,7 +151,7 @@ describe('新标签页搜索', () => {
     expect((html.match(/data-nt-act=/g) || [])).toHaveLength(4);
   });
 
-  it('列表行把图标、主信息和标签状态拆成稳定区域，并收敛标签数量', () => {
+  it('列表行单行承载标题/站点/目录/标签，并收敛标签与目录层级', () => {
     const esc = eval(`(${getFunctionSource('esc')})`);
     const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
     const faviconUrl = () => '';
@@ -168,13 +168,21 @@ describe('新标签页搜索', () => {
       hidden: true
     });
 
-    expect(html).toContain('class="nt-row-main"');
+    // 单行四列：标题 / 站点 / 目录 / 标签（列由 CSS 网格对齐，行内不再有第二行主信息）
+    expect(html).toContain('class="nt-row-title">列表书签</span>');
+    expect(html).toContain('class="nt-row-host">example.com</span>');
+    // 目录去掉「书签栏」这类对每行都相同的根容器段，完整路径退到 tooltip
+    expect(html).toContain('class="nt-row-folder" data-tip="书签栏 / 资料">资料</span>');
+    expect(html).toContain('class="nt-row-meta"');
     expect(html).toContain('class="nt-row-tags"');
+    // 标签列宽固定：最多 2 个 + 余数，避免撑破列宽导致跨行错位
     expect(html).toContain('class="nt-tag-chip">#工作</span>');
     expect(html).toContain('class="nt-tag-chip">#项目</span>');
-    expect(html).toContain('class="nt-tag-chip">#资料</span>');
-    expect(html).toContain('class="nt-card-hidden">已隐藏</span>');
-    expect(html).not.toContain('nt-tag-chip more');
+    expect(html).toContain('class="nt-tag-chip more">+1</span>');
+    expect(html).not.toContain('#资料');
+    expect(html).toContain('class="nt-row-hidden">已隐藏</span>');
+    expect(html).not.toContain('nt-row-body');
+    expect(html).not.toContain('nt-row-loc');
   });
 
   it('复制动作保留书签的完整原始链接', async () => {
@@ -212,10 +220,29 @@ describe('新标签页搜索', () => {
     expect(newtabCss).toContain('.nt-grid.is-list .nt-actions {\n    opacity: 1;\n    pointer-events: auto;\n  }');
   });
 
+  it('列表视图靠单行密度与列对齐换取「找书签」效率', () => {
+    // 行高 28px（卡片 112px）：整块只有一条外框线 + 行分隔线，不再逐行叠卡片
+    expect(newtabCss).toContain('.nt-grid.is-list .nt-card-wrap + .nt-card-wrap');
+    expect(newtabCss).toMatch(/\.nt-grid\.is-list \.nt-card-wrap \{[^}]*min-height: 28px;/);
+    // 列宽固定，跨行对齐才成立
+    expect(newtabCss).toContain(
+      'grid-template-columns: 16px minmax(0, 1fr) minmax(0, 190px) minmax(0, 158px) 150px;'
+    );
+    // 窄屏逐级收敛列，最后退成两行
+    expect(newtabCss).toContain('@media (max-width: 1040px)');
+    expect(newtabCss).toContain('@media (max-width: 900px)');
+    expect(newtabCss).toContain('.nt-row-meta {\n    display: flex;');
+    // 虚拟化占位高度必须跟着行高走，否则滚动条长度会跳
+    expect(newtabCss).toContain('contain-intrinsic-size: auto 28px;');
+    expect(newtabCss).toContain('contain-intrinsic-size: auto 52px;');
+    // 空结果不留下一条空框线
+    expect(newtabCss).toContain('.nt-grid.is-list:empty');
+  });
+
   it('隐藏和删除成功提示使用轻量模式，并先更新当前列表', () => {
     expect(newtabSource).toContain("showToast('已隐藏', 'ok'");
     expect(newtabSource).toContain("showToast('已移入回收站', 'ok'");
-    expect(newtabSource).toContain('removeDeletedItemFromData(it);');
+    expect(newtabSource).toContain('removeDeletedItemFromData(liveItem);');
     expect(newtabSource).toContain('const toastOptions = compact ? { compact: true } : undefined;');
     expect(newtabCss).toContain('.toast.compact {');
   });

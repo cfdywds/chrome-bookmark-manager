@@ -20,6 +20,9 @@
   let activeFolder = ''; // 文件夹筛选（folderTree.folderById 的 id）
   let kbIndex = -1; // 键盘高亮位置（当前渲染出的卡片/行序号）
   const pendingHidden = new Map();
+  const pendingDeletes = new Set();
+  const completedDeletes = new Set();
+  const finalizeDeletes = new Map();
 
   function waitForInitialTagSync(task) {
     return new Promise(resolve => {
@@ -254,7 +257,8 @@
     </div>`;
   }
 
-  // 紧凑列表行：复用 popup 的 .row 视觉语言，信息密度高于卡片
+  // 紧凑列表行：单行承载 标题 / 站点 / 目录 / 标签 四列，列宽固定保证跨行对齐，
+  // 行高 28px（卡片 112px）；「找书签」的信息密度是列表视图存在的理由。
   function rowHtml(it) {
     const href = safeHttpUrl(it.url);
     const favicon = faviconUrl(it.url);
@@ -263,8 +267,15 @@
     let hue = 0;
     for (let i = 0; i < seed.length; i += 1) hue = (hue * 31 + seed.charCodeAt(i)) % 360;
     const tagList = it.tags || [];
-    const chips = tagList.map(t => `<span class="nt-tag-chip">#${esc(t)}</span>`).join('');
-    const loc = [it.host || '', (it.path || []).slice(-1)[0] || ''].filter(Boolean).join(' · ');
+    // 列表列宽固定，标签最多 2 个 + 余数，避免撑破列宽导致跨行错位
+    const chips =
+      tagList.slice(0, 2).map(t => `<span class="nt-tag-chip">#${esc(t)}</span>`).join('') +
+      (tagList.length > 2 ? `<span class="nt-tag-chip more">+${tagList.length - 2}</span>` : '');
+    const tagsHtml = chips || '<span class="nt-row-untagged">未打标</span>';
+    // 目录取路径末两级，并去掉首段（书签栏/其他书签这类根容器对每一行都相同）：
+    // 卡片给不出这个信息，用来区分「同名不同夹」的重复书签。
+    const rel = (it.path || []).slice(1);
+    const folder = (rel.length ? rel : it.path || []).slice(-2).join(' / ');
     const hiddenLabel = it.hidden ? '取消隐藏' : '隐藏';
     const actions = `
       <div class="nt-actions" data-id="${esc(it.id)}">
@@ -275,17 +286,16 @@
       </div>`;
     return `<div class="nt-card-wrap nt-row" id="nt-card-${esc(it.id)}" data-nt-id="${esc(it.id)}" role="option" aria-selected="false">
       <a class="nt-row-link"${href ? ` href="${esc(href)}" target="_blank" rel="noopener"` : ' aria-disabled="true"'} data-tip="${esc(it.title)}">
-        <span class="nt-row-main">
-          <span class="nt-fav" aria-hidden="true" style="--fav-hue: ${hue}">
-            <span class="nt-fav-fallback">${initial}</span>
-            ${favicon ? `<img class="nt-fav-img" src="${esc(favicon)}" alt="" loading="lazy" />` : ''}
-          </span>
-          <span class="nt-row-body">
-            <span class="nt-row-title">${esc(it.title)}</span>
-            <span class="nt-row-loc">${esc(loc)}</span>
-          </span>
+        <span class="nt-fav" aria-hidden="true" style="--fav-hue: ${hue}">
+          <span class="nt-fav-fallback">${initial}</span>
+          ${favicon ? `<img class="nt-fav-img" src="${esc(favicon)}" alt="" loading="lazy" />` : ''}
         </span>
-        <span class="nt-row-tags">${chips}${it.hidden ? '<span class="nt-card-hidden">已隐藏</span>' : ''}</span>
+        <span class="nt-row-title">${esc(it.title)}</span>
+        <span class="nt-row-meta">
+          <span class="nt-row-host">${esc(it.host || '')}</span>
+          <span class="nt-row-folder" data-tip="${esc((it.path || []).join(' / '))}">${esc(folder)}</span>
+          <span class="nt-row-tags">${tagsHtml}${it.hidden ? '<span class="nt-row-hidden">已隐藏</span>' : ''}</span>
+        </span>
       </a>${actions}
     </div>`;
   }
@@ -456,6 +466,13 @@
     const value = $('#ntFolderValue');
     if (trigger) trigger.setAttribute('aria-expanded', trigger.getAttribute('aria-expanded') === 'true' ? 'true' : 'false');
     if (value) value.textContent = selectedNode ? selectedNode.title : '全部文件夹';
+    const filterToggle = $('#ntFilterToggle');
+    if (filterToggle) {
+      const active = Boolean(selectedNode);
+      filterToggle.classList.toggle('active', active);
+      filterToggle.setAttribute('aria-pressed', String(active));
+      filterToggle.setAttribute('data-tip', active ? `当前文件夹：${selectedNode.title}` : '更多筛选');
+    }
     if (status) {
       status.textContent = selectedNode
         ? `当前目录：${selectedNode.title}`
@@ -720,6 +737,42 @@
       render();
     });
   }
+  const filterToggle = $('#ntFilterToggle');
+  const filterBar = $('#ntFilterBar');
+  if (filterToggle && filterBar) {
+    const closeFilterBar = restoreFocus => {
+      filterBar.hidden = true;
+      filterToggle.setAttribute('aria-expanded', 'false');
+      const folderMenu = $('#ntFolderMenu');
+      const folderTrigger = $('#ntFolderTrigger');
+      if (folderMenu) folderMenu.hidden = true;
+      if (folderTrigger) folderTrigger.setAttribute('aria-expanded', 'false');
+      if (restoreFocus) filterToggle.focus();
+    };
+    filterToggle.addEventListener('click', () => {
+      const opening = filterBar.hidden;
+      filterBar.hidden = !opening;
+      filterToggle.setAttribute('aria-expanded', String(opening));
+      const folderMenu = $('#ntFolderMenu');
+      const folderTrigger = $('#ntFolderTrigger');
+      if (folderMenu) folderMenu.hidden = true;
+      if (folderTrigger) folderTrigger.setAttribute('aria-expanded', 'false');
+    });
+    filterToggle.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !filterBar.hidden) {
+        e.preventDefault();
+        closeFilterBar(false);
+      }
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !filterBar.hidden) closeFilterBar(false);
+    });
+    document.addEventListener('click', e => {
+      if (!filterBar.hidden && !filterBar.contains(e.target) && !filterToggle.contains(e.target)) {
+        closeFilterBar(false);
+      }
+    });
+  }
   const folderTrigger = $('#ntFolderTrigger');
   const folderMenu = $('#ntFolderMenu');
   if (folderTrigger && folderMenu) {
@@ -956,6 +1009,49 @@
     folderRenderKey = '';
   }
 
+  function clearDeleteViewState(id) {
+    const itemId = String(id);
+    pendingDeletes.delete(itemId);
+    completedDeletes.delete(itemId);
+  }
+
+  // 重新分析期间也隐藏正在删除的条目，避免并发同步把它们渲染回来。
+  function applyPendingDeletes() {
+    if (!DATA || !pendingDeletes.size) return;
+    for (const id of pendingDeletes) {
+      const item =
+        (DATA.itemById && DATA.itemById.get && DATA.itemById.get(id)) ||
+        (DATA.items || []).find(entry => String(entry.id) === String(id));
+      if (item) removeDeletedItemFromData(item);
+      else if (completedDeletes.has(id)) {
+        pendingDeletes.delete(id);
+        completedDeletes.delete(id);
+      }
+    }
+  }
+
+  // 删除收尾（回收站确认 + 标签清理）不阻塞列表反馈，但「撤销」必须先等它落地：
+  // 否则后台仍把记录视为 deletionPending，会以「书签删除仍在进行」拒绝恢复。
+  function trackDeleteFinalize(id, task) {
+    const itemId = String(id);
+    finalizeDeletes.set(itemId, task);
+    const clear = () => {
+      if (finalizeDeletes.get(itemId) === task) finalizeDeletes.delete(itemId);
+      clearDeleteViewState(itemId);
+    };
+    task.then(clear, clear);
+  }
+
+  async function waitDeleteFinalize(id) {
+    const task = finalizeDeletes.get(String(id));
+    if (!task) return;
+    try {
+      await task;
+    } catch {
+      /* 收尾失败时按未完成处理，恢复失败原因由后台给出 */
+    }
+  }
+
   function setHiddenOptimistic(it, nextHidden) {
     const itemId = String(it.id);
     const pending = pendingHidden.get(itemId);
@@ -992,6 +1088,16 @@
         confirmText: '移入回收站'
       });
       if (!ok) return;
+
+      // 先更新当前视图，避免等待回收站消息和 Chrome 书签 API 时卡住界面。
+      // 失败时重新分析原生书签树，把乐观移除的条目恢复回来。
+      pendingDeletes.add(String(it.id));
+      const liveItem =
+        (DATA && DATA.itemById && DATA.itemById.get && DATA.itemById.get(String(it.id))) ||
+        (DATA && DATA.items || []).find(entry => String(entry.id) === String(it.id));
+      if (liveItem) removeDeletedItemFromData(liveItem);
+      render();
+
       // 拿一下父级信息（回收站需要 parentId/title 等）
       const bm = it.parentId ? null : await chrome.bookmarks.get(it.id).catch(() => null);
       const trashItem = {
@@ -1012,38 +1118,57 @@
         }
         throw e;
       }
-      removeDeletedItemFromData(it);
-      render();
+      completedDeletes.add(String(it.id));
       showToast('已移入回收站', 'ok', {
         label: '撤销',
         onClick: async () => {
           try {
+            // 等删除收尾完成，避免撤销被后台判为「删除进行中」而静默失败
+            await waitDeleteFinalize(it.id);
+            clearDeleteViewState(it.id);
             const r = await window.BM.restoreTrashItems([{ id: it.id }]);
-            showToast(
-              r.restored ? '已恢复书签 ✓' : '恢复失败：该记录可能已被永久删除',
-              !r.restored
-            );
+            if (r.restored) {
+              showToast('已恢复书签 ✓', 'ok', undefined, { compact: true });
+            } else {
+              // 带上后台给出的具体原因，不再一律说「可能已被永久删除」
+              const reason = (r.failed[0] && r.failed[0].error) || '该记录可能已被永久删除';
+              showToast('恢复失败：' + reason, true);
+            }
             DATA = await window.BMAnalyzer.analyze();
+            applyPendingDeletes();
             render();
           } catch (err) {
             showToast('恢复失败：' + (err.message || err), true);
           }
         }
       }, { compact: true });
-      // 删除后的回收站确认和标签清理不阻塞列表反馈。
-      void (async () => {
+      // 删除收尾不阻塞列表反馈：撤销只需等「回收站确认」落地（后台据此判定删除已完成），
+      // 标签清理继续在后台收尾，不拖住撤销。
+      const confirmDelete = (async () => {
         try {
           await window.BM.completeTrashDelete([it.id], []);
         } catch {
           /* 保留保护记录 */
         }
+      })();
+      trackDeleteFinalize(it.id, confirmDelete);
+      void confirmDelete.then(async () => {
         try {
           await window.BM.setTags(it.id, []);
         } catch {
           /* noop */
         }
-      })();
+      });
     } catch (e) {
+      // 回收站预写或原生删除失败时，原书签仍可能存在；重新分析可恢复完整索引。
+      clearDeleteViewState(it.id);
+      try {
+        DATA = await window.BMAnalyzer.analyze();
+        applyPendingDeletes();
+        render();
+      } catch {
+        /* 回滚失败时保留当前视图，错误提示仍会告知用户 */
+      }
       showToast('删除失败：' + (e.message || e), true);
     }
   }
@@ -1142,6 +1267,7 @@
         }
         await window.BM.setTags(it.id, newTags);
         DATA = await window.BMAnalyzer.analyze();
+        applyPendingDeletes();
         render();
         showToast('已保存 ✓');
       } catch (e) {
@@ -1257,6 +1383,7 @@
         window.BM.invalidateFixedTags && window.BM.invalidateFixedTags();
         window.BM.invalidateTagRules && window.BM.invalidateTagRules();
         DATA = await window.BMAnalyzer.analyze();
+        applyPendingDeletes();
         render();
       } catch (e) {
         /* 忽略同步失败 */
@@ -1309,6 +1436,7 @@
     }
     try {
       DATA = await window.BMAnalyzer.analyze();
+      applyPendingDeletes();
       render();
       searchInput.focus();
     } catch (e) {
@@ -1326,6 +1454,7 @@
       if (!changed || !DATA) return;
       window.BM.invalidateTags && window.BM.invalidateTags();
       DATA = await window.BMAnalyzer.analyze();
+      applyPendingDeletes();
       render();
     }).catch(() => {});
   })();

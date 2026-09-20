@@ -10,7 +10,7 @@
   </head>
   <body class="nt-body">
     <div class="nt-wrap">
-      <!-- 吸顶容器：logo / 搜索 / 文件夹 / 标签固定在顶部，仅下方书签列表滚动 -->
+      <!-- 吸顶容器：logo / 搜索 / 筛选 / 标签固定在顶部，仅下方书签列表滚动 -->
       <div class="nt-head" id="ntHead">
         <!-- 顶栏：品牌 + 打开管理面板 -->
         <header class="nt-top">
@@ -113,12 +113,27 @@
           >
             ?
           </button>
+          <button
+            id="ntFilterToggle"
+            class="nt-filter-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="ntFilterBar"
+            aria-pressed="false"
+            data-tip="更多筛选"
+            aria-label="更多筛选"
+          >
+            <svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <use href="icons/sprite.svg#i-folder" />
+            </svg>
+            <span>筛选</span>
+          </button>
           <span id="ntResultCount" class="nt-result-count hidden"></span>
           <button id="ntClear" class="nt-clear hidden" data-tip="清空搜索" aria-label="清空搜索">✕</button>
         </div>
 
-        <!-- 文件夹筛选（与标签筛选条并存） -->
-        <div class="nt-filter-bar">
+        <!-- 次级筛选：默认收起，避免与主界面的文件夹管理重复占据首屏 -->
+        <div class="nt-filter-bar" id="ntFilterBar" hidden>
           <div class="nt-folder-filter is-loading" id="ntFolderFilter" aria-busy="true">
             <span class="nt-folder-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">

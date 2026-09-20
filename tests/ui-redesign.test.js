@@ -295,8 +295,10 @@ describe('P2 结构与信息架构', () => {
     );
   });
 
-  it('新标签页提供紧凑列表视图、文件夹筛选与卡片标签', () => {
+  it('新标签页提供紧凑列表视图、收起式文件夹筛选与卡片标签', () => {
     expect(newtabHtml).toContain('id="ntViewList"');
+    expect(newtabHtml).toContain('id="ntFilterToggle"');
+    expect(newtabHtml).toContain('id="ntFilterBar" hidden');
     expect(newtabHtml).toContain('id="ntFolder"');
     expect(newtabHtml).toContain('id="ntFolderFilter"');
     expect(newtabHtml).toContain('id="ntFolderSummary"');
@@ -308,8 +310,16 @@ describe('P2 结构与信息架构', () => {
     expect(newtabJs).toContain("'└─ '");
     expect(newtabJs).toContain('chooseFolder');
     expect(flat(newtabCss)).toContain('.nt-folder-filter.is-loading');
+    expect(flat(newtabCss)).toContain('.nt-filter-bar:not([hidden])');
     expect(flat(newtabCss)).toContain('.nt-folder-option[aria-selected=\'true\']');
-    expect(flat(newtabCss)).toContain('.nt-row-main');
+    expect(flat(newtabCss)).toContain('.nt-row-meta');
+  });
+
+  it('新标签页下滑后固定标签栏，并保持标签正常换行', () => {
+    expect(flat(newtabCss)).toContain('.nt-head { position: sticky;');
+    expect(flat(newtabJs)).toContain("head.classList.toggle('is-stuck'");
+    expect(flat(newtabCss)).toContain('.nt-head.is-stuck .nt-tags { flex-wrap: wrap;');
+    expect(flat(newtabCss)).not.toContain('.nt-head.is-stuck .nt-tags { flex-wrap: nowrap;');
   });
 
   it('新标签页键盘导航可完整操作卡片', () => {

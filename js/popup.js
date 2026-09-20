@@ -629,6 +629,10 @@ async function softDelete(ids, label, opts) {
     const removedSet = new Set(removal.removedIds);
     const removedItems = items.filter(item => removedSet.has(item.id));
     const failedItems = items.filter(item => !removedSet.has(item.id));
+    // 全部失败时必须出声：否则调用方只会看到「没有删除成功」，界面像是什么都没发生。
+    if (items.length && !removedItems.length) {
+      toast('删除失败：书签未能从浏览器移除，请重试', 'danger');
+    }
     try {
       await BM.completeTrashDelete(
         removal.removedIds,
@@ -656,8 +660,14 @@ async function undoDelete(items) {
   try {
     const result = await BM.restoreTrashItems(items);
     if (result.restored) toast('已撤销删除 ' + result.restored + ' 项 ✓', 'ok');
-    if (result.failed.length)
-      toast('有 ' + result.failed.length + ' 项没能自动恢复，可到「概览 → 回收站」重试', 'warn');
+    if (result.failed.length) {
+      // 带上后台给出的具体原因（如「书签删除仍在进行」），避免只提示「没能恢复」
+      const reason = (result.failed[0] && result.failed[0].error) || '记录无法恢复';
+      toast('撤销失败：' + reason + '，可到「概览 → 回收站」重试', 'warn');
+    } else if (!result.restored) {
+      // 记录已过期 / 已在回收站恢复：必须给出反馈，不能让「撤销」点了没有任何反应
+      toast('没有可撤销的删除记录（可能已过期，或已在回收站中恢复）', 'warn');
+    }
   } catch (e) {
     console.warn('[书签管家] 撤销失败', e);
     toast('撤销失败：' + (e.message || e), 'danger');
@@ -787,7 +797,6 @@ function renderOverview() {
     {
       ico: ICON_SM('repeat'),
       name: '重复书签',
-      desc: 'URL 完全相同的书签',
       n: d.exactDuplicates.length,
       jump: 'clean',
       sub: 'repeat',
@@ -797,7 +806,6 @@ function renderOverview() {
     {
       ico: ICON_SM('folder'),
       name: '空文件夹',
-      desc: '没有任何书签的文件夹',
       n: d.emptyFolders.length,
       jump: 'clean',
       sub: 'empty',
@@ -807,7 +815,6 @@ function renderOverview() {
     {
       ico: ICON_SM('archive'),
       name: '回收站',
-      desc: '30 天内可恢复',
       n: trashN,
       jump: 'trash',
       cls: '',
@@ -822,10 +829,7 @@ function renderOverview() {
     const a11y = done ? ' aria-disabled="true"' : ' role="button" tabindex="0"';
     return `<div class="entry-card${done ? ' done' : ''}"${attrs}${a11y} aria-label="${a.name}：${done ? a.done : a.n}">
       <span class="entry-icon ${a.cls}">${a.ico}</span>
-      <div>
-        <div class="entry-title">${a.name}</div>
-        <div class="entry-desc">${a.desc}</div>
-      </div>
+      <span class="entry-title">${a.name}</span>
       <span class="entry-count">${done ? a.done : a.n}</span>
     </div>`;
   };
@@ -2289,7 +2293,11 @@ async function deleteFolder(id) {
     }
     // 书签已删后文件夹为空结构，removeTree 干净删除（若仍有残留书签会一并物理删除）
     await chrome.bookmarks.removeTree(id);
-    toast('已删除文件夹 ✓', 'ok');
+    // 文件夹结构不可恢复，但其中的书签还在回收站：明确告知恢复入口，避免用户以为彻底丢了
+    toast(
+      '已删除文件夹 ✓' + (ids.length ? `（${ids.length} 个书签已进回收站，可恢复）` : ''),
+      'ok'
+    );
     if (FOLDER_NAV.folderId === id) FOLDER_NAV.folderId = node.parentId || '';
     refresh();
   } catch (e) {
@@ -2434,15 +2442,20 @@ function fallbackCopy(url) {
 }
 
 async function softDeleteBookmark(id) {
+  const it = getItemById(id);
+  const name = it && it.title ? '「' + escapeHtml(it.title) + '」' : '该书签';
   const ok = await confirmDialog({
     title: '删除书签？',
-    message: '删除后 30 天内可在回收站恢复。',
+    message: name + '删除后 30 天内可在回收站恢复。',
     confirmText: '移入回收站'
   });
   if (!ok) return;
   try {
-    await softDelete([id], '删除书签', { pruneEmptyFolders: false });
-    toast('已删除，回收站可恢复 ✓', 'ok');
+    const r = await softDelete([id], '删除书签', { pruneEmptyFolders: false });
+    // 单条删除同样给出「撤销」入口（与批量删除、重复项清理保持一致）
+    if (r.n) {
+      toast('已删除书签 ✓', 'ok', { label: '撤销', onClick: () => undoDelete(r.items) });
+    }
     refresh();
   } catch (e) {
     toast('删除失败：' + (e.message || e), 'danger');
