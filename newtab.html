@@ -101,15 +101,26 @@
           <input
             id="ntSearch"
             type="text"
-            placeholder="搜索标题、网址、域名、标签"
+            placeholder="搜索书签，回车搜索网页"
             autocomplete="off"
             spellcheck="false"
           />
+          <select
+            id="ntSearchEngine"
+            class="nt-engine-select"
+            aria-label="选择网页搜索引擎"
+            data-tip="回车使用所选搜索引擎搜索"
+          >
+            <option value="google">Google</option>
+            <option value="bing">Bing</option>
+            <option value="baidu">百度</option>
+            <option value="duckduckgo">DuckDuckGo</option>
+          </select>
           <button
             class="help-dot"
             type="button"
-            data-tip="多个词会同时匹配；以 #标签名开头可按标签精确筛选。"
-            aria-label="多个词会同时匹配；以标签名开头可按标签精确筛选。"
+            data-tip="输入内容实时筛选书签；回车使用所选引擎搜索网页；以 #标签名开头可按标签筛选。"
+            aria-label="输入内容实时筛选书签，回车搜索网页；以标签名开头可按标签筛选。"
           >
             ?
           </button>
@@ -238,5 +249,6 @@
     <script src="js/ui.js"></script>
     <script src="js/analyzer.js"></script>
     <script src="js/newtab.js"></script>
+    <script src="js/newtab-search-engine.js"></script>
   </body>
 </html>

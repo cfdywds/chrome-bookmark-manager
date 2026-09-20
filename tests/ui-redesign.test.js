@@ -126,7 +126,7 @@ describe('图标单一来源', () => {
   it('三个页面都加载 js/ui.js，且早于页面自身脚本', () => {
     const scripts = html => [...html.matchAll(/<script[^>]*src="([^"]+)"/g)].map(match => match[1]);
     expect(scripts(popupHtml)).toEqual(['js/lib.js', 'js/ui.js', 'js/analyzer.js', 'js/popup.js']);
-    expect(scripts(newtabHtml)).toEqual(['js/lib.js', 'js/ui.js', 'js/analyzer.js', 'js/newtab.js']);
+    expect(scripts(newtabHtml)).toEqual(['js/lib.js', 'js/ui.js', 'js/analyzer.js', 'js/newtab.js', 'js/newtab-search-engine.js']);
     expect(scripts(optionsHtml)).toEqual(['js/lib.js', 'js/ui.js', 'js/options.js']);
   });
 });
