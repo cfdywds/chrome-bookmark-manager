@@ -230,9 +230,8 @@
     let hue = 0;
     for (let i = 0; i < seed.length; i += 1) hue = (hue * 31 + seed.charCodeAt(i)) % 360;
     const tagList = it.tags || [];
-    const chips =
-      tagList.slice(0, 2).map(t => `<span class="nt-tag-chip">#${esc(t)}</span>`).join('') +
-      (tagList.length > 2 ? `<span class="nt-tag-chip more">+${tagList.length - 2}</span>` : '');
+    // 卡片高度自适应，标签全部展开（不折叠成「+N」）；列表视图列宽固定，仍保留 2 + 余数
+    const chips = tagList.map(t => `<span class="nt-tag-chip">#${esc(t)}</span>`).join('');
     const hiddenBadge = it.hidden ? '<span class="nt-card-hidden">已隐藏</span>' : '';
     const hiddenLabel = it.hidden ? '取消隐藏' : '隐藏';
     const actions = `
@@ -335,13 +334,17 @@
     grid.classList.toggle('is-list', isList);
     // >200 条时启用 content-visibility（零依赖虚拟化，Chrome 原生支持）
     grid.classList.toggle('is-virt', list.length > VIRTUALIZE_AT);
-    // 搜索/标签/文件夹筛选时在搜索框内实时显示结果数（吸顶区始终可见）
+    // 搜索/标签/文件夹筛选时在搜索框内实时显示结果数与「清除筛选」入口（吸顶区始终可见）
+    const filtering = hasActiveFilters();
     const resultCount = $('#ntResultCount');
     if (resultCount) {
-      const filtering = Boolean(search.trim() || activeTag || activeFolder);
       resultCount.classList.toggle('hidden', !filtering);
       resultCount.textContent = filtering ? list.length + ' 个结果' : '';
     }
+    const filterClear = $('#ntFilterClear');
+    if (filterClear) filterClear.classList.toggle('hidden', !filtering);
+    const searchClear = $('#ntClear');
+    if (searchClear) searchClear.classList.toggle('hidden', !search);
     const tagged = DATA.items.filter(i => (i.tags || []).length).length;
     $('#ntCount').textContent = DATA.total + ' 个书签 · ' + tagged + ' 已打标';
     if (!list.length) {
@@ -366,12 +369,34 @@
     updateMore(list);
   }
 
+  // 是否存在任一筛选条件（搜索词 / 标签 / 文件夹）
+  function hasActiveFilters() {
+    return Boolean(search.trim() || activeTag || activeFolder);
+  }
+
+  // 一键清除全部筛选条件（搜索词 + 标签 + 文件夹），回到完整列表
+  function clearAllFilters() {
+    const had = hasActiveFilters();
+    search = '';
+    activeTag = '';
+    activeFolder = '';
+    searchInput.value = '';
+    render();
+    if (had) {
+      try {
+        searchInput.focus({ preventScroll: true });
+      } catch (e) {
+        searchInput.focus();
+      }
+    }
+  }
+
   // 当前视图下的单条渲染（卡片 / 紧凑列表行）
   function itemHtml(it) {
     return viewMode === 'list' ? rowHtml(it) : cardHtml(it);
   }
 
-  // 文件夹筛选下拉：用 analyzer 的 folderTree 填充（含后代缩进与计数）
+  // 文件夹筛选弹窗：用 analyzer 的 folderTree 填充（含后代缩进与计数）
   let folderSignature = '';
   let folderTreeRef = null;
   let folderRenderKey = '';
@@ -384,8 +409,8 @@
       .join('') + `<i class="nt-folder-guide is-branch${isLast && !parentHasNext ? ' is-last' : ''}"></i>`;
   }
   function renderFolders() {
-    const select = $('#ntFolder');
-    if (!select) return;
+    const menu = $('#ntFolderMenu');
+    if (!menu) return;
     const tree = (DATA && DATA.folderTree) || {};
     const roots = tree.roots || [];
     const byId = tree.folderById || new Map();
@@ -412,34 +437,23 @@
       folderSignature = roots.map(node => node.id).join('|') + ':' + nodes.join(',');
     }
     const renderKey = folderSignature + ':' + activeFolder;
-    if (renderKey === folderRenderKey) return;
-    folderRenderKey = renderKey;
-    const options = ['<option value="">全部文件夹</option>'];
-    const folderChoices = [{ value: '', title: '全部文件夹', count: DATA.total || 0, depth: 0, guides: '' }];
-    const walk = (nodes, depth, ancestors) => {
-      nodes.forEach((node, index) => {
-        const isLast = index === nodes.length - 1;
-        const treePrefix = depth
-          ? ancestors.map(hasNext => (hasNext ? '│  ' : '   ')).join('') + (isLast ? '└─ ' : '├─ ')
-          : '▾ ';
-        options.push(
-          `<option value="${esc(node.id)}">${treePrefix}${esc(node.title)}（${node.visibleCount}）</option>`
-        );
-        folderChoices.push({
-          value: String(node.id),
-          title: node.title,
-          count: node.visibleCount,
-          depth,
-          guides: folderGuideHtml(ancestors, isLast)
+    if (renderKey !== folderRenderKey) {
+      folderRenderKey = renderKey;
+      const folderChoices = [{ value: '', title: '全部文件夹', count: DATA.total || 0, depth: 0, guides: '' }];
+      const walk = (nodes, depth, ancestors) => {
+        nodes.forEach((node, index) => {
+          const isLast = index === nodes.length - 1;
+          folderChoices.push({
+            value: String(node.id),
+            title: node.title,
+            count: node.visibleCount,
+            depth,
+            guides: folderGuideHtml(ancestors, isLast)
+          });
+          walk(node.childFolders || [], depth + 1, depth ? ancestors.concat(!isLast) : [!isLast]);
         });
-        walk(node.childFolders || [], depth + 1, depth ? ancestors.concat(!isLast) : [!isLast]);
-      });
-    };
-    walk(roots, 0, []);
-    select.innerHTML = options.join('');
-    select.value = activeFolder;
-    const menu = $('#ntFolderMenu');
-    if (menu) {
+      };
+      walk(roots, 0, []);
       menu.innerHTML = folderChoices
         .map(
           choice => `<div class="nt-folder-option${choice.value ? '' : ' is-all'}" role="option" tabindex="-1" data-value="${esc(choice.value)}" aria-selected="${
@@ -454,32 +468,23 @@
         .join('');
     }
     const selectedNode = activeFolder ? byId.get(String(activeFolder)) : null;
-    const filter = $('#ntFolderFilter');
     const summary = $('#ntFolderSummary');
-    const status = $('#ntFolderTreeStatus');
-    if (filter) {
-      filter.classList.remove('is-loading');
-      filter.setAttribute('aria-busy', 'false');
+    if (summary) {
+      summary.textContent = selectedNode
+        ? `当前目录：${selectedNode.title} · ${selectedNode.visibleCount} 个可见书签`
+        : roots.length
+          ? `${roots.length} 个顶级目录，可按目录及其子目录筛选`
+          : '暂无可用文件夹';
     }
-    if (summary) summary.textContent = selectedNode ? `${selectedNode.visibleCount} 个可见书签` : `${roots.length} 个顶级目录`;
-    const trigger = $('#ntFolderTrigger');
-    const value = $('#ntFolderValue');
-    if (trigger) trigger.setAttribute('aria-expanded', trigger.getAttribute('aria-expanded') === 'true' ? 'true' : 'false');
-    if (value) value.textContent = selectedNode ? selectedNode.title : '全部文件夹';
     const filterToggle = $('#ntFilterToggle');
     if (filterToggle) {
       const active = Boolean(selectedNode);
       filterToggle.classList.toggle('active', active);
       filterToggle.setAttribute('aria-pressed', String(active));
-      filterToggle.setAttribute('data-tip', active ? `当前文件夹：${selectedNode.title}` : '更多筛选');
+      filterToggle.setAttribute('data-tip', active ? `当前文件夹：${selectedNode.title}` : '按文件夹筛选');
     }
-    if (status) {
-      status.textContent = selectedNode
-        ? `当前目录：${selectedNode.title}`
-        : roots.length
-          ? '可按目录及其子目录筛选'
-          : '暂无可用文件夹';
-    }
+    const clearBtn = $('#ntFolderClear');
+    if (clearBtn) clearBtn.disabled = !selectedNode;
   }
 
   // 视图切换：同步 .active / aria-pressed 并持久化到 storage
@@ -654,6 +659,14 @@
   });
   // 全局快捷键：/ 聚焦搜索；Esc 清空搜索；j/k 与方向键移动高亮，Enter 打开，e 编辑，Delete 删除
   document.addEventListener('keydown', e => {
+    // 文件夹筛选弹窗打开时，键盘完全交给弹窗（焦点陷阱不可用时也能 Esc 关闭）
+    if (folderModalOpen()) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeFolderModal(true);
+      }
+      return;
+    }
     if (e.key === 'Escape' && search) {
       search = '';
       searchInput.value = '';
@@ -729,90 +742,70 @@
   const viewListBtn = $('#ntViewList');
   if (viewGridBtn) viewGridBtn.addEventListener('click', () => setView('grid'));
   if (viewListBtn) viewListBtn.addEventListener('click', () => setView('list'));
-  // 文件夹筛选（与标签筛选、搜索并存，AND）
-  const folderSelect = $('#ntFolder');
-  if (folderSelect) {
-    folderSelect.addEventListener('change', () => {
-      activeFolder = folderSelect.value || '';
-      render();
-    });
-  }
+  // 文件夹筛选：入口是搜索框里的「筛选」，选择在弹窗里完成（与标签筛选、搜索并存，AND）
   const filterToggle = $('#ntFilterToggle');
-  const filterBar = $('#ntFilterBar');
-  if (filterToggle && filterBar) {
-    const closeFilterBar = restoreFocus => {
-      filterBar.hidden = true;
-      filterToggle.setAttribute('aria-expanded', 'false');
-      const folderMenu = $('#ntFolderMenu');
-      const folderTrigger = $('#ntFolderTrigger');
-      if (folderMenu) folderMenu.hidden = true;
-      if (folderTrigger) folderTrigger.setAttribute('aria-expanded', 'false');
-      if (restoreFocus) filterToggle.focus();
-    };
+  const folderModal = $('#ntFolderModal');
+  const folderMenu = $('#ntFolderMenu');
+  let releaseFolderTrap = null;
+  const folderModalOpen = () => Boolean(folderModal && !folderModal.classList.contains('hidden'));
+
+  function closeFolderModal(restoreFocus) {
+    if (!folderModal || folderModal.classList.contains('hidden')) return;
+    folderModal.classList.add('hidden');
+    if (filterToggle) filterToggle.setAttribute('aria-expanded', 'false');
+    if (typeof releaseFolderTrap === 'function') {
+      releaseFolderTrap();
+      releaseFolderTrap = null;
+    }
+    if (restoreFocus && filterToggle) filterToggle.focus();
+  }
+
+  function openFolderModal() {
+    if (!folderModal) return;
+    folderModal.classList.remove('hidden');
+    if (filterToggle) filterToggle.setAttribute('aria-expanded', 'true');
+    if (window.UI && typeof UI.focusTrap === 'function') {
+      releaseFolderTrap = UI.focusTrap(folderModal, {
+        onEscape: () => closeFolderModal(true),
+        autofocus: false
+      });
+    }
+    const list = [...folderMenu.querySelectorAll('[role="option"]')];
+    const target = list.find(option => option.getAttribute('aria-selected') === 'true') || list[0];
+    if (target) {
+      target.focus({ preventScroll: true });
+      if (typeof target.scrollIntoView === 'function') target.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function applyFolder(value) {
+    activeFolder = value || '';
+    closeFolderModal(true);
+    render();
+  }
+
+  if (filterToggle && folderModal && folderMenu) {
     filterToggle.addEventListener('click', () => {
-      const opening = filterBar.hidden;
-      filterBar.hidden = !opening;
-      filterToggle.setAttribute('aria-expanded', String(opening));
-      const folderMenu = $('#ntFolderMenu');
-      const folderTrigger = $('#ntFolderTrigger');
-      if (folderMenu) folderMenu.hidden = true;
-      if (folderTrigger) folderTrigger.setAttribute('aria-expanded', 'false');
+      if (folderModalOpen()) closeFolderModal(true);
+      else openFolderModal();
     });
-    filterToggle.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && !filterBar.hidden) {
-        e.preventDefault();
-        closeFilterBar(false);
-      }
-    });
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && !filterBar.hidden) closeFilterBar(false);
-    });
-    document.addEventListener('click', e => {
-      if (!filterBar.hidden && !filterBar.contains(e.target) && !filterToggle.contains(e.target)) {
-        closeFilterBar(false);
-      }
+    // 点遮罩关闭，点卡片内部不关
+    folderModal.addEventListener('click', e => {
+      if (e.target === folderModal) closeFolderModal(true);
     });
   }
-  const folderTrigger = $('#ntFolderTrigger');
-  const folderMenu = $('#ntFolderMenu');
-  if (folderTrigger && folderMenu) {
+  if (folderMenu) {
     const menuOptions = () => [...folderMenu.querySelectorAll('[role="option"]')];
-    const closeFolderMenu = restoreFocus => {
-      folderMenu.hidden = true;
-      folderTrigger.setAttribute('aria-expanded', 'false');
-      if (restoreFocus) folderTrigger.focus();
-    };
     const focusFolderOption = index => {
       const options = menuOptions();
       if (!options.length) return;
       const next = Math.max(0, Math.min(index, options.length - 1));
       options[next].focus({ preventScroll: true });
     };
-    const chooseFolder = option => {
-      if (!option) return;
-      activeFolder = option.dataset.value || '';
-      closeFolderMenu(true);
-      render();
-    };
-    folderTrigger.addEventListener('click', () => {
-      const opening = folderMenu.hidden;
-      folderMenu.hidden = !opening;
-      folderTrigger.setAttribute('aria-expanded', String(opening));
-      if (opening) {
-        const selected = menuOptions().find(option => option.getAttribute('aria-selected') === 'true');
-        if (selected) selected.focus({ preventScroll: true });
-      }
+    folderMenu.addEventListener('click', e => {
+      const option = e.target.closest('[role="option"]');
+      if (option) applyFolder(option.dataset.value);
     });
-    folderTrigger.addEventListener('keydown', e => {
-      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        folderTrigger.click();
-      } else if (e.key === 'Escape' && !folderMenu.hidden) {
-        e.preventDefault();
-        closeFolderMenu(false);
-      }
-    });
-    folderMenu.addEventListener('click', e => chooseFolder(e.target.closest('[role="option"]')));
     folderMenu.addEventListener('keydown', e => {
       const options = menuOptions();
       const index = options.indexOf(document.activeElement);
@@ -830,18 +823,20 @@
         focusFolderOption(options.length - 1);
       } else if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        chooseFolder(options[index]);
+        if (options[index]) applyFolder(options[index].dataset.value);
       } else if (e.key === 'Escape') {
+        // 焦点陷阱不可用时（UI 未加载）仍要能关掉弹窗
         e.preventDefault();
-        closeFolderMenu(true);
-      }
-    });
-    document.addEventListener('click', e => {
-      if (!folderMenu.hidden && !folderTrigger.contains(e.target) && !folderMenu.contains(e.target)) {
-        closeFolderMenu(false);
+        closeFolderModal(true);
       }
     });
   }
+  const folderClearBtn = $('#ntFolderClear');
+  if (folderClearBtn) folderClearBtn.addEventListener('click', () => applyFolder(''));
+  const folderCloseBtn = $('#ntFolderClose');
+  if (folderCloseBtn) folderCloseBtn.addEventListener('click', () => closeFolderModal(true));
+  const filterClearBtn = $('#ntFilterClear');
+  if (filterClearBtn) filterClearBtn.addEventListener('click', clearAllFilters);
 
   // 头部整体吸顶：越过顶部后加毛玻璃与阴影提示已固定（IntersectionObserver，无滚动抖动）
   const head = $('#ntHead');

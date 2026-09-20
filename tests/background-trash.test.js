@@ -469,6 +469,72 @@ describe('浏览器收藏接管', () => {
     }
   });
 
+  it('插件内新增可通过后台消息补齐默认打标', async () => {
+    const previousChrome = globalThis.chrome;
+    const harness = createBackgroundHarness([], {
+      localData: {
+        bmFixedTags: ['工作', '代码', '其他'],
+        bmTags: {}
+      },
+      get: vi.fn().mockResolvedValue([
+        { id: 'added', parentId: 'bar', url: 'https://github.com/example/repo', title: '仓库' }
+      ])
+    });
+    globalThis.chrome = harness.chrome;
+
+    try {
+      new Function(backgroundCode)();
+      const response = await harness.send({ type: 'bmAutoTagBookmark', bookmarkId: 'added' });
+
+      expect(response).toEqual({ ok: true, tags: ['代码'] });
+      expect(harness.storageSet).toHaveBeenLastCalledWith({ bmTags: { added: ['代码'] } });
+    } finally {
+      restoreGlobal('chrome', previousChrome);
+    }
+  });
+
+  it('补齐默认打标不会覆盖已有标签', async () => {
+    const previousChrome = globalThis.chrome;
+    const harness = createBackgroundHarness([], {
+      localData: {
+        bmFixedTags: ['工作', '代码', '其他'],
+        bmTags: { added: ['工作'] }
+      },
+      get: vi.fn().mockResolvedValue([
+        { id: 'added', parentId: 'bar', url: 'https://github.com/example/repo', title: '仓库' }
+      ])
+    });
+    globalThis.chrome = harness.chrome;
+
+    try {
+      new Function(backgroundCode)();
+      const response = await harness.send({ type: 'bmAutoTagBookmark', bookmarkId: 'added' });
+
+      expect(response).toEqual({ ok: true, tags: ['工作'] });
+      expect(harness.storageSet).not.toHaveBeenCalledWith({ bmTags: { added: ['代码'] } });
+    } finally {
+      restoreGlobal('chrome', previousChrome);
+    }
+  });
+
+  it('书签已不存在时补齐返回空标签而不是报错', async () => {
+    const previousChrome = globalThis.chrome;
+    const harness = createBackgroundHarness([], {
+      localData: { bmFixedTags: ['其他'], bmTags: {} },
+      get: vi.fn().mockResolvedValue([])
+    });
+    globalThis.chrome = harness.chrome;
+
+    try {
+      new Function(backgroundCode)();
+      const response = await harness.send({ type: 'bmAutoTagBookmark', bookmarkId: 'gone' });
+
+      expect(response).toEqual({ ok: true, tags: [] });
+    } finally {
+      restoreGlobal('chrome', previousChrome);
+    }
+  });
+
   it('命中用户自定义规则时静默打标且不调用 AI', async () => {
     const previousChrome = globalThis.chrome;
     const previousFetch = globalThis.fetch;

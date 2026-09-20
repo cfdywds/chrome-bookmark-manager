@@ -930,6 +930,29 @@ mark {
 .trash-actions .btn {
   white-space: nowrap;
 }
+/* 回收站顶部工具条：「一键恢复」是整页唯一主操作，做成胶囊 CTA 与计数文字拉开层级 */
+.trash-toolbar {
+  min-height: 30px;
+}
+.trash-toolbar .sec-title {
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.trash-toolbar .btn.primary {
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.28);
+}
+.trash-toolbar .btn.primary:hover:not(:active) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+}
+.trash-toolbar .btn.primary .ico-sm {
+  width: 13px;
+  height: 13px;
+}
 
 /* ===== 多标签体系 ===== */
 /* 书签行内标签 / 建议标签 chip */

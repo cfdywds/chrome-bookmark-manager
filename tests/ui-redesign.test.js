@@ -295,24 +295,39 @@ describe('P2 结构与信息架构', () => {
     );
   });
 
-  it('新标签页提供紧凑列表视图、收起式文件夹筛选与卡片标签', () => {
+  it('新标签页提供紧凑列表视图、弹窗式文件夹筛选与一键清除筛选', () => {
     expect(newtabHtml).toContain('id="ntViewList"');
     expect(newtabHtml).toContain('id="ntFilterToggle"');
-    expect(newtabHtml).toContain('id="ntFilterBar" hidden');
-    expect(newtabHtml).toContain('id="ntFolder"');
-    expect(newtabHtml).toContain('id="ntFolderFilter"');
+    // 文件夹筛选改为弹窗：不再有内嵌筛选卡片与原生 select 兜底
+    expect(newtabHtml).toContain('id="ntFolderModal"');
     expect(newtabHtml).toContain('id="ntFolderSummary"');
-    expect(newtabHtml).toContain('id="ntFolderTrigger"');
     expect(newtabHtml).toContain('id="ntFolderMenu"');
+    expect(newtabHtml).toContain('id="ntFolderClear"');
+    expect(newtabHtml).toContain('id="ntFolderClose"');
+    expect(newtabHtml).not.toContain('id="ntFilterBar"');
+    expect(newtabHtml).not.toContain('id="ntFolderTrigger"');
+    // 搜索框内的一键清除入口
+    expect(newtabHtml).toContain('id="ntFilterClear"');
+    expect(newtabJs).toContain('clearAllFilters');
+    expect(newtabJs).toContain('hasActiveFilters');
+    expect(newtabJs).toContain('openFolderModal');
+    expect(newtabJs).toContain('applyFolder');
     expect(newtabJs).toContain('bmNewtabView');
     expect(flat(newtabCss)).toContain('content-visibility: auto');
     expect(newtabJs).toContain('nt-tag-chip');
-    expect(newtabJs).toContain("'└─ '");
-    expect(newtabJs).toContain('chooseFolder');
-    expect(flat(newtabCss)).toContain('.nt-folder-filter.is-loading');
-    expect(flat(newtabCss)).toContain('.nt-filter-bar:not([hidden])');
     expect(flat(newtabCss)).toContain('.nt-folder-option[aria-selected=\'true\']');
+    expect(flat(newtabCss)).toContain('.nt-folder-options');
+    expect(flat(newtabCss)).toContain('.nt-filter-clear');
     expect(flat(newtabCss)).toContain('.nt-row-meta');
+  });
+
+  it('列表行撑满行高，各列垂直居中', () => {
+    const rule = flat(newtabCss).match(/\.nt-row-link\s*\{([^}]*)\}/);
+    expect(rule).toBeTruthy();
+    // 行容器高度由 min-height 决定、没有确定高度，百分比高度会让内容贴顶
+    expect(rule[1]).toContain('align-self: stretch');
+    expect(rule[1]).not.toContain('height: 100%');
+    expect(flat(newtabCss)).toMatch(/\.nt-grid\.is-list \.nt-card-wrap \{[^}]*min-height: 28px/);
   });
 
   it('新标签页下滑后固定标签栏，并保持标签正常换行', () => {

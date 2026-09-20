@@ -36,6 +36,7 @@ const TAG_CLEAR_BATCH_SIZE = 400;
 const DELETE_PROGRESS_INTERVAL_MS = 80;
 const TRASH_DELETE_HEARTBEAT_INTERVAL_MS = 5000;
 const SELF_CREATION_MESSAGE = 'bmSelfCreatingBookmark';
+const AUTO_TAG_MESSAGE = 'bmAutoTagBookmark';
 const SEARCH_SCOPE_VALUES = ['all', 'title', 'tag', 'url']; // 搜索范围取值（与 #searchScope chips 的 data-scope 一致）
 const SEARCH_SCOPE_LABELS = { all: '全部', title: '标题', tag: '标签', url: '网址' };
 // 反馈分级：ok | info | warn | danger（info 用于一次性引导等中性提示）
@@ -1607,12 +1608,8 @@ function renderCleanBody() {
 
 // ---------- 回收站工具视图 ----------
 function renderTrashView() {
-  const html =
-    overviewDetailHeader('回收站') +
-    pageHint(ICON('archive'), '<b>本页能做什么：</b>回收站保存删除的书签，30 天内可恢复。') +
-    `
-    <div id="trashBody"></div>`;
-  content().innerHTML = html;
+  // 回收站不再挂问号说明：每条记录的「N 天后永久删除」已表达同样的规则
+  content().innerHTML = overviewDetailHeader('回收站') + '<div id="trashBody"></div>';
   renderTrash($('#trashBody'));
 }
 
@@ -1665,10 +1662,10 @@ function renderTrash(container) {
   }
   const ttl = BM.TRASH_TTL_DAYS || 30;
   let html = `
-    <div class="section-toolbar">
+    <div class="section-toolbar trash-toolbar">
       <span class="sec-title">共 <b>${list.length}</b> 项待恢复${list.length >= (BM.TRASH_MAX || 1000) ? `（已达上限，最早的记录会被新删除项挤出）` : ''}</span>
       <div class="toolbar-actions">
-        <button class="btn small primary" data-action="trash-restore-all">${ICON_SM('undo')} 一键恢复</button>
+        <button class="btn small primary" data-action="trash-restore-all">${ICON_SM('undo')}一键恢复</button>
       </div>
     </div>`;
   const now = Date.now();
@@ -4081,11 +4078,26 @@ async function saveAdd() {
     }
     if (finalTags.length && !(await BM.setTags(created.id, finalTags)))
       throw new Error('标签保存失败，请重试');
-    if (!(await unifySameUrlTags({ id: created.id, url: u.href }, finalTags)))
+    // 本地建议没有命中时，交后台按「⭐ 收藏」同一套规则补齐（含可选的自动 AI 打标），
+    // 否则新增的书签会一直停在「未打标」。
+    let autoTags = [];
+    if (!finalTags.length) {
+      try {
+        const filled = await chrome.runtime.sendMessage({
+          type: AUTO_TAG_MESSAGE,
+          bookmarkId: created.id
+        });
+        if (filled && filled.ok && Array.isArray(filled.tags)) autoTags = filled.tags;
+      } catch (e) {
+        /* 后台不可用时保持未打标，用户仍可在编辑里手动补标签 */
+      }
+    }
+    const shownTags = finalTags.length ? finalTags : autoTags;
+    if (!(await unifySameUrlTags({ id: created.id, url: u.href }, shownTags)))
       throw new Error('同址标签同步失败，请重试');
     toast(
       '已新增书签 ✓' +
-        (finalTags.length ? '（自动标签：' + finalTags.join('、') + '，可在编辑中修改）' : ''),
+        (shownTags.length ? '（自动标签：' + shownTags.join('、') + '，可在编辑中修改）' : ''),
       'ok'
     );
     closeDrawers();

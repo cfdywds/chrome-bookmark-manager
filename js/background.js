@@ -17,6 +17,8 @@ const FIXED_TAGS_KEY = 'bmFixedTags';
 const TAG_RULES_KEY = 'bmTagRules';
 const LEGACY_DOMAIN_GROUPS_MIGRATED_KEY = 'bmDomainGroupsMigrated';
 const TAG_MUTATION_MESSAGE = 'bmTagMutation';
+// 插件内 ➕ 新增不会走 onCreated 打标（创建令牌已确认跳过），完成后按需请求后台补齐一次。
+const AUTO_TAG_MESSAGE = 'bmAutoTagBookmark';
 const FALLBACK_TAG = '其他';
 const MAX_FIXED_TAGS = 50;
 const MAX_TAGS_PER_BOOKMARK = 6;
@@ -2208,6 +2210,19 @@ async function autoTagBrowserBookmarks(entries) {
   return localResult;
 }
 
+// 插件内 ➕ 新增保存后的按需补齐：与 ⭐ 收藏共用同一套默认规则，
+// 只在本地建议没有给出标签时调用，避免重复请求 AI。
+async function autoTagBookmarkOnDemand(bookmarkId, allowAi) {
+  const id = String(bookmarkId || '');
+  if (!id) return { tags: [] };
+  const nodes = await chrome.bookmarks.get(id);
+  const bookmark = nodes && nodes[0];
+  if (!bookmark || !bookmark.url) return { tags: [] };
+  const result = await autoTagBrowserBookmarks([[id, bookmark, allowAi !== false]]);
+  const tags = (result && result.tags && result.tags[id]) || [];
+  return { tags };
+}
+
 function scheduleAutoTagFlush() {
   if (nativeBookmarkImportInProgress || autoTagFlushTimer) return;
   autoTagFlushTimer = setTimeout(() => {
@@ -2365,6 +2380,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === TAG_MUTATION_MESSAGE) {
     commitTagChanges(message.changes, message.mode)
       .then(result => sendResponse({ ok: true, changed: result.changed }))
+      .catch(e => sendResponse({ ok: false, error: e.message || String(e) }));
+    return true;
+  }
+  if (message.type === AUTO_TAG_MESSAGE) {
+    autoTagBookmarkOnDemand(message.bookmarkId, message.allowAi)
+      .then(result => sendResponse({ ok: true, tags: result.tags }))
       .catch(e => sendResponse({ ok: false, error: e.message || String(e) }));
     return true;
   }

@@ -247,7 +247,6 @@
 
 /* 吸顶后收紧纵向占用；标签条保持换行，避免固定时丢失筛选项 */
 .nt-head.is-stuck .nt-top,
-.nt-head.is-stuck .nt-filter-bar,
 .nt-head.is-stuck .nt-tags {
   margin-bottom: 12px;
 }
@@ -271,7 +270,8 @@
 .nt-card-wrap {
   position: relative;
   width: 100%;
-  height: 112px;
+  /* 卡片高度自适应：标签全部展开后同行卡片由 grid 拉伸到同一高度 */
+  min-height: 112px;
   overflow: hidden;
   border-radius: 12px;
   transition: transform 0.15s;
@@ -381,10 +381,9 @@
 }
 .nt-card-tags {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-top: 6px;
-  overflow: hidden;
-  white-space: nowrap;
 }
 .nt-tag-chip {
   display: inline-flex;
@@ -774,7 +773,7 @@
   .nt-search,
   .nt-head,
   .nt-skeleton,
-  .nt-folder-menu {
+  .nt-folder-options {
     transition: none !important;
     animation: none !important;
   }
@@ -863,169 +862,74 @@
   height: 16px;
 }
 
-/* ===== 次级文件夹筛选（默认收起，和搜索/标签保持 AND 关系）===== */
-.nt-filter-bar {
-  display: none;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  width: min(100%, 480px);
-  box-sizing: border-box;
-  margin: -4px 0 14px;
-  padding: 8px;
+/* ===== 搜索框：一键清除全部筛选条件（搜索词 + 标签 + 文件夹）===== */
+.nt-filter-clear {
+  flex-shrink: 0;
   border: 1px solid var(--line-2);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--panel) 94%, var(--primary-soft));
-  box-shadow: var(--shadow-sm);
-  transition: margin-bottom 0.18s;
-}
-.nt-filter-bar:not([hidden]) { display: flex; }
-.nt-filter-bar .nt-folder-filter {
-  flex: 1 1 320px;
-  min-width: min(100%, 320px);
-  border: none;
-  background: transparent;
-  box-shadow: none;
-  padding: 0;
-}
-.nt-filter-bar .nt-folder-tree-status { flex: 1 1 100%; padding: 0 4px 2px; }
-.nt-folder-filter {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: min(100%, 360px);
-  box-sizing: border-box;
-  padding: 8px 12px;
-  border: 1px solid var(--line-2);
-  border-radius: 12px;
+  border-radius: 999px;
   background: var(--panel);
-  box-shadow: var(--shadow-sm);
-  transition: border-color 0.15s, box-shadow 0.15s, opacity 0.15s;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
-.nt-folder-filter:focus-within {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent), var(--shadow-sm);
+.nt-filter-clear:hover,
+.nt-filter-clear:focus-visible {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-soft);
 }
-.nt-folder-filter.is-loading {
-  opacity: 0.72;
+.nt-filter-clear:focus-visible {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
 }
-.nt-folder-icon {
-  display: grid;
-  place-items: center;
-  flex: 0 0 30px;
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  color: var(--primary);
-  background: var(--primary-soft);
+.nt-filter-clear[hidden] {
+  display: none;
 }
-.nt-folder-icon svg {
-  width: 17px;
-  height: 17px;
-}
-.nt-folder-heading {
+
+/* ===== 文件夹筛选弹窗（入口：搜索框里的「筛选」）===== */
+.nt-folder-modal {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 74px;
+  gap: 10px;
+  max-width: 440px;
 }
-.nt-folder-label {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--ink-2);
-  white-space: nowrap;
-}
-.nt-folder-summary,
-.nt-folder-tree-status {
-  font-size: 11px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.nt-folder-select-wrap {
-  position: relative;
-  display: block;
-  flex: 1;
-  min-width: 0;
-}
-.nt-folder-trigger {
+.nt-folder-modal-title {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  max-width: 260px;
-  border: none;
-  background: transparent;
-  color: var(--ink);
-  font-size: 12.5px;
-  font-family: inherit;
-  cursor: pointer;
-  padding: 5px 22px 5px 8px;
-  text-align: left;
-  border-radius: 7px;
+  gap: 6px;
+  margin-bottom: 0;
 }
-.nt-folder-value {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.nt-folder-trigger:hover {
-  background: var(--surface-sub);
-}
-.nt-folder-trigger:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 1px;
-}
-.nt-folder-chevron {
-  flex: 0 0 7px;
-  width: 7px;
-  height: 7px;
-  margin: -4px 2px 0 12px;
-  pointer-events: none;
+.nt-folder-modal-summary {
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--muted);
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: rotate(45deg);
-  transition: transform 0.16s ease, color 0.16s ease;
 }
-.nt-folder-trigger:hover .nt-folder-chevron,
-.nt-folder-trigger:focus-visible .nt-folder-chevron { color: var(--ink-2); }
-.nt-folder-trigger[aria-expanded='true'] .nt-folder-chevron { margin-top: 4px; transform: rotate(225deg); }
-.nt-folder-native {
-  display: none;
-}
-.nt-folder-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  z-index: var(--z-dropdown, 60);
-  box-sizing: border-box;
-  width: min(360px, calc(100vw - 32px));
-  max-height: min(520px, calc(100vh - 180px));
+.nt-folder-options {
+  max-height: min(46vh, 380px);
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 6px;
   border: 1px solid var(--line-2);
-  border-radius: 12px;
-  background: var(--panel);
-  box-shadow: var(--shadow-lg);
+  border-radius: 10px;
+  background: var(--bg);
   scrollbar-color: var(--line-2) transparent;
 }
-.nt-folder-menu:not([hidden]) {
-  animation: nt-folder-menu-in 0.14s ease-out;
+.nt-folder-options::-webkit-scrollbar {
+  width: 6px;
 }
-.nt-folder-menu[hidden] {
-  display: none;
+.nt-folder-options::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border-radius: 3px;
 }
-@keyframes nt-folder-menu-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+.nt-folder-options::-webkit-scrollbar-track {
+  background: transparent;
 }
-.nt-folder-menu::-webkit-scrollbar { width: 6px; }
-.nt-folder-menu::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 3px; }
-.nt-folder-menu::-webkit-scrollbar-track { background: transparent; }
 .nt-folder-option {
   position: relative;
   display: flex;
@@ -1085,9 +989,6 @@
 }
 .nt-folder-option:hover .nt-folder-option-count { background: var(--surface-sub-hover); color: var(--ink-2); }
 .nt-folder-option[aria-selected='true'] .nt-folder-option-count { background: color-mix(in srgb, var(--primary) 18%, transparent); color: var(--primary); }
-.nt-folder-tree-status {
-  padding: 0 4px;
-}
 
 /* ===== 键盘高亮（j/k 与方向键移动，复用 --primary-soft 语义）===== */
 .nt-card-wrap.kb-active {
@@ -1179,7 +1080,9 @@
   gap: 0 14px;
   flex: 1;
   min-width: 0;
-  height: 100%;
+  /* 行高由 .nt-card-wrap 的 min-height 决定（父级 height 为 auto），
+     百分比高度解析不到会让内容贴顶；用 stretch 撑满行高，各列才会垂直居中 */
+  align-self: stretch;
   padding: 0 10px;
   text-decoration: none;
   color: inherit;

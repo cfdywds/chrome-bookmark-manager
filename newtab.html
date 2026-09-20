@@ -118,10 +118,11 @@
             class="nt-filter-toggle"
             type="button"
             aria-expanded="false"
-            aria-controls="ntFilterBar"
+            aria-haspopup="dialog"
+            aria-controls="ntFolderModal"
             aria-pressed="false"
-            data-tip="更多筛选"
-            aria-label="更多筛选"
+            data-tip="按文件夹筛选"
+            aria-label="按文件夹筛选"
           >
             <svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <use href="icons/sprite.svg#i-folder" />
@@ -129,47 +130,16 @@
             <span>筛选</span>
           </button>
           <span id="ntResultCount" class="nt-result-count hidden"></span>
+          <button
+            id="ntFilterClear"
+            class="nt-filter-clear hidden"
+            type="button"
+            data-tip="清除搜索、标签与文件夹筛选"
+            aria-label="清除搜索、标签与文件夹筛选"
+          >
+            清除筛选
+          </button>
           <button id="ntClear" class="nt-clear hidden" data-tip="清空搜索" aria-label="清空搜索">✕</button>
-        </div>
-
-        <!-- 次级筛选：默认收起，避免与主界面的文件夹管理重复占据首屏 -->
-        <div class="nt-filter-bar" id="ntFilterBar" hidden>
-          <div class="nt-folder-filter is-loading" id="ntFolderFilter" aria-busy="true">
-            <span class="nt-folder-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <use href="icons/sprite.svg#i-folder" />
-              </svg>
-            </span>
-            <span class="nt-folder-heading">
-              <span class="nt-folder-label">文件夹</span>
-              <span class="nt-folder-summary" id="ntFolderSummary">正在加载目录…</span>
-            </span>
-            <span class="nt-folder-select-wrap">
-              <button
-                class="nt-folder-trigger"
-                id="ntFolderTrigger"
-                type="button"
-                aria-haspopup="listbox"
-                aria-expanded="false"
-                aria-controls="ntFolderMenu"
-                aria-label="按文件夹筛选书签"
-              >
-                <span class="nt-folder-value" id="ntFolderValue">正在加载目录…</span>
-                <span class="nt-folder-chevron" aria-hidden="true"></span>
-              </button>
-              <div
-                class="nt-folder-menu"
-                id="ntFolderMenu"
-                role="listbox"
-                aria-label="文件夹目录"
-                hidden
-              ></div>
-              <select id="ntFolder" class="nt-folder-native" tabindex="-1" aria-hidden="true">
-                <option value="" disabled selected>正在加载目录…</option>
-              </select>
-            </span>
-          </div>
-          <span class="nt-folder-tree-status" id="ntFolderTreeStatus" aria-live="polite"></span>
         </div>
 
         <!-- 标签筛选条 -->
@@ -211,6 +181,39 @@
           <div class="nt-empty-desc" id="ntEmptyDesc">换个关键词，或清空筛选条件</div>
         </div>
       </main>
+    </div>
+
+    <!-- 文件夹筛选弹窗：入口是搜索框里的「筛选」，卡片与列表视图共用 -->
+    <div
+      id="ntFolderModal"
+      class="modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ntFolderModalTitle"
+    >
+      <div class="modal-card nt-folder-modal">
+        <div class="modal-title nt-folder-modal-title" id="ntFolderModalTitle">
+          <svg
+            class="ico ico-sm"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <use href="icons/sprite.svg#i-folder" />
+          </svg>
+          按文件夹筛选
+        </div>
+        <div class="nt-folder-modal-summary" id="ntFolderSummary" aria-live="polite">正在加载目录…</div>
+        <div class="nt-folder-options" id="ntFolderMenu" role="listbox" aria-label="文件夹目录"></div>
+        <div class="modal-actions">
+          <button id="ntFolderClear" class="btn ghost" type="button">全部文件夹</button>
+          <button id="ntFolderClose" class="btn primary" type="button">完成</button>
+        </div>
+      </div>
     </div>
 
     <!-- 轻量确认弹层（删除等危险操作） -->

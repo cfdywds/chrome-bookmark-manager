@@ -151,6 +151,27 @@ describe('新标签页搜索', () => {
     expect((html.match(/data-nt-act=/g) || [])).toHaveLength(4);
   });
 
+  it('卡片视图展开全部标签，不再折叠成 +N', () => {
+    const esc = eval(`(${getFunctionSource('esc')})`);
+    const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
+    const faviconUrl = () => '';
+    const ICON = () => '<svg></svg>';
+    const cardHtml = eval(`(${getFunctionSource('cardHtml')})`);
+
+    const html = cardHtml({
+      id: 'many',
+      title: '多标签站点',
+      host: 'example.com',
+      url: 'https://example.com/',
+      tags: ['工作', '项目', '资料', '教程']
+    });
+
+    ['工作', '项目', '资料', '教程'].forEach(tag => {
+      expect(html).toContain(`class="nt-tag-chip">#${tag}</span>`);
+    });
+    expect(html).not.toContain('nt-tag-chip more');
+  });
+
   it('列表行单行承载标题/站点/目录/标签，并收敛标签与目录层级', () => {
     const esc = eval(`(${getFunctionSource('esc')})`);
     const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
