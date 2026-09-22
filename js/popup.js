@@ -3845,18 +3845,31 @@ function openAddDrawer(item) {
 async function openAddDrawerForCurrentTab() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab || !tab.url || !/^https?:/i.test(tab.url)) {
+    if (!tab) {
+      toast('没有找到当前标签页，请在表单里手动填写', 'warn');
+      openAddDrawer();
+      return;
+    }
+    // 没有 tabs 权限时 chrome.tabs 不会返回 url/title（例如侧边栏不是通过点击扩展图标
+    // 打开、activeTab 未授予）。这与"当前页确实不是网页"是两回事，提示要分开。
+    const url = typeof tab.url === 'string' ? tab.url : '';
+    if (!url) {
+      toast('未能读取当前页地址，请在表单里粘贴网址', 'warn');
+      openAddDrawer();
+      return;
+    }
+    if (!/^https?:/i.test(url)) {
       toast('当前页不是普通网页（比如浏览器设置页），无法收藏', 'warn');
       openAddDrawer(); // 空表单兜底
       return;
     }
-    const existing = findExistingByUrl(tab.url);
+    const existing = findExistingByUrl(url);
     if (existing.length) {
       const top = existing[0];
       // 三按钮：编辑已有 / 仍要新增 / 取消（取消时什么都不做）
       const result = await confirmDialog({
         title: '该书签已存在',
-        message: `当前页面已是已保存的书签：<br><b>${escapeHtml(top.title || '(无标题)')}</b><br><span style="color:var(--muted);font-size:11px;">${escapeHtml(top.url)}</span><br><br>「编辑已有」打开这个书签；「仍要新增」创建副本；「取消」什么也不做。`,
+        message: `当前页面已是已保存的书签：<br><b>${escapeHtml(top.title || '(无标题)')}</b><br><span style="color:var(--muted);font-size:var(--fs-meta);">${escapeHtml(top.url)}</span><br><br>「编辑已有」打开这个书签；「仍要新增」创建副本；「取消」什么也不做。`,
         confirmText: '仍要新增',
         cancelText: '取消',
         thirdText: '编辑已有',
@@ -3866,12 +3879,12 @@ async function openAddDrawerForCurrentTab() {
         openAddDrawer(top); // 编辑模式（含标签）
       } else if (result === true) {
         // 仍要新增 → 新增抽屉预填（会触发精确重复提示）
-        openAddDrawer({ url: tab.url, title: tab.title || '' });
+        openAddDrawer({ url, title: tab.title || '' });
         setAddMsg('该 URL 已存在，将创建副本', 'warn');
       }
       // result === false（取消）→ 什么都不做
     } else {
-      openAddDrawer({ url: tab.url, title: tab.title || '' });
+      openAddDrawer({ url, title: tab.title || '' });
       setAddMsg('正在保存当前页面', '');
     }
   } catch (e) {
