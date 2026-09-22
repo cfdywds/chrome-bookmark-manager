@@ -1117,9 +1117,9 @@ function ensureTreeOverlay() {
       <div class="tree-body" id="treeBody" data-mode="navigate"></div>
     </div>`;
   document.body.appendChild(ov);
-  $('#treeClose').addEventListener('click', closeTreeOverlay);
-  $('#treeSearch').addEventListener('input', e => filterTree(e.target.value));
-  $('#treeBody').addEventListener('click', onTreeBodyClick);
+  $('#treeClose')?.addEventListener('click', closeTreeOverlay);
+  $('#treeSearch')?.addEventListener('input', e => filterTree(e.target.value));
+  $('#treeBody')?.addEventListener('click', onTreeBodyClick);
   ov.addEventListener('click', e => { if (e.target === ov) closeTreeOverlay(); });
   return ov;
 }
@@ -1911,16 +1911,37 @@ function showError(err) {
   document.getElementById('errRetry').addEventListener('click', () => refresh(true));
 }
 
+// 扫描看门狗：扩展被重载、context 失效或 Profile 切换时，chrome.bookmarks.getTree()
+// 可能永不 settle。没有超时的话内容区会永久停在加载态（用户看到的就是「白屏」）。
+const SCAN_TIMEOUT_MS = 20000;
+function withTimeout(promise, message) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), SCAN_TIMEOUT_MS);
+    promise.then(
+      value => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      error => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
 // ---------- 数据加载 ----------
 async function runRefresh() {
   tabRenderToken++;
   listRenderLimits = Object.create(null);
-  content().innerHTML = '<div class="loading">正在扫描书签…</div>';
   try {
+    // 只有首屏才铺整页加载态：删除、后台回写等后续刷新保留已有内容，
+    // 避免整块清空重建造成的闪白、滚动位置与选中态丢失（删除时体感最明显）。
+    if (!DATA) content().innerHTML = '<div class="loading">正在扫描书签…</div>';
     if (!chrome.bookmarks || typeof chrome.bookmarks.getTree !== 'function') {
       throw new Error('chrome.bookmarks API 不可用，请确认扩展已正确加载并启用');
     }
-    DATA = await BMAnalyzer.analyze();
+    DATA = await withTimeout(BMAnalyzer.analyze(), '扫描书签超时，请点击「重新扫描」重试');
     // storage 版本迁移钩子（预留 schema 变更）
     try {
       await BM.migrateStorage();
@@ -1933,12 +1954,20 @@ async function runRefresh() {
     } catch (e) {
       console.warn('[书签管家] 回收站清理失败', e);
     }
-    DATA.trash = await BM.getTrash();
+    // 回收站读不到（后台忙 / 超时）不该拖垮主列表：退化为空列表继续渲染
+    try {
+      DATA.trash = await withTimeout(BM.getTrash(), '读取回收站超时');
+    } catch (e) {
+      console.warn('[书签管家] 读取回收站失败', e);
+      if (!Array.isArray(DATA.trash)) DATA.trash = [];
+    }
     render(currentTab);
     updateBulk();
   } catch (e) {
     console.error('[书签管家] 扫描失败:', e);
-    showError(e);
+    // 已有内容时不要用错误卡覆盖整页，只提示失败；首屏无数据才铺错误卡
+    if (DATA) toast('扫描失败：' + (e.message || e), 'danger', { timeout: 4000 });
+    else showError(e);
   }
 }
 
@@ -1959,6 +1988,28 @@ async function refresh(force) {
   } finally {
     refreshInFlight = null;
   }
+}
+
+// 一次操作往往会同时触发多条刷新来源（操作收尾、storage 回写、云端标签水合并发）。
+// 用一个很短的合并窗口把它们并成一轮扫描，避免同一动作重复跑整轮 analyze + render
+// —— 删除单条书签原本会连跑两轮全量扫描，卡顿与闪白都来自这里。
+// 另外给相邻两轮扫描留出最小间隔：批量新增书签、原生同步回写会连续触发大量 storage
+// 变更，没有这个下限就会被拖成几十上百轮全量扫描（实测种入 1500 条曾触发 245 轮）。
+const REFRESH_COALESCE_MS = 120;
+const REFRESH_MIN_INTERVAL_MS = 800;
+let refreshCoalesceTimer = null;
+let lastRefreshStartedAt = 0;
+function scheduleRefresh(force) {
+  clearTimeout(refreshCoalesceTimer);
+  const wait = Math.max(
+    REFRESH_COALESCE_MS,
+    REFRESH_MIN_INTERVAL_MS - (Date.now() - lastRefreshStartedAt)
+  );
+  refreshCoalesceTimer = setTimeout(() => {
+    refreshCoalesceTimer = null;
+    lastRefreshStartedAt = Date.now();
+    refresh(force);
+  }, wait);
 }
 
 // ---------- 统一方案引擎 ----------
@@ -2095,7 +2146,7 @@ async function applyPlan() {
     );
     planMode = false;
     PLAN = null;
-    refresh();
+    scheduleRefresh();
   } catch (e) {
     endProgress();
     toast('操作失败：' + (e.message || e), 'danger');
@@ -2114,7 +2165,7 @@ async function bulkCleanEmpty() {
   // emptyFolders 已按子目录优先收集，必须串行删除才能继续清掉随后变空的父目录。
   const removal = await removeForIds(ids, '清理中', { concurrency: 1, clearTags: false });
   toast('已清理 ' + removal.count + ' 个空文件夹 ✓', 'ok');
-  refresh();
+  scheduleRefresh();
 }
 
 // 统一同址（urlKey 相同）书签的标签：对每一组，取全体标签的并集写回每个书签。
@@ -2453,7 +2504,8 @@ async function softDeleteBookmark(id) {
     if (r.n) {
       toast('已删除书签 ✓', 'ok', { label: '撤销', onClick: () => undoDelete(r.items) });
     }
-    refresh();
+    // 走合并调度：标签回写触发的 storage 刷新会并进同一轮扫描
+    scheduleRefresh();
   } catch (e) {
     toast('删除失败：' + (e.message || e), 'danger');
   }
@@ -2509,6 +2561,8 @@ function switchTab(tab) {
 
 function render(tab) {
   currentTab = tab;
+  // 数据尚未就绪时保留现有内容（骨架/加载态），不要用空数据渲染出 TypeError
+  if (!DATA) return;
   if (SEARCH) {
     renderSearch();
     return;
@@ -2959,6 +3013,13 @@ function maybeShowOrganizeTip() {
 
 // ---------- 初始化 ----------
 async function init() {
+  // 面板结构被改动导致关键节点缺失时立刻报错：否则事件注册会在中途静默中断，
+  // 顶部栏 / 内容区 / 批量栏全部不可用，用户看到的就是「白屏」。
+  const REQUIRED_NODES = ['#searchInput', '#searchClear', '#content', '#bulkBar', '#addDrawer'];
+  const missingNodes = REQUIRED_NODES.filter(selector => !$(selector));
+  if (missingNodes.length) {
+    throw new Error('面板结构缺少必要元素：' + missingNodes.join('、') + '，请重新加载扩展');
+  }
   // 设置只影响 AI 操作；与首轮书签分析并行读取，避免首屏多等待一次 storage。
   tagConfigurationReady = BM.initializeSyncedTagConfiguration
     ? BM.initializeSyncedTagConfiguration().catch(() => {
@@ -2982,6 +3043,7 @@ async function init() {
     syncSearchScopeVisibility();
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
+      if (!DATA) return; // 首轮扫描未完成时不要用空数据渲染
       if (SEARCH) renderSearch();
       else render(currentTab);
     }, 180);
@@ -3283,12 +3345,12 @@ async function init() {
   });
 
   // 批量删除 / 全选 / 反选
-  $('#bulkMove').addEventListener('click', () => {
+  $('#bulkMove')?.addEventListener('click', () => {
     const ids = getSelectedIds();
     if (!ids.length) { toast('没有选中的项', 'warn'); return; }
     openMoveToPicker(ids);
   });
-  $('#bulkDelete').addEventListener('click', () => {
+  $('#bulkDelete')?.addEventListener('click', () => {
     const ids = [...document.querySelectorAll('#content .sel:checked')].map(c => c.dataset.id);
     if (!ids.length) return;
     const isMass = ids.length >= 50; // 危险操作二次确认
@@ -3307,37 +3369,37 @@ async function init() {
             label: '撤销',
             onClick: () => undoDelete(r.items)
           });
-        refresh();
+        scheduleRefresh();
       });
     });
   });
-  $('#bulkAll').addEventListener('click', () => {
+  $('#bulkAll')?.addEventListener('click', () => {
     document.querySelectorAll('#content .sel').forEach(c => {
       c.checked = true;
     });
     updateBulk();
   });
-  $('#bulkInvert').addEventListener('click', () => {
+  $('#bulkInvert')?.addEventListener('click', () => {
     document.querySelectorAll('#content .sel').forEach(c => {
       c.checked = !c.checked;
     });
     updateBulk();
   });
-  $('#bulkClear').addEventListener('click', () => {
+  $('#bulkClear')?.addEventListener('click', () => {
     document.querySelectorAll('#content .sel:checked').forEach(c => {
       c.checked = false;
     });
     updateBulk();
   });
   // 批量打标签
-  $('#bulkTag').addEventListener('click', bulkTagSelected);
+  $('#bulkTag')?.addEventListener('click', bulkTagSelected);
   // 标签管理弹层
-  $('#tagMgrClose').addEventListener('click', closeTagManager);
+  $('#tagMgrClose')?.addEventListener('click', closeTagManager);
   // 点击遮罩关闭弹层（与确认 / 输入弹层一致）
-  $('#tagMgrWrap').addEventListener('click', e => {
+  $('#tagMgrWrap')?.addEventListener('click', e => {
     if (e.target === e.currentTarget) closeTagManager();
   });
-  $('#tagMgrList').addEventListener('click', e => {
+  $('#tagMgrList')?.addEventListener('click', e => {
     const btn = e.target.closest('[data-mgr]');
     if (!btn) return;
     const tag = btn.dataset.tag;
@@ -3346,7 +3408,7 @@ async function init() {
   });
 
   // 底部按钮
-  $('#rescanBtn').addEventListener('click', () => refresh(true));
+  $('#rescanBtn')?.addEventListener('click', () => refresh(true));
 
   // ---------- 键盘快捷键：/ 搜索、? 帮助、Esc 关抽屉/退方案、Ctrl+K 搜索、j/k 导航 ----------
   document.addEventListener('keydown', e => {
@@ -3534,10 +3596,10 @@ async function init() {
   bindDrag();
 
   // 点击遮罩关闭抽屉
-  $('#drawerOverlay').addEventListener('click', closeDrawers);
+  $('#drawerOverlay')?.addEventListener('click', closeDrawers);
 
   // 设置按钮 → 直接打开独立设置页（含 AI 分类 / 标签体系 / 浏览器集成 三大组）
-  $('#settingsBtn').addEventListener('click', () => {
+  $('#settingsBtn')?.addEventListener('click', () => {
     try {
       chrome.runtime.openOptionsPage();
     } catch (e) {
@@ -3546,20 +3608,20 @@ async function init() {
   });
 
   // 操作指南抽屉
-  $('#helpBtn').addEventListener('click', openHelp);
-  $('#helpClose').addEventListener('click', closeDrawers);
+  $('#helpBtn')?.addEventListener('click', openHelp);
+  $('#helpClose')?.addEventListener('click', closeDrawers);
 
   // 新增书签抽屉
-  $('#addBtn').addEventListener('click', openAddDrawerForCurrentTab);
-  $('#addClose').addEventListener('click', closeDrawers);
-  $('#addSave').addEventListener('click', saveAdd);
-  $('#addAiTag').addEventListener('click', aiTagSuggest);
-  $('#addTags').addEventListener('input', renderTagSuggest);
-  $('#addUrl').addEventListener('input', () => {
+  $('#addBtn')?.addEventListener('click', openAddDrawerForCurrentTab);
+  $('#addClose')?.addEventListener('click', closeDrawers);
+  $('#addSave')?.addEventListener('click', saveAdd);
+  $('#addAiTag')?.addEventListener('click', aiTagSuggest);
+  $('#addTags')?.addEventListener('input', renderTagSuggest);
+  $('#addUrl')?.addEventListener('input', () => {
     clearTimeout(addUrlTimer);
     addUrlTimer = setTimeout(suggestCat, 250);
   });
-  $('#addTitle').addEventListener('input', () => {
+  $('#addTitle')?.addEventListener('input', () => {
     clearTimeout(addUrlTimer);
     addUrlTimer = setTimeout(suggestCat, 250);
   });
@@ -3612,7 +3674,8 @@ async function init() {
         } catch (e) {
           /* noop */
         }
-        refresh();
+        // 与本页操作收尾的刷新共用合并窗口：同一次删除不再连跑两轮全量扫描
+        scheduleRefresh();
       }
       // 后台水合把远端隐藏状态写入 bmHiddenIds 时，刷新当前视图并失效缓存，
       // 否则已打开的侧边栏会一直把已同步隐藏的书签当作可见。
@@ -3622,7 +3685,7 @@ async function init() {
         } catch (e) {
           /* noop */
         }
-        refresh();
+        scheduleRefresh();
       }
     });
   } catch (e) {
@@ -4883,9 +4946,33 @@ async function migrateTags() {
     `标签已收敛 ✓（处理 ${total} 个书签${staleIds.length ? `，清理 ${staleIds.length} 条历史记录` : ''}）`,
     'ok'
   );
-  refresh();
+  scheduleRefresh();
 }
 
 // ---------- （分类体系已精简删除：AI 分类 / 全量重分类 / 整理方案） ----------
 
-document.addEventListener('DOMContentLoaded', init);
+// 初始化链上任何未捕获的失败都要变成可见的提示，而不是让面板一直停在加载态。
+function reportFatal(reason) {
+  console.error('[书签管家] 面板初始化失败', reason);
+  try {
+    const box = document.getElementById('content');
+    // 只在内容区还没有渲染出结果时铺错误卡，避免把已经能用的列表覆盖掉
+    if (box && !box.querySelector('.row, .entry-card, .error-card')) showError(reason);
+  } catch (e) {
+    /* 兜底提示本身失败时不再抛错 */
+  }
+}
+window.addEventListener('unhandledrejection', event => reportFatal(event.reason));
+
+// 侧边栏文档可能被复用（扩展重载 / bfcache）：DOMContentLoaded 已经过去时必须直接初始化，
+// 否则 init 永不执行，面板会永久停在 popup.html 写死的「正在扫描书签…」骨架上。
+function bootstrap() {
+  Promise.resolve()
+    .then(init)
+    .catch(reportFatal);
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootstrap, { once: true });
+} else {
+  bootstrap();
+}

@@ -57,7 +57,7 @@ describe('侧边栏单条删除的撤销', () => {
     const softDelete = vi.fn().mockResolvedValue({ n: 1, items: [item] });
     const toast = vi.fn();
     const undoDelete = vi.fn().mockResolvedValue();
-    const refresh = vi.fn();
+    const scheduleRefresh = vi.fn();
     const softDeleteBookmark = eval(`(${getFunctionSource('softDeleteBookmark')})`);
 
     await softDeleteBookmark('b1');
@@ -70,7 +70,8 @@ describe('侧边栏单条删除的撤销', () => {
       })
     );
     expect(softDelete).toHaveBeenCalledWith(['b1'], '删除书签', { pruneEmptyFolders: false });
-    expect(refresh).toHaveBeenCalledOnce();
+    // 删除收尾走合并刷新调度：同一次删除不再连跑两轮全量扫描
+    expect(scheduleRefresh).toHaveBeenCalledOnce();
 
     const undoCall = toast.mock.calls.find(call => call[2] && call[2].label === '撤销');
     expect(undoCall).toBeTruthy();
@@ -86,14 +87,14 @@ describe('侧边栏单条删除的撤销', () => {
     const softDelete = vi.fn();
     const toast = vi.fn();
     const undoDelete = vi.fn();
-    const refresh = vi.fn();
+    const scheduleRefresh = vi.fn();
     const softDeleteBookmark = eval(`(${getFunctionSource('softDeleteBookmark')})`);
 
     await softDeleteBookmark('b1');
 
     expect(softDelete).not.toHaveBeenCalled();
     expect(toast).not.toHaveBeenCalled();
-    expect(refresh).not.toHaveBeenCalled();
+    expect(scheduleRefresh).not.toHaveBeenCalled();
   });
 
   it('实际未删除时不给出撤销入口', async () => {
@@ -103,13 +104,13 @@ describe('侧边栏单条删除的撤销', () => {
     const softDelete = vi.fn().mockResolvedValue({ n: 0, items: [] });
     const toast = vi.fn();
     const undoDelete = vi.fn();
-    const refresh = vi.fn();
+    const scheduleRefresh = vi.fn();
     const softDeleteBookmark = eval(`(${getFunctionSource('softDeleteBookmark')})`);
 
     await softDeleteBookmark('b1');
 
     expect(toast).not.toHaveBeenCalled();
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(scheduleRefresh).toHaveBeenCalledOnce();
   });
 });
 

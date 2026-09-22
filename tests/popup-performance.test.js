@@ -834,7 +834,7 @@ describe('批量删除性能', () => {
     const confirmDialog = vi.fn().mockResolvedValue(true);
     const removeForIds = vi.fn().mockResolvedValue({ count: 2, removedIds: ['child', 'parent'] });
     const toast = vi.fn();
-    const refresh = vi.fn();
+    const scheduleRefresh = vi.fn();
     const bulkCleanEmpty = eval(`(${getFunctionSource('bulkCleanEmpty')})`);
 
     await bulkCleanEmpty();
@@ -845,6 +845,7 @@ describe('批量删除性能', () => {
       { concurrency: 1, clearTags: false }
     );
     expect(toast).toHaveBeenCalledWith('已清理 2 个空文件夹 ✓', 'ok');
+    expect(scheduleRefresh).toHaveBeenCalledOnce();
   });
 });
 
@@ -1011,7 +1012,7 @@ describe('标签收敛统计', () => {
     const updateProgress = vi.fn();
     const endProgress = vi.fn();
     const toast = vi.fn();
-    const refresh = vi.fn();
+    const scheduleRefresh = vi.fn();
     const migrateTags = eval(`(${getFunctionSource('migrateTags')})`);
 
     await migrateTags();
@@ -1027,6 +1028,7 @@ describe('标签收敛统计', () => {
     expect(BM.suggestTags).toHaveBeenCalledWith(expect.objectContaining({ host: 'one.example', title: '仅兜底' }));
     expect(BM.suggestTags).toHaveBeenCalledWith(expect.objectContaining({ host: 'two.example', title: '兼有标签' }));
     expect(toast).toHaveBeenCalledWith('标签已收敛 ✓（处理 3 个书签，清理 1 条历史记录）', 'ok');
+    expect(scheduleRefresh).toHaveBeenCalledOnce();
   });
 });
 
