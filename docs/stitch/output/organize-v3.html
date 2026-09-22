@@ -1,0 +1,1517 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bookmark Manager - Organize Tab</title>
+<style>
+  :root {
+    --bg: #f3f5f8;
+    --panel: #ffffff;
+    --sub: #f3f5f8;
+    --field: #ffffff;
+    --ink: #101828;
+    --ink-2: #344054;
+    --muted: #667085;
+    --line: #e7ebf0;
+    --line-2: #dce1e8;
+    --primary: #2563eb;
+    --primary-soft: #e9f1fe;
+    --danger: #be123c;
+    --warn: #b45309;
+    --ok: #059669;
+
+    --radius-xs: 7px;
+    --radius-sm: 10px;
+    --radius: 14px;
+    --radius-lg: 18px;
+    --radius-pill: 999px;
+
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-6: 24px;
+
+    --font-sans: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', Consolas, monospace;
+  }
+
+  [data-theme="dark"] {
+    --bg: #0f1117;
+    --panel: #171b24;
+    --sub: #1b202b;
+    --field: #1e2430;
+    --ink: #f2f4f8;
+    --ink-2: #c3c9d4;
+    --muted: #8b93a3;
+    --line: #242a36;
+    --line-2: #303845;
+    --primary: #5da2f5;
+    --primary-soft: #1a2436;
+    --danger: #fb7185;
+    --warn: #fbbf24;
+    --ok: #34d399;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--ink);
+    background-color: var(--bg);
+    display: flex;
+    justify-content: center;
+    padding: var(--space-4) 0;
+  }
+
+  /* Host Container & Theme Toggle Preview Header */
+  .viewport-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .theme-toggle-bar {
+    width: 360px;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .theme-btn {
+    appearance: none;
+    border: 1px solid var(--line-2);
+    background: var(--panel);
+    color: var(--ink-2);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .theme-btn:hover {
+    background: var(--sub);
+  }
+
+  /* 360px Extension Panel Boundary */
+  .panel-frame {
+    width: 360px;
+    min-width: 360px;
+    max-width: 360px;
+    height: 720px;
+    background-color: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: 0 16px 48px rgba(15, 23, 42, 0.12);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* 1. Fixed Header & Tab Strip */
+  .header {
+    background-color: var(--panel);
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+    z-index: 10;
+  }
+
+  .top-bar {
+    height: 44px;
+    padding: 0 var(--space-3);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .brand-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: var(--radius-xs);
+    background-color: var(--primary-soft);
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .brand-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .brand-tag {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--muted);
+    background-color: var(--sub);
+    padding: 1px var(--space-1);
+    border-radius: var(--radius-xs);
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .icon-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: transparent;
+    color: var(--ink-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .icon-btn:hover {
+    background-color: var(--sub);
+  }
+
+  .tab-strip {
+    display: flex;
+    padding: 0 var(--space-3);
+    gap: var(--space-4);
+    height: 34px;
+  }
+
+  .tab-item {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+  }
+
+  .tab-item:hover {
+    color: var(--ink-2);
+  }
+
+  .tab-item.active {
+    color: var(--primary);
+    font-weight: 600;
+    border-bottom-color: var(--primary);
+  }
+
+  /* 2. Sub-Toolbar & Controls */
+  .control-section {
+    padding: var(--space-2) var(--space-3);
+    background-color: var(--panel);
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+
+  .segmented-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .segmented-control {
+    flex: 1;
+    height: 30px;
+    background-color: var(--sub);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: 2px;
+    display: flex;
+  }
+
+  .segment-btn {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-2);
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+  }
+
+  .segment-btn.active {
+    background-color: var(--panel);
+    color: var(--ink);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  }
+
+  .tree-btn {
+    height: 30px;
+    padding: 0 var(--space-2);
+    border: 1px solid var(--line-2);
+    background-color: var(--panel);
+    color: var(--ink-2);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    white-space: nowrap;
+  }
+  .tree-btn:hover {
+    background-color: var(--sub);
+  }
+
+  .view-hint-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: var(--space-2);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .view-hint {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .total-count {
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+
+  /* 3. Scrollable List of Groups */
+  .list-viewport {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: var(--space-2) var(--space-2) 64px var(--space-2);
+    background-color: var(--bg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  /* Group Container */
+  .group-card {
+    background-color: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .group-card.drop-hover {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px var(--primary-soft);
+  }
+
+  .group-header {
+    height: 34px;
+    padding: 0 var(--space-2);
+    background-color: var(--sub);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+  }
+  .group-header:hover {
+    background-color: var(--line);
+  }
+
+  .group-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .collapse-caret {
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .group-icon {
+    color: var(--ink-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .group-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Unified Neutral Chips & Badges */
+  .badge-neutral {
+    background-color: var(--sub);
+    color: var(--ink-2);
+    border: 1px solid var(--line-2);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-pill);
+    line-height: 16px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .group-header-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .group-action-btn {
+    width: 22px;
+    height: 22px;
+    border-radius: var(--radius-xs);
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .group-action-btn:hover {
+    background-color: var(--panel);
+    color: var(--ink-2);
+  }
+
+  .drop-zone-indicator {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--primary);
+    background-color: var(--primary-soft);
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-pill);
+    margin-right: var(--space-1);
+  }
+
+  /* Group Body (Rows) */
+  .group-body {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Bookmark Row (~40px) */
+  .bookmark-row {
+    height: 42px;
+    padding: 0 var(--space-2);
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--line);
+    background-color: var(--panel);
+    position: relative;
+    text-decoration: none;
+    color: inherit;
+    gap: var(--space-2);
+    cursor: pointer;
+  }
+
+  .bookmark-row:last-child {
+    border-bottom: none;
+  }
+
+  .bookmark-row:hover {
+    background-color: var(--sub);
+  }
+
+  .bookmark-row.is-selected {
+    background-color: var(--primary-soft);
+  }
+
+  .bookmark-row.is-dragged {
+    opacity: 0.55;
+    background-color: var(--sub);
+    border: 1px dashed var(--primary);
+  }
+
+  /* Left Controls: Drag Handle + Checkbox */
+  .row-leading {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-shrink: 0;
+  }
+
+  .drag-handle {
+    width: 14px;
+    height: 20px;
+    color: var(--muted);
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+  }
+
+  .bookmark-row:hover .drag-handle,
+  .bookmark-row.is-focused .drag-handle,
+  .bookmark-row.hover-state .drag-handle {
+    opacity: 1;
+  }
+
+  .row-checkbox {
+    width: 15px;
+    height: 15px;
+    border-radius: var(--radius-xs);
+    border: 1.5px solid var(--line-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--field);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .row-checkbox.checked {
+    background-color: var(--primary);
+    border-color: var(--primary);
+    color: #ffffff;
+  }
+
+  /* Row Center Content */
+  .row-content {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+  }
+
+  .row-primary-line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .favicon-box {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    background-color: var(--sub);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .row-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .row-secondary-line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.2;
+  }
+
+  .row-host {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 110px;
+  }
+
+  .row-divider {
+    color: var(--line-2);
+  }
+
+  /* Tag & Category Chips */
+  .chip-container {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .neutral-chip {
+    background-color: var(--sub);
+    color: var(--ink-2);
+    font-size: 9.5px;
+    font-weight: 500;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-pill);
+    height: 15px;
+    display: inline-flex;
+    align-items: center;
+    max-width: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .neutral-chip.overflow {
+    color: var(--muted);
+    padding: 0 3px;
+  }
+
+  /* Right: Row Actions on Hover/Focus */
+  .row-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+    flex-shrink: 0;
+    opacity: 0;
+    pointer-events: none;
+    background-color: var(--panel);
+    padding-left: var(--space-1);
+    border-radius: var(--radius-xs);
+  }
+
+  .bookmark-row:hover .row-actions,
+  .bookmark-row.hover-state .row-actions,
+  .bookmark-row.is-focused .row-actions {
+    opacity: 1;
+    pointer-events: auto;
+    background-color: var(--sub);
+  }
+
+  .row-action-btn {
+    width: 22px;
+    height: 22px;
+    border-radius: var(--radius-xs);
+    border: none;
+    background: transparent;
+    color: var(--ink-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .row-action-btn:hover {
+    background-color: var(--panel);
+    color: var(--ink);
+  }
+
+  /* 4. Bulk Action Floating Bar */
+  .bulk-action-bar {
+    position: absolute;
+    bottom: var(--space-3);
+    left: var(--space-3);
+    right: var(--space-3);
+    height: 38px;
+    background-color: var(--ink);
+    color: #ffffff;
+    border-radius: var(--radius-pill);
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.22);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--space-2) 0 var(--space-3);
+    z-index: 50;
+  }
+
+  [data-theme="dark"] .bulk-action-bar {
+    background-color: var(--panel);
+    border: 1px solid var(--line-2);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+
+  .bulk-count {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+
+  .bulk-count-badge {
+    background-color: var(--primary);
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    width: 17px;
+    height: 17px;
+    border-radius: var(--radius-pill);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .bulk-buttons {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .bulk-btn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    height: 26px;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  [data-theme="dark"] .bulk-btn {
+    color: var(--ink);
+  }
+
+  .bulk-btn:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+  }
+
+  [data-theme="dark"] .bulk-btn:hover {
+    background-color: var(--sub);
+  }
+
+  .bulk-btn.danger:hover {
+    background-color: var(--danger);
+    color: #ffffff;
+  }
+</style>
+</head>
+<body>
+
+<div class="viewport-wrapper">
+  <!-- Interactive preview helper to demonstrate 100% compliant dark theme surface levels -->
+  <div class="theme-toggle-bar">
+    <button class="theme-btn" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle Theme">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+      </svg>
+      <span>Toggle Theme (Light / Dark)</span>
+    </button>
+  </div>
+
+  <!-- 360px Chrome / Edge Side Panel Viewport -->
+  <div class="panel-frame">
+    <!-- 1. Header & Tab Strip -->
+    <header class="header">
+      <div class="top-bar">
+        <div class="brand">
+          <div class="brand-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </div>
+          <span class="brand-title">Bookmark Manager</span>
+          <span class="brand-tag">MV3</span>
+        </div>
+        <div class="header-actions">
+          <button class="icon-btn" title="Search" aria-label="Search">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </button>
+          <button class="icon-btn" title="Add Bookmark" aria-label="Add Bookmark">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+          <button class="icon-btn" title="Settings" aria-label="Settings">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <nav class="tab-strip">
+        <a class="tab-item" href="#overview">Overview</a>
+        <a class="tab-item active" href="#organize">Organize</a>
+        <a class="tab-item" href="#cleanup">Clean-up</a>
+        <a class="tab-item" href="#vault">Vault</a>
+      </nav>
+    </header>
+
+    <!-- 2. Segmented Control + Tree View Button + Hint -->
+    <div class="control-section">
+      <div class="segmented-row">
+        <div class="segmented-control" role="tablist">
+          <button class="segment-btn active" role="tab" aria-selected="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+              <line x1="7" y1="7" x2="7.01" y2="7"></line>
+            </svg>
+            <span>Tags</span>
+          </button>
+          <button class="segment-btn" role="tab" aria-selected="false">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <span>Folders</span>
+          </button>
+        </div>
+        <button class="tree-btn" title="View hierarchy tree">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 3 6 15 18 15"></polyline>
+            <circle cx="18" cy="15" r="3"></circle>
+            <circle cx="6" cy="3" r="3"></circle>
+          </svg>
+          <span>Tree view</span>
+        </button>
+      </div>
+
+      <div class="view-hint-row">
+        <span class="view-hint">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+          Drag items to reassign tags or move between groups
+        </span>
+        <span class="total-count">284 items</span>
+      </div>
+    </div>
+
+    <!-- 3. Scrollable List of Collapsible Groups -->
+    <main class="list-viewport">
+
+      <!-- GROUP 1: Dev & Architecture -->
+      <section class="group-card">
+        <header class="group-header">
+          <div class="group-header-left">
+            <span class="collapse-caret">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </span>
+            <span class="group-icon">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+              </svg>
+            </span>
+            <span class="group-name">Dev & Architecture</span>
+            <span class="badge-neutral">48</span>
+          </div>
+          <div class="group-header-right">
+            <button class="group-action-btn" title="Add bookmark to group">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+            <button class="group-action-btn" title="More options">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="1"></circle>
+                <circle cx="19" cy="12" r="1"></circle>
+                <circle cx="5" cy="12" r="1"></circle>
+              </svg>
+            </button>
+          </div>
+        </header>
+        <div class="group-body">
+          <!-- Row 1 (Selected) -->
+          <div class="bookmark-row is-selected">
+            <div class="row-leading">
+              <div class="drag-handle" title="Drag to reorder">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+                  <circle cx="3" cy="3" r="1.2"></circle>
+                  <circle cx="7" cy="3" r="1.2"></circle>
+                  <circle cx="3" cy="7" r="1.2"></circle>
+                  <circle cx="7" cy="7" r="1.2"></circle>
+                  <circle cx="3" cy="11" r="1.2"></circle>
+                  <circle cx="7" cy="11" r="1.2"></circle>
+                </svg>
+              </div>
+              <div class="row-checkbox checked">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+            </div>
+            <div class="row-content">
+              <div class="row-primary-line">
+                <span class="favicon-box">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" color="var(--primary)">
+                    <circle cx="12" cy="12" r="10"></circle>
+                  </svg>
+                </span>
+                <span class="row-title">RFC 9110: HTTP Semantics Specification</span>
+              </div>
+              <div class="row-secondary-line">
+                <span class="row-host">rfc-editor.org</span>
+                <span class="row-divider">/</span>
+                <div class="chip-container">
+                  <span class="neutral-chip">Standards</span>
+                  <span class="neutral-chip">Dev</span>
+                  <span class="neutral-chip">network</span>
+                  <span class="neutral-chip overflow">+2</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="row-action-btn" title="Hide"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
+              <button class="row-action-btn" title="AI Tag"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="row-action-btn" title="Edit"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 2 (Selected) -->
+          <div class="bookmark-row is-selected">
+            <div class="row-leading">
+              <div class="drag-handle" title="Drag to reorder">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+                  <circle cx="3" cy="3" r="1.2"></circle>
+                  <circle cx="7" cy="3" r="1.2"></circle>
+                  <circle cx="3" cy="7" r="1.2"></circle>
+                  <circle cx="7" cy="7" r="1.2"></circle>
+                  <circle cx="3" cy="11" r="1.2"></circle>
+                  <circle cx="7" cy="11" r="1.2"></circle>
+                </svg>
+              </div>
+              <div class="row-checkbox checked">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+            </div>
+            <div class="row-content">
+              <div class="row-primary-line">
+                <span class="favicon-box">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" color="var(--primary)">
+                    <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                  </svg>
+                </span>
+                <span class="row-title">Patterns for Building Resilient Microservices</span>
+              </div>
+              <div class="row-secondary-line">
+                <span class="row-host">martinfowler.com</span>
+                <span class="row-divider">/</span>
+                <div class="chip-container">
+                  <span class="neutral-chip">Architecture</span>
+                  <span class="neutral-chip">Dev</span>
+                  <span class="neutral-chip">backend</span>
+                  <span class="neutral-chip overflow">+1</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="row-action-btn" title="Hide"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
+              <button class="row-action-btn" title="AI Tag"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="row-action-btn" title="Edit"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 3 (Hover-revealed actions state) -->
+          <div class="bookmark-row hover-state">
+            <div class="row-leading">
+              <div class="drag-handle" style="opacity: 1;" title="Drag to reorder">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+                  <circle cx="3" cy="3" r="1.2"></circle>
+                  <circle cx="7" cy="3" r="1.2"></circle>
+                  <circle cx="3" cy="7" r="1.2"></circle>
+                  <circle cx="7" cy="7" r="1.2"></circle>
+                  <circle cx="3" cy="11" r="1.2"></circle>
+                  <circle cx="7" cy="11" r="1.2"></circle>
+                </svg>
+              </div>
+              <div class="row-checkbox"></div>
+            </div>
+            <div class="row-content">
+              <div class="row-primary-line">
+                <span class="favicon-box">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                  </svg>
+                </span>
+                <span class="row-title">SQLite in the Browser: Official WASM Build</span>
+              </div>
+              <div class="row-secondary-line">
+                <span class="row-host">sqlite.org</span>
+                <span class="row-divider">/</span>
+                <div class="chip-container">
+                  <span class="neutral-chip">Database</span>
+                  <span class="neutral-chip">wasm</span>
+                </div>
+              </div>
+            </div>
+            <!-- Visible Action Buttons on Hover -->
+            <div class="row-actions" style="opacity: 1; pointer-events: auto;">
+              <button class="row-action-btn" title="Edit"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+              <button class="row-action-btn" title="AI Tag"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="row-action-btn" title="Hide"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 4 -->
+          <div class="bookmark-row">
+            <div class="row-leading">
+              <div class="drag-handle" title="Drag to reorder">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+                  <circle cx="3" cy="3" r="1.2"></circle>
+                  <circle cx="7" cy="3" r="1.2"></circle>
+                  <circle cx="3" cy="7" r="1.2"></circle>
+                  <circle cx="7" cy="7" r="1.2"></circle>
+                  <circle cx="3" cy="11" r="1.2"></circle>
+                  <circle cx="7" cy="11" r="1.2"></circle>
+                </svg>
+              </div>
+              <div class="row-checkbox"></div>
+            </div>
+            <div class="row-content">
+              <div class="row-primary-line">
+                <span class="favicon-box">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="12 2 2 22 22 22"></polygon>
+                  </svg>
+                </span>
+                <span class="row-title">Web Workers & SharedArrayBuffer In Depth</span>
+              </div>
+              <div class="row-secondary-line">
+                <span class="row-host">developer.mozilla.org</span>
+                <span class="row-divider">/</span>
+                <div class="chip-container">
+                  <span class="neutral-chip">WebAPI</span>
+                  <span class="neutral-chip">Dev</span>
+                  <span class="neutral-chip">threading</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="row-action-btn" title="Hide"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
+              <button class="row-action-btn" title="AI Tag"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="row-action-btn" title="Edit"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 5 -->
+          <div class="bookmark-row">
+            <div class="row-leading">
+              <div class="drag-handle" title="Drag to reorder">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+                  <circle cx="3" cy="3" r="1.2"></circle>
+                  <circle cx="7" cy="3" r="1.2"></circle>
+                  <circle cx="3" cy="7" r="1.2"></circle>
+                  <circle cx="7" cy="7" r="1.2"></circle>
+                  <circle cx="3" cy="11" r="1.2"></circle>
+                  <circle cx="7" cy="11" r="1.2"></circle>
+                </svg>
+              </div>
+              <div class="row-checkbox"></div>
+            </div>
+            <div class="row-content">
+              <div class="row-primary-line">
+                <span class="favicon-box">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="12" cy="12" r="7"></circle>
+                  </svg>
+                </span>
+                <span class="row-title">TypeScript 5.4 Release Notes & Key Changes</span>
+              </div>
+              <div class="row-secondary-line">
+                <span class="row-host">devblogs.microsoft.com</span>
+                <span class="row-divider">/</span>
+                <div class="chip-container">
+                  <span class="neutral-chip">TypeScript</span>
+                  <span class="neutral-chip">Dev</span>
+                  <span class="neutral-chip">ts</span>
+                  <span class="neutral-chip overflow">+3</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="row-action-btn" title="Hide"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
+              <button class="row-action-btn" title="AI Tag"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="row-action-btn" title="Edit"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- GROUP 2: Design Systems & Tokens (With active drop target affordance) -->
+      <section class="group-card drop-hover">
+        <header class="group-header">
+          <div class="group-header-left">
+            <span class="collapse-caret">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </span>
+            <span class="group-icon" style="color: var(--ok);">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+              </svg>
+            </span>
+            <span class="group-name">Design Systems & Tokens</span>
+            <span class="badge-neutral">32</span>
+          </div>
+          <div class="group-header-right">
+            <span class="drop-zone-indicator">Drop to add tag</span>
+            <button class="group-action-btn" title="More options">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="1"></circle>
+                <circle cx="19" cy="12" r="1"></circle>
+                <circle cx="5" cy="12" r="1"></circle>
+              </svg>
+            </button>
+          </div>
+        </header>
+        <div class="group-body">
+          <!-- Row 1: Dragged lifted state -->
+          <div class="bookmark-row is-dragged">
+            <div class="row-leading">
+              <div class="drag-handle" style="opacity: 1;" title="Dragging...">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+                  <circle cx="3" cy="3" r="1.2"></circle>
+                  <circle cx="7" cy="3" r="1.2"></circle>
+                  <circle cx="3" cy="7" r="1.2"></circle>
+                  <circle cx="7" cy="7" r="1.2"></circle>
+                  <circle cx="3" cy="11" r="1.2"></circle>
+                  <circle cx="7" cy="11" r="1.2"></circle>
+                </svg>
+              </div>
+              <div class="row-checkbox"></div>
+            </div>
+            <div class="row-content">
+              <div class="row-primary-line">
+                <span class="favicon-box">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" color="var(--primary)">
+                    <circle cx="12" cy="12" r="8"></circle>
+                  </svg>
+                </span>
+                <span class="row-title" style="color: var(--primary); font-weight: 600;">Design Tokens Community Group Spec</span>
+              </div>
+              <div class="row-secondary-line">
+                <span class="row-host">w3c.github.io</span>
+                <span class="row-divider">/</span>
+                <div class="chip-container">
+                  <span class="neutral-chip">Standards</span>
+                  <span class="neutral-chip">Design</span>
+                  <span class="neutral-chip">tokens</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 2 -->
+          <div class="bookmark-row">
+            <div class="row-leading">
+              <div class="drag-handle" title="Drag to reorder">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+                  <circle cx="3" cy="3" r="1.2"></circle>
+                  <circle cx="7" cy="3" r="1.2"></circle>
+                  <circle cx="3" cy="7" r="1.2"></circle>
+                  <circle cx="7" cy="7" r="1.2"></circle>
+                  <circle cx="3" cy="11" r="1.2"></circle>
+                  <circle cx="7" cy="11" r="1.2"></circle>
+                </svg>
+              </div>
+              <div class="row-checkbox"></div>
+            </div>
+            <div class="row-content">
+              <div class="row-primary-line">
+                <span class="favicon-box">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                  </svg>
+                </span>
+                <span class="row-title">Radix Primitives: Accessible UI Primitives</span>
+              </div>
+              <div class="row-secondary-line">
+                <span class="row-host">radix-ui.com</span>
+                <span class="row-divider">/</span>
+                <div class="chip-container">
+                  <span class="neutral-chip">Components</span>
+                  <span class="neutral-chip">Design</span>
+                  <span class="neutral-chip">a11y</span>
+                  <span class="neutral-chip overflow">+1</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="row-action-btn" title="Hide"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
+              <button class="row-action-btn" title="AI Tag"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="row-action-btn" title="Edit"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 3 -->
+          <div class="bookmark-row">
+            <div class="row-leading">
+              <div class="drag-handle" title="Drag to reorder">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+                  <circle cx="3" cy="3" r="1.2"></circle>
+                  <circle cx="7" cy="3" r="1.2"></circle>
+                  <circle cx="3" cy="7" r="1.2"></circle>
+                  <circle cx="7" cy="7" r="1.2"></circle>
+                  <circle cx="3" cy="11" r="1.2"></circle>
+                  <circle cx="7" cy="11" r="1.2"></circle>
+                </svg>
+              </div>
+              <div class="row-checkbox"></div>
+            </div>
+            <div class="row-content">
+              <div class="row-primary-line">
+                <span class="favicon-box">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                  </svg>
+                </span>
+                <span class="row-title">Modern CSS Fluid Typography & Sizing</span>
+              </div>
+              <div class="row-secondary-line">
+                <span class="row-host">moderncss.dev</span>
+                <span class="row-divider">/</span>
+                <div class="chip-container">
+                  <span class="neutral-chip">CSS</span>
+                  <span class="neutral-chip">Design</span>
+                  <span class="neutral-chip">layout</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="row-action-btn" title="Hide"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
+              <button class="row-action-btn" title="AI Tag"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="row-action-btn" title="Edit"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 4 -->
+          <div class="bookmark-row">
+            <div class="row-leading">
+              <div class="drag-handle" title="Drag to reorder">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+                  <circle cx="3" cy="3" r="1.2"></circle>
+                  <circle cx="7" cy="3" r="1.2"></circle>
+                  <circle cx="3" cy="7" r="1.2"></circle>
+                  <circle cx="7" cy="7" r="1.2"></circle>
+                  <circle cx="3" cy="11" r="1.2"></circle>
+                  <circle cx="7" cy="11" r="1.2"></circle>
+                </svg>
+              </div>
+              <div class="row-checkbox"></div>
+            </div>
+            <div class="row-content">
+              <div class="row-primary-line">
+                <span class="favicon-box">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="12" cy="12" r="6"></circle>
+                  </svg>
+                </span>
+                <span class="row-title">Color Contrast Matrix & APCA Calculations</span>
+              </div>
+              <div class="row-secondary-line">
+                <span class="row-host">w3.org</span>
+                <span class="row-divider">/</span>
+                <div class="chip-container">
+                  <span class="neutral-chip">A11y</span>
+                  <span class="neutral-chip">Design</span>
+                  <span class="neutral-chip">contrast</span>
+                  <span class="neutral-chip overflow">+2</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="row-action-btn" title="Hide"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
+              <button class="row-action-btn" title="AI Tag"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="row-action-btn" title="Edit"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- GROUP 3: Security & Crypto -->
+      <section class="group-card">
+        <header class="group-header">
+          <div class="group-header-left">
+            <span class="collapse-caret">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </span>
+            <span class="group-icon" style="color: var(--warn);">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+              </svg>
+            </span>
+            <span class="group-name">Security & Crypto</span>
+            <span class="badge-neutral">19</span>
+          </div>
+          <div class="group-header-right">
+            <button class="group-action-btn" title="Add bookmark to group">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+            <button class="group-action-btn" title="More options">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="1"></circle>
+                <circle cx="19" cy="12" r="1"></circle>
+                <circle cx="5" cy="12" r="1"></circle>
+              </svg>
+            </button>
+          </div>
+        </header>
+        <div class="group-body">
+          <!-- Row 1 -->
+          <div class="bookmark-row">
+            <div class="row-leading">
+              <div class="drag-handle" title="Drag to reorder">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+                  <circle cx="3" cy="3" r="1.2"></circle>
+                  <circle cx="7" cy="3" r="1.2"></circle>
+                  <circle cx="3" cy="7" r="1.2"></circle>
+                  <circle cx="7" cy="7" r="1.2"></circle>
+                  <circle cx="3" cy="11" r="1.2"></circle>
+                  <circle cx="7" cy="11" r="1.2"></circle>
+                </svg>
+              </div>
+              <div class="row-checkbox"></div>
+            </div>
+            <div class="row-content">
+              <div class="row-primary-line">
+                <span class="favicon-box">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                  </svg>
+                </span>
+                <span class="row-title">WebCrypto SubtleCrypto AES-GCM Implementation</span>
+              </div>
+              <div class="row-secondary-line">
+                <span class="row-host">w3.org</span>
+                <span class="row-divider">/</span>
+                <div class="chip-container">
+                  <span class="neutral-chip">Cryptography</span>
+                  <span class="neutral-chip">Sec</span>
+                  <span class="neutral-chip">crypto</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="row-action-btn" title="Hide"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
+              <button class="row-action-btn" title="AI Tag"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="row-action-btn" title="Edit"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 2 -->
+          <div class="bookmark-row">
+            <div class="row-leading">
+              <div class="drag-handle" title="Drag to reorder">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+                  <circle cx="3" cy="3" r="1.2"></circle>
+                  <circle cx="7" cy="3" r="1.2"></circle>
+                  <circle cx="3" cy="7" r="1.2"></circle>
+                  <circle cx="7" cy="7" r="1.2"></circle>
+                  <circle cx="3" cy="11" r="1.2"></circle>
+                  <circle cx="7" cy="11" r="1.2"></circle>
+                </svg>
+              </div>
+              <div class="row-checkbox"></div>
+            </div>
+            <div class="row-content">
+              <div class="row-primary-line">
+                <span class="favicon-box">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                  </svg>
+                </span>
+                <span class="row-title">OWASP Top 10 API Security Risks 2024</span>
+              </div>
+              <div class="row-secondary-line">
+                <span class="row-host">owasp.org</span>
+                <span class="row-divider">/</span>
+                <div class="chip-container">
+                  <span class="neutral-chip">Auditing</span>
+                  <span class="neutral-chip">Sec</span>
+                  <span class="neutral-chip">api</span>
+                  <span class="neutral-chip overflow">+1</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="row-action-btn" title="Hide"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
+              <button class="row-action-btn" title="AI Tag"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="row-action-btn" title="Edit"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 3 -->
+          <div class="bookmark-row">
+            <div class="row-leading">
+              <div class="drag-handle" title="Drag to reorder">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+                  <circle cx="3" cy="3" r="1.2"></circle>
+                  <circle cx="7" cy="3" r="1.2"></circle>
+                  <circle cx="3" cy="7" r="1.2"></circle>
+                  <circle cx="7" cy="7" r="1.2"></circle>
+                  <circle cx="3" cy="11" r="1.2"></circle>
+                  <circle cx="7" cy="11" r="1.2"></circle>
+                </svg>
+              </div>
+              <div class="row-checkbox"></div>
+            </div>
+            <div class="row-content">
+              <div class="row-primary-line">
+                <span class="favicon-box">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="4" y="4" width="16" height="16" rx="4"></rect>
+                  </svg>
+                </span>
+                <span class="row-title">Content Security Policy (CSP) Directives Reference</span>
+              </div>
+              <div class="row-secondary-line">
+                <span class="row-host">csp.withgoogle.com</span>
+                <span class="row-divider">/</span>
+                <div class="chip-container">
+                  <span class="neutral-chip">Headers</span>
+                  <span class="neutral-chip">Sec</span>
+                  <span class="neutral-chip">browser</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="row-action-btn" title="Hide"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
+              <button class="row-action-btn" title="AI Tag"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="row-action-btn" title="Edit"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 4 -->
+          <div class="bookmark-row">
+            <div class="row-leading">
+              <div class="drag-handle" title="Drag to reorder">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+                  <circle cx="3" cy="3" r="1.2"></circle>
+                  <circle cx="7" cy="3" r="1.2"></circle>
+                  <circle cx="3" cy="7" r="1.2"></circle>
+                  <circle cx="7" cy="7" r="1.2"></circle>
+                  <circle cx="3" cy="11" r="1.2"></circle>
+                  <circle cx="7" cy="11" r="1.2"></circle>
+                </svg>
+              </div>
+              <div class="row-checkbox"></div>
+            </div>
+            <div class="row-content">
+              <div class="row-primary-line">
+                <span class="favicon-box">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="12" cy="12" r="8"></circle>
+                  </svg>
+                </span>
+                <span class="row-title">Passkeys & WebAuthn: Complete Developer Guide</span>
+              </div>
+              <div class="row-secondary-line">
+                <span class="row-host">fidoalliance.org</span>
+                <span class="row-divider">/</span>
+                <div class="chip-container">
+                  <span class="neutral-chip">Auth</span>
+                  <span class="neutral-chip">Sec</span>
+                  <span class="neutral-chip">passkeys</span>
+                  <span class="neutral-chip overflow">+2</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="row-action-btn" title="Hide"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
+              <button class="row-action-btn" title="AI Tag"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="row-action-btn" title="Edit"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- 4. Bulk Action Floating Bar (shown because 2 items are selected) -->
+    <div class="bulk-action-bar">
+      <div class="bulk-count">
+        <span class="bulk-count-badge">2</span>
+        <span>Selected</span>
+      </div>
+      <div class="bulk-buttons">
+        <button class="bulk-btn" title="Move selected to group or folder">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span>Move</span>
+        </button>
+        <button class="bulk-btn" title="Assign tag to selection">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+            <line x1="7" y1="7" x2="7.01" y2="7"></line>
+          </svg>
+          <span>Tag</span>
+        </button>
+        <button class="bulk-btn danger" title="Delete selected bookmarks">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function toggleTheme() {
+    const html = document.documentElement;
+    const currentTheme = html.getAttribute('data-theme');
+    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+    html.setAttribute('data-theme', newTheme);
+  }
+</script>
+
+</body>
+</html>

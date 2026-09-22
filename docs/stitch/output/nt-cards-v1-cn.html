@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>书签管家 · 新标签页（卡片）</title>
+  <style>
+    /* Design Tokens strictly following DESIGN.md */
+    :root {
+      /* Colors - Light Theme */
+      --bg: #f3f5f8;
+      --panel: #ffffff;
+      --sub: #f3f5f8;
+      --field: #ffffff;
+      --ink: #101828;
+      --ink-2: #344054;
+      --muted: #667085;
+      --line: #e7ebf0;
+      --line-2: #dce1e8;
+      --primary: #2563eb;
+      --primary-soft: #e9f1fe;
+      --danger: #be123c;
+      --warn: #b45309;
+      --ok: #059669;
+
+      /* Radii */
+      --radius-xs: 7px;
+      --radius-sm: 10px;
+      --radius: 14px;
+      --radius-lg: 18px;
+      --radius-pill: 999px;
+
+      /* Spacing */
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-6: 24px;
+
+      /* Elevation */
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+      --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
+      --shadow-card-hover: 0 6px 20px rgba(15, 23, 42, 0.09);
+      --shadow-dropdown: 0 12px 32px rgba(15, 23, 42, 0.12);
+
+      /* Typography */
+      --font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+      --font-mono: ui-monospace, 'SF Mono', Consolas, monospace, 'PingFang SC', 'Microsoft YaHei';
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1117;
+        --panel: #171b24;
+        --sub: #1b202b;
+        --field: #1e2430;
+        --ink: #f2f4f8;
+        --ink-2: #c3c9d4;
+        --muted: #8b93a3;
+        --line: #242a36;
+        --line-2: #303845;
+        --primary: #5da2f5;
+        --primary-soft: #1a2436;
+        --danger: #fb7185;
+        --warn: #fbbf24;
+        --ok: #34d399;
+
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+        --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.25);
+        --shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.45);
+        --shadow-dropdown: 0 16px 36px rgba(0, 0, 0, 0.55);
+      }
+    }
+
+    /* Manual theme toggle override support */
+    [data-theme="light"] {
+      --bg: #f3f5f8;
+      --panel: #ffffff;
+      --sub: #f3f5f8;
+      --field: #ffffff;
+      --ink: #101828;
+      --ink-2: #344054;
+      --muted: #667085;
+      --line: #e7ebf0;
+      --line-2: #dce1e8;
+      --primary: #2563eb;
+      --primary-soft: #e9f1fe;
+      --danger: #be123c;
+      --warn: #b45309;
+      --ok: #059669;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+      --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
+      --shadow-card-hover: 0 6px 20px rgba(15, 23, 42, 0.09);
+      --shadow-dropdown: 0 12px 32px rgba(15, 23, 42, 0.12);
+    }
+    [data-theme="dark"] {
+      --bg: #0f1117;
+      --panel: #171b24;
+      --sub: #1b202b;
+      --field: #1e2430;
+      --ink: #f2f4f8;
+      --ink-2: #c3c9d4;
+      --muted: #8b93a3;
+      --line: #242a36;
+      --line-2: #303845;
+      --primary: #5da2f5;
+      --primary-soft: #1a2436;
+      --danger: #fb7185;
+      --warn: #fbbf24;
+      --ok: #34d399;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+      --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.25);
+      --shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.45);
+      --shadow-dropdown: 0 16px 36px rgba(0, 0, 0, 0.55);
+    }
+
+    /* Reset & Base Setup */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-family);
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--ink);
+      background-color: var(--bg);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Common Button & Interactive Resets */
+    button, a, input {
+      font-family: inherit;
+      color: inherit;
+      border: none;
+      outline: none;
+      background: none;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    /* Sticky Shared Header Container */
+    .sticky-header-wrapper {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      background-color: var(--bg);
+      border-bottom: 1px solid var(--line);
+      padding: var(--space-4) var(--space-6) var(--space-3);
+    }
+
+    .header-content {
+      max-width: 1080px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    /* Top Row */
+    .top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-4);
+    }
+
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .brand-logo-badge {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-xs);
+      background: var(--primary-soft);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .brand-title {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+    }
+
+    .version-chip {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      padding: 1px var(--space-2);
+      border-radius: var(--radius-pill);
+      background: var(--sub);
+      color: var(--muted);
+      border: 1px solid var(--line);
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+
+    .stat-count {
+      font-size: 13px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .text-link {
+      font-size: 13px;
+      color: var(--ink-2);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: 4px var(--space-2);
+      border-radius: var(--radius-xs);
+      transition: color 120ms ease, background-color 120ms ease;
+    }
+    .text-link:hover {
+      color: var(--ink);
+      background: var(--line);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px var(--space-3);
+      font-size: 13px;
+      font-weight: 500;
+      border-radius: var(--radius-sm);
+      background: var(--panel);
+      color: var(--ink-2);
+      border: 1px solid var(--line-2);
+      box-shadow: var(--shadow-sm);
+      transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+      white-space: nowrap;
+    }
+    .btn-secondary:hover {
+      background: var(--sub);
+      color: var(--ink);
+      border-color: var(--line);
+    }
+
+    .view-toggle {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px;
+      border-radius: var(--radius-sm);
+      background: var(--sub);
+      border: 1px solid var(--line-2);
+      gap: 2px;
+    }
+
+    .toggle-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-xs);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      transition: background 120ms ease, color 120ms ease;
+    }
+    .toggle-btn:hover {
+      color: var(--ink);
+    }
+    .toggle-btn.active {
+      background: var(--panel);
+      color: var(--primary);
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* Search Bar Row */
+    .search-row {
+      position: relative;
+    }
+
+    .search-bar-shell {
+      width: 100%;
+      height: 44px;
+      background: var(--field);
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: center;
+      padding: 0 var(--space-2) 0 6px;
+      gap: var(--space-2);
+      box-shadow: var(--shadow-sm);
+      transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+    .search-bar-shell:focus-within {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-soft);
+    }
+
+    /* Search Engine Picker */
+    .engine-picker-wrapper {
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    .engine-picker-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      height: 32px;
+      padding: 0 6px;
+      border-radius: var(--radius-xs);
+      background: var(--sub);
+      border: 1px solid var(--line);
+      color: var(--ink-2);
+      font-size: 11px;
+      font-weight: 500;
+      transition: background 120ms ease;
+    }
+    .engine-picker-btn:hover {
+      background: var(--line);
+    }
+
+    .engine-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: #ffffff;
+      background: var(--primary);
+    }
+
+    /* Engine Dropdown Menu */
+    .engine-menu {
+      position: absolute;
+      top: calc(100% + var(--space-1));
+      left: 0;
+      width: 168px;
+      background: var(--panel);
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-dropdown);
+      padding: var(--space-1);
+      display: none;
+      flex-direction: column;
+      gap: 2px;
+      z-index: 90;
+    }
+    .engine-picker-wrapper:focus-within .engine-menu,
+    .engine-picker-wrapper.open .engine-menu {
+      display: flex;
+    }
+
+    .engine-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px var(--space-2);
+      border-radius: var(--radius-xs);
+      font-size: 13px;
+      color: var(--ink-2);
+      width: 100%;
+      text-align: left;
+      transition: background 120ms ease;
+    }
+    .engine-item:hover {
+      background: var(--sub);
+      color: var(--ink);
+    }
+    .engine-item.selected {
+      color: var(--primary);
+      font-weight: 500;
+      background: var(--primary-soft);
+    }
+    .engine-item-left {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    /* Search Input Field */
+    .search-input {
+      flex: 1;
+      height: 100%;
+      font-size: 13px;
+      color: var(--ink);
+      border: none;
+      outline: none;
+      background: transparent;
+      padding: 0 var(--space-1);
+    }
+    .search-input::placeholder {
+      color: var(--muted);
+    }
+
+    .search-actions-cluster {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      flex-shrink: 0;
+    }
+
+    .help-dot {
+      width: 20px;
+      height: 20px;
+      border-radius: var(--radius-pill);
+      background: var(--sub);
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1px solid var(--line);
+      cursor: help;
+      transition: color 120ms ease, border-color 120ms ease;
+    }
+    .help-dot:hover {
+      color: var(--ink);
+      border-color: var(--line-2);
+    }
+
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-xs);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      transition: color 120ms ease, background 120ms ease;
+    }
+    .icon-btn:hover {
+      color: var(--ink);
+      background: var(--sub);
+    }
+
+    .match-count-chip {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-pill);
+      background: var(--primary-soft);
+      color: var(--primary);
+      white-space: nowrap;
+    }
+
+    .clear-filter-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+      padding: 2px 6px;
+      border-radius: var(--radius-xs);
+      transition: color 120ms ease, background 120ms ease;
+      white-space: nowrap;
+    }
+    .clear-filter-btn:hover {
+      color: var(--danger);
+      background: var(--sub);
+    }
+
+    .input-clear-btn {
+      width: 24px;
+      height: 24px;
+      border-radius: var(--radius-pill);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      transition: color 120ms ease, background 120ms ease;
+    }
+    .input-clear-btn:hover {
+      color: var(--ink);
+      background: var(--sub);
+    }
+
+    /* Tag Filter Row */
+    .tag-filter-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      padding-top: var(--space-1);
+    }
+
+    .tag-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 var(--space-3);
+      border-radius: var(--radius-pill);
+      background: var(--sub);
+      color: var(--ink-2);
+      border: 1px solid var(--line);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+    }
+    .tag-chip:hover {
+      background: var(--line);
+      color: var(--ink);
+    }
+    .tag-chip.active {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+    .tag-chip.active .chip-count {
+      opacity: 0.85;
+      color: #ffffff;
+    }
+
+    .chip-count {
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--muted);
+    }
+
+    /* Scrollable Flat Result Area */
+    .main-viewport {
+      flex: 1;
+      width: 100%;
+      padding: var(--space-6) var(--space-6) var(--space-6);
+      overflow-y: auto;
+    }
+
+    .content-container {
+      max-width: 1080px;
+      margin: 0 auto;
+    }
+
+    /* Responsive Card Grid */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: var(--space-4);
+    }
+
+    /* Bookmark Card Component */
+    .bookmark-card {
+      position: relative;
+      height: 112px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: var(--space-3);
+      display: flex;
+      gap: var(--space-3);
+      box-shadow: var(--shadow-card);
+      transition: box-shadow 160ms cubic-bezier(.2, .8, .2, 1),
+                  border-color 160ms cubic-bezier(.2, .8, .2, 1);
+      text-decoration: none;
+      outline: none;
+    }
+    .bookmark-card:hover {
+      box-shadow: var(--shadow-card-hover);
+      border-color: var(--line-2);
+    }
+    .bookmark-card:focus-visible {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-soft);
+    }
+
+    /* Favicon Tile (48x48) */
+    .favicon-tile {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-sm);
+      background: var(--sub);
+      border: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--ink-2);
+      user-select: none;
+    }
+    /* Stable colored fallback tiles derived from host domain */
+    .favicon-tile.fb-r { background: var(--sub); color: var(--primary); border-color: var(--line-2); }
+    .favicon-tile.fb-w { background: var(--sub); color: var(--ink-2); border-color: var(--line-2); }
+    .favicon-tile.fb-s { background: var(--sub); color: var(--ok); border-color: var(--line-2); }
+    .favicon-tile.fb-m { background: var(--sub); color: var(--ink); border-color: var(--line-2); }
+    .favicon-tile.fb-c { background: var(--sub); color: var(--primary); border-color: var(--line-2); }
+    .favicon-tile.fb-d { background: var(--sub); color: var(--ink-2); border-color: var(--line-2); }
+    .favicon-tile.fb-o { background: var(--sub); color: var(--warn); border-color: var(--line-2); }
+    .favicon-tile.fb-p { background: var(--sub); color: var(--primary); border-color: var(--line-2); }
+    .favicon-tile.fb-t { background: var(--sub); color: var(--ink-2); border-color: var(--line-2); }
+
+    /* Card Content Hierarchy */
+    .card-body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .card-text-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.35;
+      color: var(--ink);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding-right: var(--space-4); /* Reserve breathing room for actions on hover */
+    }
+
+    .card-host {
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-family: var(--font-mono);
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+
+    /* Card Chips Row */
+    .card-tags {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      overflow: hidden;
+      margin-top: 4px;
+    }
+
+    .mini-tag {
+      font-size: 11px;
+      height: 20px;
+      padding: 0 6px;
+      border-radius: var(--radius-pill);
+      background: var(--sub);
+      color: var(--ink-2);
+      border: 1px solid var(--line);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 90px;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .mini-tag-overflow {
+      font-size: 11px;
+      height: 20px;
+      padding: 0 5px;
+      border-radius: var(--radius-pill);
+      background: var(--sub);
+      color: var(--muted);
+      border: 1px solid var(--line);
+      display: inline-flex;
+      align-items: center;
+    }
+
+    /* Card Hover Action Bar (Top-Right Corner) */
+    .card-actions {
+      position: absolute;
+      top: var(--space-2);
+      right: var(--space-2);
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      background: var(--panel);
+      padding: 2px;
+      border-radius: var(--radius-xs);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-sm);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 120ms ease;
+    }
+
+    .bookmark-card:hover .card-actions,
+    .bookmark-card:focus-within .card-actions {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Touch fallback: visible on touch devices */
+    @media (hover: none) {
+      .card-actions {
+        opacity: 1;
+        pointer-events: auto;
+      }
+    }
+
+    .card-action-btn {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      transition: color 120ms ease, background 120ms ease;
+    }
+    .card-action-btn:hover {
+      color: var(--ink);
+      background: var(--sub);
+    }
+    .card-action-btn.btn-del:hover {
+      color: var(--danger);
+      background: var(--sub);
+    }
+
+    /* SVG Icon Helpers */
+    .icon-svg {
+      width: 14px;
+      height: 14px;
+      stroke-width: 1.75;
+      stroke: currentColor;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .icon-svg-sm {
+      width: 12px;
+      height: 12px;
+      stroke-width: 1.75;
+      stroke: currentColor;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .icon-svg-lg {
+      width: 16px;
+      height: 16px;
+      stroke-width: 1.75;
+      stroke: currentColor;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* Four-pointed sparkle: plump, rounded star with concave sides */
+    .sparkle-icon {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+      stroke: none;
+    }
+
+    /* Minimal Floating Quick Bar */
+    .footer-bar {
+      position: fixed;
+      bottom: var(--space-4);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--panel);
+      border: 1px solid var(--line-2);
+      box-shadow: var(--shadow-dropdown);
+      border-radius: var(--radius-pill);
+      padding: 6px var(--space-4);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      z-index: 40;
+    }
+    .footer-hint {
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+    .kbd {
+      padding: 1px 5px;
+      background: var(--sub);
+      border: 1px solid var(--line-2);
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--ink-2);
+    }
+  </style>
+<style>/* ==== DESIGN FIX : 评审反馈修正 ==== */
+    /* ==== 修正 4：复选框统一为 16px 方形 ==== */
+    input[type="checkbox"], .checkbox, .item-checkbox,
+    .custom-checkbox, .row-checkbox {
+      width: 16px; height: 16px; border-radius: 2px;
+      accent-color: var(--primary); flex-shrink: 0;
+    }
+    .custom-checkbox { border-width: 1px; }
+    /* ==== 修正 5/6：搜索框内元素更自然 + 两视图统一 ==== */
+    .search-bar, .search-bar-shell {
+      padding: 0 var(--space-2) 0 6px;
+      gap: var(--space-2);
+      transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+    .search-bar:focus-within, .search-bar-shell:focus-within {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-soft);
+    }
+    .engine-picker-btn, .engine-picker-wrapper .engine-picker-btn {
+      height: 32px; padding: 0 6px; border-radius: var(--radius-xs);
+      font-size: 11px;
+      background: transparent; border-color: transparent;
+    }
+    .engine-picker-btn:hover {
+      background: var(--sub); border-color: var(--line);
+    }
+    /* 官方 logo 取代字母色块（两屏类名不同） */
+    .engine-icon, .engine-badge {
+      width: 18px; height: 18px;
+      border-radius: 4px;
+      background: transparent !important;
+      border: none !important;
+      color: inherit;
+      object-fit: contain;
+      display: block;
+      flex-shrink: 0;
+    }
+    .match-count, .result-count, .count-badge, .search-count, .results-count {
+      background: transparent; border: none;
+      color: var(--muted); font-size: 11px; font-weight: 400;
+      padding: 0 var(--space-1);
+    }
+
+    /* ==== 修正 2b：补齐引擎下拉菜单（两视图一致）====
+       注意：cards 原用 var(--shadow-dropdown)，项目 tokens.css 没有该变量，改用 --shadow-lg */
+    .engine-menu {
+      position: absolute;
+      top: calc(100% + var(--space-1));
+      left: 0;
+      width: 168px;
+      background: var(--panel);
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-lg);
+      padding: var(--space-1);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      z-index: 90;
+    }
+    .engine-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px var(--space-2);
+      border: none; background: transparent;
+      border-radius: var(--radius-xs);
+      font-size: 13px; color: var(--ink-2);
+      width: 100%; text-align: left; cursor: pointer;
+      transition: background 120ms ease;
+    }
+    .engine-item:hover { background: var(--sub); }
+    .engine-item-left { display: flex; align-items: center; gap: var(--space-2); }
+    .engine-item.selected {
+      color: var(--primary); font-weight: 500; background: var(--primary-soft);
+    }
+    .icon-svg-sm {
+      width: 12px; height: 12px;
+      fill: none; stroke: currentColor; stroke-width: 1.75;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    /* ==== 修正 2：内容宽度统一 1080px（以卡片视图为准）==== */
+    .header-container, .main-content, .header-content, .content-container {
+      max-width: 1080px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- STICKY SHARED HEADER -->
+  <header class="sticky-header-wrapper" role="banner">
+    <div class="header-content">
+
+      <!-- 1. Top Row -->
+      <div class="top-row">
+        <div class="brand-section">
+          <div class="brand-logo-badge" aria-hidden="true">
+            <!-- Bookmark outline icon -->
+            <svg class="icon-svg" viewBox="0 0 24 24">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </div>
+          <h1 class="brand-title">书签管家</h1>
+          <span class="version-chip">MV3</span>
+        </div>
+
+        <div class="top-actions">
+          <span class="stat-count">284 bookmarks</span>
+          <a href="#" class="text-link" title="View Source">
+            <svg class="icon-svg-sm" viewBox="0 0 24 24">
+              <circle cx="18" cy="5" r="3"></circle>
+              <circle cx="6" cy="12" r="3"></circle>
+              <circle cx="18" cy="19" r="3"></circle>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+            </svg>
+            来源
+          </a>
+
+          <button class="btn-secondary" type="button">
+            <!-- Sidebar panel icon -->
+            <svg class="icon-svg" viewBox="0 0 24 24">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="9" y1="3" x2="9" y2="21"></line>
+            </svg>
+            打开管理面板
+          </button>
+
+          <!-- 2-button view toggle: grid active, list inactive -->
+          <div class="view-toggle" role="group" aria-label="View toggle">
+            <button class="toggle-btn active" type="button" aria-pressed="true" title="卡片视图">
+              <!-- Grid icon -->
+              <svg class="icon-svg" viewBox="0 0 24 24">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+              </svg>
+            </button>
+            <button class="toggle-btn" type="button" aria-pressed="false" title="Compact List View">
+              <!-- List icon -->
+              <svg class="icon-svg" viewBox="0 0 24 24">
+                <line x1="8" y1="6" x2="21" y2="6"></line>
+                <line x1="8" y1="12" x2="21" y2="12"></line>
+                <line x1="8" y1="18" x2="21" y2="18"></line>
+                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                <line x1="3" y1="18" x2="3.01" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Search Bar -->
+      <div class="search-row">
+        <div class="search-bar-shell" role="search">
+          
+          <!-- Search-Engine Picker Button & Dropdown -->
+          <div class="engine-picker-wrapper" id="enginePicker">
+            <button class="engine-picker-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Select Search Engine">
+              <img class="engine-icon" src="../../../icons/engines/google.svg" alt="" />
+              <svg class="icon-svg-sm" viewBox="0 0 24 24" style="width:10px;height:10px;">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+
+            <!-- Engines list -->
+            <div class="engine-menu" role="menu">
+              <button class="engine-item selected" type="button" role="menuitem">
+                <div class="engine-item-left">
+                  <img class="engine-icon" src="../../../icons/engines/google.svg" alt="" />
+                  <span>Google</span>
+                </div>
+                <!-- Checkmark -->
+                <svg class="icon-svg-sm" viewBox="0 0 24 24">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </button>
+
+              <button class="engine-item" type="button" role="menuitem">
+                <div class="engine-item-left">
+                  <img class="engine-icon" src="../../../icons/engines/bing.svg" alt="" />
+                  <span>Bing</span>
+                </div>
+              </button>
+
+              <button class="engine-item" type="button" role="menuitem">
+                <div class="engine-item-left">
+                  <img class="engine-icon" src="../../../icons/engines/baidu.svg" alt="" />
+                  <span>Baidu</span>
+                </div>
+              </button>
+
+              <button class="engine-item" type="button" role="menuitem">
+                <div class="engine-item-left">
+                  <img class="engine-icon" src="../../../icons/engines/duckduckgo.svg" alt="" />
+                  <span>DuckDuckGo</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Search Input -->
+          <input 
+            type="search" 
+            class="search-input" 
+            placeholder="Search bookmarks, Enter to search web..." 
+            value="standards"
+            aria-label="Search bookmarks or query web"
+          />
+
+          <!-- Cluster Actions inside search bar -->
+          <div class="search-actions-cluster">
+            <span class="help-dot" title="Keyboard Shortcuts & Search Syntax">?</span>
+            
+            <button class="icon-btn" type="button" title="按文件夹筛选">
+              <svg class="icon-svg" viewBox="0 0 24 24">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </button>
+
+            <!-- Result count chip (shown when filtering) -->
+            <span class="match-count-chip">12 个匹配</span>
+
+            <!-- Clear filters button -->
+            <button class="clear-filter-btn" type="button">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+              清除筛选
+            </button>
+
+            <!-- Input Clear Button -->
+            <button class="input-clear-btn" type="button" title="Clear search text">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 3. Tag Filter Row (Neutral styling, only active is primary) -->
+      <nav class="tag-filter-row" aria-label="Tag filters">
+        <button class="tag-chip" type="button">
+          <span>全部</span>
+          <span class="chip-count">284</span>
+        </button>
+
+        <button class="tag-chip active" type="button">
+          <span>规范</span>
+          <span class="chip-count">42</span>
+        </button>
+
+        <button class="tag-chip" type="button">
+          <span>设计</span>
+          <span class="chip-count">38</span>
+        </button>
+
+        <button class="tag-chip" type="button">
+          <span>开发</span>
+          <span class="chip-count">29</span>
+        </button>
+
+        <button class="tag-chip" type="button">
+          <span>安全</span>
+          <span class="chip-count">24</span>
+        </button>
+
+        <button class="tag-chip" type="button">
+          <span>网络</span>
+          <span class="chip-count">19</span>
+        </button>
+
+        <button class="tag-chip" type="button">
+          <span>Web API</span>
+          <span class="chip-count">16</span>
+        </button>
+
+        <button class="tag-chip" type="button">
+          <span>令牌</span>
+          <span class="chip-count">14</span>
+        </button>
+
+        <button class="tag-chip" type="button">
+          <span>数据库</span>
+          <span class="chip-count">11</span>
+        </button>
+
+        <button class="tag-chip" type="button">
+          <span>无障碍</span>
+          <span class="chip-count">9</span>
+        </button>
+
+        <button class="tag-chip" type="button">
+          <span>架构</span>
+          <span class="chip-count">8</span>
+        </button>
+      </nav>
+
+    </div>
+  </header>
+
+  <!-- SCROLLABLE RESULT AREA: FLAT BOOKMARK CARD GRID (1080px max-width, no folder grouping) -->
+  <main class="main-viewport">
+    <div class="content-container">
+      
+      <div class="cards-grid">
+
+        <!-- Card 1 -->
+        <article class="bookmark-card">
+          <div class="favicon-tile fb-r" aria-hidden="true">R</div>
+          <div class="card-body">
+            <div class="card-text-stack">
+              <h2 class="card-title" title="RFC 9110: HTTP Semantics & Status Code Specification">
+                RFC 9110: HTTP Semantics &amp; Status Code Specification
+              </h2>
+              <span class="card-host">
+                <svg class="icon-svg-sm" viewBox="0 0 24 24" style="width:10px;height:10px;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                rfc-editor.org
+              </span>
+            </div>
+            <div class="card-tags">
+              <span class="mini-tag">规范</span>
+              <span class="mini-tag">网络</span>
+              <span class="mini-tag-overflow">+2</span>
+            </div>
+          </div>
+          <!-- Hover Action Buttons: copy / hide / edit / delete -->
+          <div class="card-actions">
+            <button class="card-action-btn" type="button" title="Copy URL">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Hide Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Edit Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </button>
+            <button class="card-action-btn btn-del" type="button" title="Delete Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </article>
+
+        <!-- Card 2 -->
+        <article class="bookmark-card">
+          <div class="favicon-tile fb-w" aria-hidden="true">W</div>
+          <div class="card-body">
+            <div class="card-text-stack">
+              <h2 class="card-title" title="设计令牌社区组规范（DTCG 格式 2024.1）">
+                设计令牌社区组规范（DTCG 格式 2024.1）
+              </h2>
+              <span class="card-host">
+                <svg class="icon-svg-sm" viewBox="0 0 24 24" style="width:10px;height:10px;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                w3c.github.io
+              </span>
+            </div>
+            <div class="card-tags">
+              <span class="mini-tag">令牌</span>
+              <span class="mini-tag">W3C</span>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="card-action-btn" type="button" title="Copy URL">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Hide Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Edit Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </button>
+            <button class="card-action-btn btn-del" type="button" title="Delete Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </article>
+
+        <!-- Card 3 -->
+        <article class="bookmark-card">
+          <div class="favicon-tile fb-s" aria-hidden="true">S</div>
+          <div class="card-body">
+            <div class="card-text-stack">
+              <h2 class="card-title" title="SQLite in the Browser: Official WASM Build & Persistent OPFS">
+                SQLite in the Browser: Official WASM Build &amp; Persistent OPFS
+              </h2>
+              <span class="card-host">
+                <svg class="icon-svg-sm" viewBox="0 0 24 24" style="width:10px;height:10px;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                sqlite.org
+              </span>
+            </div>
+            <div class="card-tags">
+              <span class="mini-tag">数据库</span>
+              <span class="mini-tag">WASM</span>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="card-action-btn" type="button" title="Copy URL">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Hide Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Edit Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </button>
+            <button class="card-action-btn btn-del" type="button" title="Delete Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </article>
+
+        <!-- Card 4 -->
+        <article class="bookmark-card">
+          <div class="favicon-tile fb-r" aria-hidden="true">R</div>
+          <div class="card-body">
+            <div class="card-text-stack">
+              <h2 class="card-title" title="Radix Primitives：无样式无障碍组件指南">
+                Radix Primitives：无样式无障碍组件指南
+              </h2>
+              <span class="card-host">
+                <svg class="icon-svg-sm" viewBox="0 0 24 24" style="width:10px;height:10px;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                radix-ui.com
+              </span>
+            </div>
+            <div class="card-tags">
+              <span class="mini-tag">组件</span>
+              <span class="mini-tag">无障碍</span>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="card-action-btn" type="button" title="Copy URL">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Hide Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Edit Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </button>
+            <button class="card-action-btn btn-del" type="button" title="Delete Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </article>
+
+        <!-- Card 5 -->
+        <article class="bookmark-card">
+          <div class="favicon-tile fb-m" aria-hidden="true">M</div>
+          <div class="card-body">
+            <div class="card-text-stack">
+              <h2 class="card-title" title="Patterns of Distributed Systems Architecture Guide">
+                Patterns of Distributed Systems Architecture Guide
+              </h2>
+              <span class="card-host">
+                <svg class="icon-svg-sm" viewBox="0 0 24 24" style="width:10px;height:10px;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                martinfowler.com
+              </span>
+            </div>
+            <div class="card-tags">
+              <span class="mini-tag">架构</span>
+              <span class="mini-tag">后端</span>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="card-action-btn" type="button" title="Copy URL">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Hide Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Edit Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </button>
+            <button class="card-action-btn btn-del" type="button" title="Delete Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </article>
+
+        <!-- Card 6 -->
+        <article class="bookmark-card">
+          <div class="favicon-tile fb-d" aria-hidden="true">D</div>
+          <div class="card-body">
+            <div class="card-text-stack">
+              <h2 class="card-title" title="Web Workers & SharedArrayBuffer Threading Guidelines">
+                Web Workers &amp; SharedArrayBuffer Threading Guidelines
+              </h2>
+              <span class="card-host">
+                <svg class="icon-svg-sm" viewBox="0 0 24 24" style="width:10px;height:10px;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                developer.mozilla.org
+              </span>
+            </div>
+            <div class="card-tags">
+              <span class="mini-tag">Web API</span>
+              <span class="mini-tag">线程</span>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="card-action-btn" type="button" title="Copy URL">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Hide Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Edit Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </button>
+            <button class="card-action-btn btn-del" type="button" title="Delete Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </article>
+
+        <!-- Card 7 -->
+        <article class="bookmark-card">
+          <div class="favicon-tile fb-m" aria-hidden="true">M</div>
+          <div class="card-body">
+            <div class="card-text-stack">
+              <h2 class="card-title" title="Modern CSS Fluid Typography Calculator & Clamping Formula">
+                Modern CSS Fluid Typography Calculator &amp; Clamping Formula
+              </h2>
+              <span class="card-host">
+                <svg class="icon-svg-sm" viewBox="0 0 24 24" style="width:10px;height:10px;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                moderncss.dev
+              </span>
+            </div>
+            <div class="card-tags">
+              <span class="mini-tag">样式</span>
+              <span class="mini-tag">排版</span>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="card-action-btn" type="button" title="Copy URL">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Hide Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Edit Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </button>
+            <button class="card-action-btn btn-del" type="button" title="Delete Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </article>
+
+        <!-- Card 8 -->
+        <article class="bookmark-card">
+          <div class="favicon-tile fb-c" aria-hidden="true">C</div>
+          <div class="card-body">
+            <div class="card-text-stack">
+              <h2 class="card-title" title="色彩对比度矩阵与 WCAG 算法检查器">
+                Color Contrast Matrix &amp; WCAG Contrast Algorithm Checker
+              </h2>
+              <span class="card-host">
+                <svg class="icon-svg-sm" viewBox="0 0 24 24" style="width:10px;height:10px;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                w3.org
+              </span>
+            </div>
+            <div class="card-tags">
+              <span class="mini-tag">对比度</span>
+              <span class="mini-tag">无障碍</span>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="card-action-btn" type="button" title="Copy URL">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Hide Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Edit Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </button>
+            <button class="card-action-btn btn-del" type="button" title="Delete Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </article>
+
+        <!-- Card 9 -->
+        <article class="bookmark-card">
+          <div class="favicon-tile fb-w" aria-hidden="true">W</div>
+          <div class="card-body">
+            <div class="card-text-stack">
+              <h2 class="card-title" title="WebCrypto SubtleCrypto API 参考文档">
+                WebCrypto SubtleCrypto API 参考文档
+              </h2>
+              <span class="card-host">
+                <svg class="icon-svg-sm" viewBox="0 0 24 24" style="width:10px;height:10px;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                w3.org
+              </span>
+            </div>
+            <div class="card-tags">
+              <span class="mini-tag">安全</span>
+              <span class="mini-tag">加密</span>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="card-action-btn" type="button" title="Copy URL">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Hide Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Edit Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </button>
+            <button class="card-action-btn btn-del" type="button" title="Delete Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </article>
+
+        <!-- Card 10 -->
+        <article class="bookmark-card">
+          <div class="favicon-tile fb-o" aria-hidden="true">O</div>
+          <div class="card-body">
+            <div class="card-text-stack">
+              <h2 class="card-title" title="OWASP Top 10 API Security Risks & Mitigation Roadmap">
+                OWASP Top 10 API Security Risks &amp; Mitigation Roadmap
+              </h2>
+              <span class="card-host">
+                <svg class="icon-svg-sm" viewBox="0 0 24 24" style="width:10px;height:10px;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                owasp.org
+              </span>
+            </div>
+            <div class="card-tags">
+              <span class="mini-tag">审计</span>
+              <span class="mini-tag">接口</span>
+              <span class="mini-tag-overflow">+1</span>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="card-action-btn" type="button" title="Copy URL">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Hide Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Edit Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </button>
+            <button class="card-action-btn btn-del" type="button" title="Delete Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </article>
+
+        <!-- Card 11 -->
+        <article class="bookmark-card">
+          <div class="favicon-tile fb-c" aria-hidden="true">C</div>
+          <div class="card-body">
+            <div class="card-text-stack">
+              <h2 class="card-title" title="内容安全策略（CSP）指令参考">
+                内容安全策略（CSP）指令参考
+              </h2>
+              <span class="card-host">
+                <svg class="icon-svg-sm" viewBox="0 0 24 24" style="width:10px;height:10px;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                csp.withgoogle.com
+              </span>
+            </div>
+            <div class="card-tags">
+              <span class="mini-tag">请求头</span>
+              <span class="mini-tag">浏览器</span>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="card-action-btn" type="button" title="Copy URL">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Hide Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Edit Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </button>
+            <button class="card-action-btn btn-del" type="button" title="Delete Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </article>
+
+        <!-- Card 12 -->
+        <article class="bookmark-card">
+          <div class="favicon-tile fb-p" aria-hidden="true">P</div>
+          <div class="card-body">
+            <div class="card-text-stack">
+              <h2 class="card-title" title="Passkeys & WebAuthn Integration Patterns (FIDO Alliance)">
+                Passkeys &amp; WebAuthn Integration Patterns (FIDO Alliance)
+              </h2>
+              <span class="card-host">
+                <svg class="icon-svg-sm" viewBox="0 0 24 24" style="width:10px;height:10px;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                fidoalliance.org
+              </span>
+            </div>
+            <div class="card-tags">
+              <span class="mini-tag">认证</span>
+              <span class="mini-tag">通行密钥</span>
+              <span class="mini-tag-overflow">+2</span>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="card-action-btn" type="button" title="Copy URL">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Hide Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            </button>
+            <button class="card-action-btn" type="button" title="Edit Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </button>
+            <button class="card-action-btn btn-del" type="button" title="Delete Bookmark">
+              <svg class="icon-svg-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </article>
+
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Non-intrusive Quick Key Indicator -->
+  <div class="footer-bar" role="status">
+    <div class="footer-hint">
+      <span class="kbd">/</span>
+      <span>聚焦搜索</span>
+    </div>
+    <span style="width: 1px; height: 12px; background: var(--line-2);"></span>
+    <div class="footer-hint">
+      <span class="kbd">Tab</span>
+      <span>导航</span>
+    </div>
+    <span style="width: 1px; height: 12px; background: var(--line-2);"></span>
+    <div class="footer-hint">
+      <span class="kbd">Esc</span>
+      <span>清空</span>
+    </div>
+  </div>
+
+  <script>
+    // Engine selector dropdown toggle behavior
+    const enginePicker = document.getElementById('enginePicker');
+    if (enginePicker) {
+      const btn = enginePicker.querySelector('.engine-picker-btn');
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = enginePicker.classList.toggle('open');
+        btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!enginePicker.contains(e.target)) {
+          enginePicker.classList.remove('open');
+          btn.setAttribute('aria-expanded', 'false');
+        }
+      });
+
+      const engineItems = enginePicker.querySelectorAll('.engine-item');
+      engineItems.forEach(item => {
+        item.addEventListener('click', (e) => {
+          e.stopPropagation();
+          engineItems.forEach(i => i.classList.remove('selected'));
+          item.classList.add('selected');
+          const engineLetter = item.querySelector('.engine-icon').textContent;
+          const bg = item.querySelector('.engine-icon').style.backgroundColor;
+          const mainIcon = btn.querySelector('.engine-icon');
+          mainIcon.textContent = engineLetter;
+          mainIcon.style.backgroundColor = bg;
+          enginePicker.classList.remove('open');
+          btn.setAttribute('aria-expanded', 'false');
+        });
+      });
+    }
+  </script>
+</body>
+</html>
+
+
+
+
+

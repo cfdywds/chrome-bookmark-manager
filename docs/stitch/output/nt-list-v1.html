@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bookmark Manager - Compact List View</title>
+<style>
+  /* === DESIGN SYSTEM TOKENS === */
+  :root {
+    /* Color Palette - Light Mode (Default) */
+    --bg: #f3f5f8;
+    --panel: #ffffff;
+    --sub: #f3f5f8;
+    --field: #ffffff;
+    --ink: #101828;
+    --ink-2: #344054;
+    --muted: #667085;
+    --line: #e7ebf0;
+    --line-2: #dce1e8;
+    --primary: #2563eb;
+    --primary-soft: #e9f1fe;
+    --danger: #be123c;
+    --warn: #b45309;
+    --ok: #059669;
+
+    /* Corner Radii */
+    --radius-xs: 7px;
+    --radius-sm: 10px;
+    --radius: 14px;
+    --radius-lg: 18px;
+    --radius-pill: 999px;
+
+    /* Spacing */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-6: 24px;
+
+    /* Elevation */
+    --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+    --shadow-sticky: 0 8px 20px rgba(16, 24, 40, 0.06);
+
+    /* Typography */
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+
+  /* Automatic OS Dark Theme */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1117;
+      --panel: #171b24;
+      --sub: #1b202b;
+      --field: #1e2430;
+      --ink: #f2f4f8;
+      --ink-2: #c3c9d4;
+      --muted: #8b93a3;
+      --line: #242a36;
+      --line-2: #303845;
+      --primary: #5da2f5;
+      --primary-soft: #1a2436;
+      --danger: #fb7185;
+      --warn: #fbbf24;
+      --ok: #34d399;
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+      --shadow-sticky: 0 8px 24px rgba(0, 0, 0, 0.55);
+    }
+  }
+
+  /* Base Reset & Typography */
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+    padding-bottom: var(--space-6);
+  }
+
+  /* Tabular Numerals for Scannable Counters */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Sticky Header Wrapper */
+  .header-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background-color: var(--bg);
+    border-bottom: 1px solid var(--line);
+    box-shadow: var(--shadow-sticky);
+    padding: var(--space-3) var(--space-6) var(--space-3);
+  }
+
+  .header-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  /* Top Row */
+  .top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .brand-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .brand-icon {
+    width: 28px;
+    height: 28px;
+    background-color: var(--primary-soft);
+    color: var(--primary);
+    border-radius: var(--radius-xs);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .brand-icon svg {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .brand-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+
+  .version-chip {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    background-color: var(--sub);
+    border: 1px solid var(--line-2);
+    padding: 1px 6px;
+    border-radius: var(--radius-xs);
+    font-family: var(--font-mono);
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .count-summary {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  .text-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: 12px;
+    color: var(--ink-2);
+    text-decoration: none;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-xs);
+    transition: background-color 0.15s, color 0.15s;
+  }
+
+  .text-link:hover {
+    background-color: var(--sub);
+    color: var(--ink);
+  }
+
+  .text-link svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .btn-panel {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-2);
+    background-color: var(--panel);
+    border: 1px solid var(--line-2);
+    padding: 5px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color 0.15s, border-color 0.15s;
+  }
+
+  .btn-panel:hover {
+    background-color: var(--sub);
+    color: var(--ink);
+    border-color: var(--muted);
+  }
+
+  .btn-panel svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    fill: none;
+  }
+
+  .view-toggle {
+    display: inline-flex;
+    align-items: center;
+    background-color: var(--sub);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-sm);
+    padding: 2px;
+  }
+
+  .view-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 26px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: color 0.15s, background-color 0.15s;
+  }
+
+  .view-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .view-btn:hover {
+    color: var(--ink);
+  }
+
+  .view-btn.active {
+    background-color: var(--panel);
+    color: var(--primary);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* Search Bar (18px radius) */
+  .search-bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background-color: var(--field);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-lg);
+    padding: 3px 6px 3px 6px;
+    box-shadow: var(--shadow-sm);
+    gap: var(--space-2);
+  }
+
+  .search-bar:focus-within {
+    border-color: var(--primary);
+    outline: 2px solid var(--primary-soft);
+  }
+
+  /* Engine Picker Button */
+  .engine-picker-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    background-color: var(--sub);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    height: 30px;
+    padding: 0 8px;
+    cursor: pointer;
+    color: var(--ink-2);
+    font-size: 12px;
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+
+  .engine-picker-btn:hover {
+    background-color: var(--panel);
+    border-color: var(--line-2);
+    color: var(--ink);
+  }
+
+  .engine-badge {
+    width: 18px;
+    height: 18px;
+    border-radius: var(--radius-xs);
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 11px;
+    color: #4285f4; /* Subtle engine icon representation without full branding */
+    line-height: 1;
+  }
+
+  .chevron-down {
+    width: 12px;
+    height: 12px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
+  }
+
+  .search-input {
+    flex: 1;
+    min-width: 80px;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .search-input::placeholder {
+    color: var(--muted);
+  }
+
+  .search-bar-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .icon-dot-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-pill);
+    border: none;
+    background-color: var(--sub);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.15s, background-color 0.15s;
+  }
+
+  .icon-dot-btn:hover {
+    color: var(--ink);
+    background-color: var(--panel);
+  }
+
+  .folder-filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 26px;
+    padding: 0 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line);
+    background-color: var(--sub);
+    color: var(--ink-2);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .folder-filter-btn:hover {
+    border-color: var(--line-2);
+    color: var(--ink);
+  }
+
+  .folder-filter-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    fill: none;
+  }
+
+  .match-count-chip {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--primary);
+    background-color: var(--primary-soft);
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    white-space: nowrap;
+  }
+
+  .clear-filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: var(--radius-xs);
+  }
+
+  .clear-filter-btn:hover {
+    color: var(--danger);
+    background-color: var(--sub);
+  }
+
+  .clear-filter-btn svg,
+  .clear-input-btn svg {
+    width: 13px;
+    height: 13px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
+  }
+
+  .clear-input-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: var(--radius-pill);
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .clear-input-btn:hover {
+    color: var(--ink);
+    background-color: var(--sub);
+  }
+
+  /* Tag Filter Strip */
+  .tag-filter-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .tag-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--ink-2);
+    background-color: var(--sub);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    padding: 3px 10px;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  }
+
+  .tag-pill:hover {
+    background-color: var(--line);
+    color: var(--ink);
+  }
+
+  .tag-pill.active {
+    background-color: var(--primary);
+    border-color: var(--primary);
+    color: #ffffff;
+    font-weight: 500;
+  }
+
+  .tag-pill .count {
+    font-size: 11px;
+    opacity: 0.85;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* === MAIN RESULT AREA (COMPACT LIST VIEW) === */
+  .main-content {
+    max-width: 1400px;
+    margin: var(--space-4) auto 0;
+    padding: 0 var(--space-6);
+  }
+
+  /* One Flat Single Outer Border Block */
+  .compact-table-container {
+    background-color: var(--panel);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+
+  /* Table Header Row */
+  .compact-header-row {
+    display: grid;
+    grid-template-columns: 24px minmax(280px, 1fr) 190px 158px 150px 96px;
+    align-items: center;
+    height: 32px;
+    padding: 0 var(--space-3);
+    background-color: var(--sub);
+    border-bottom: 1px solid var(--line-2);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    user-select: none;
+  }
+
+  .header-cell {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .header-cell.align-right {
+    text-align: right;
+  }
+
+  /* Continuous List Rows */
+  .compact-list {
+    list-style: none;
+  }
+
+  .compact-row {
+    display: grid;
+    grid-template-columns: 24px minmax(280px, 1fr) 190px 158px 150px 96px;
+    align-items: center;
+    height: 30px; /* ~28-30px dense height */
+    padding: 0 var(--space-3);
+    border-bottom: 1px solid var(--line);
+    color: var(--ink);
+    font-size: 13px;
+    transition: background-color 0.1s ease;
+  }
+
+  .compact-row:last-child {
+    border-bottom: none;
+  }
+
+  .compact-row:hover {
+    background-color: var(--sub);
+  }
+
+  /* Keyboard Selected Highlight (ARIA-style highlight, NO checkbox) */
+  .compact-row.is-focused,
+  .compact-row[aria-selected="true"] {
+    background-color: var(--primary-soft);
+    position: relative;
+  }
+
+  .compact-row.is-focused::before,
+  .compact-row[aria-selected="true"]::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background-color: var(--primary);
+  }
+
+  /* Cell: Favicon */
+  .cell-fav {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .fav-icon-box {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    background-color: var(--sub);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--ink-2);
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+
+  .fav-icon-box svg {
+    width: 12px;
+    height: 12px;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    fill: none;
+  }
+
+  /* Cell: Title */
+  .cell-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding-right: var(--space-3);
+    overflow: hidden;
+  }
+
+  .bookmark-link {
+    color: var(--ink);
+    text-decoration: none;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: color 0.1s;
+  }
+
+  .bookmark-link:hover {
+    color: var(--primary);
+    text-decoration: underline;
+  }
+
+  .search-match-badge {
+    font-size: 10px;
+    color: var(--muted);
+    background-color: var(--sub);
+    padding: 0 4px;
+    border-radius: var(--radius-xs);
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+  }
+
+  /* Cell: Host */
+  .cell-host {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: var(--space-3);
+  }
+
+  .compact-row:hover .cell-host {
+    color: var(--ink-2);
+  }
+
+  /* Cell: Folder Path (showing last two segments) */
+  .cell-folder {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: var(--space-3);
+  }
+
+  .cell-folder svg {
+    width: 12px;
+    height: 12px;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    fill: none;
+    flex-shrink: 0;
+  }
+
+  .folder-segments {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Cell: Tags (Max 2 chips + overflow chip) */
+  .cell-tags {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    overflow: hidden;
+    padding-right: var(--space-2);
+  }
+
+  .item-chip {
+    font-size: 11px;
+    line-height: 1;
+    color: var(--ink-2);
+    background-color: var(--sub);
+    border: 1px solid var(--line);
+    padding: 2px 6px;
+    border-radius: var(--radius-pill);
+    white-space: nowrap;
+    text-decoration: none;
+  }
+
+  .item-chip.overflow {
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-weight: 500;
+  }
+
+  /* Cell: Hover Actions (Hidden by default, revealed on hover) */
+  .cell-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.1s ease, visibility 0.1s ease;
+  }
+
+  .compact-row:hover .cell-actions,
+  .compact-row.is-focused .cell-actions,
+  .compact-row[aria-selected="true"] .cell-actions {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  /* Always visible on touch screens */
+  @media (hover: none) {
+    .cell-actions {
+      opacity: 1;
+      visibility: visible;
+    }
+  }
+
+  .action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: color 0.1s, background-color 0.1s;
+  }
+
+  .action-btn:hover {
+    color: var(--ink);
+    background-color: var(--panel);
+  }
+
+  .action-btn.btn-delete:hover {
+    color: var(--danger);
+  }
+
+  .action-btn.btn-ai:hover {
+    color: var(--primary);
+  }
+
+  .action-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* Four-pointed plump sparkle icon with concave curving sides */
+  .sparkle-icon {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+  }
+
+  /* Table Footer / Keyboard shortcuts bar */
+  .table-statusbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-3);
+    background-color: var(--sub);
+    border-top: 1px solid var(--line-2);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .status-keys {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .kbd-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  kbd {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    background-color: var(--panel);
+    border: 1px solid var(--line-2);
+    border-radius: 4px;
+    padding: 1px 4px;
+    color: var(--ink-2);
+    box-shadow: 0 1px 0 var(--line-2);
+  }
+
+  /* RESPONSIVE SCALING / COLUMN DROPPING */
+  @media (max-width: 1100px) {
+    /* Progressive drop: Folder Path column dropped */
+    .compact-header-row,
+    .compact-row {
+      grid-template-columns: 24px minmax(220px, 1fr) 180px 140px 96px;
+    }
+    .header-cell.col-folder,
+    .cell-folder {
+      display: none;
+    }
+  }
+
+  @media (max-width: 840px) {
+    /* Compress Host & Drop Tag column */
+    .compact-header-row,
+    .compact-row {
+      grid-template-columns: 24px minmax(180px, 1fr) 130px 96px;
+    }
+    .header-cell.col-tags,
+    .cell-tags {
+      display: none;
+    }
+  }
+
+  @media (max-width: 580px) {
+    /* Compact mobile: Hide host column, preserve title and immediate actions */
+    .compact-header-row,
+    .compact-row {
+      grid-template-columns: 24px 1fr 76px;
+    }
+    .header-cell.col-host,
+    .cell-host {
+      display: none;
+    }
+    .header-sticky {
+      padding: var(--space-2) var(--space-3);
+    }
+    .main-content {
+      padding: 0 var(--space-3);
+    }
+    .count-summary, .text-link {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+
+  <!-- STICKY HEADER -->
+  <header class="header-sticky">
+    <div class="header-container">
+      
+      <!-- Top Row -->
+      <div class="top-row">
+        <div class="brand-group">
+          <div class="brand-icon" title="Bookmark Manager">
+            <svg viewBox="0 0 24 24">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </div>
+          <span class="brand-title">Bookmark Manager</span>
+          <span class="version-chip">MV3</span>
+        </div>
+
+        <div class="header-actions">
+          <span class="count-summary"><strong class="tnum" style="color: var(--ink);">284</strong> bookmarks</span>
+          <a href="#source" class="text-link">
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="4"></circle>
+              <line x1="1.05" y1="12" x2="7" y2="12"></line>
+              <line x1="17.01" y1="12" x2="22.96" y2="12"></line>
+            </svg>
+            Source
+          </a>
+          <a href="#panel" class="btn-panel">
+            <svg viewBox="0 0 24 24">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="9" y1="3" x2="9" y2="21"></line>
+            </svg>
+            Open manager panel
+          </a>
+          <!-- View Toggle -->
+          <div class="view-toggle" role="group" aria-label="View switch">
+            <button class="view-btn" title="Card View" aria-label="Card View">
+              <svg viewBox="0 0 24 24">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+              </svg>
+            </button>
+            <button class="view-btn active" title="Compact List View" aria-label="Compact List View">
+              <svg viewBox="0 0 24 24">
+                <line x1="8" y1="6" x2="21" y2="6"></line>
+                <line x1="8" y1="12" x2="21" y2="12"></line>
+                <line x1="8" y1="18" x2="21" y2="18"></line>
+                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                <line x1="3" y1="18" x2="3.01" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Search Bar with Search Engine Picker -->
+      <div class="search-bar">
+        <!-- Search Engine Picker Button (Required) -->
+        <button class="engine-picker-btn" id="engine-picker" title="Switch Search Engine" aria-haspopup="true" aria-expanded="false">
+          <span class="engine-badge">G</span>
+          <svg class="chevron-down" viewBox="0 0 24 24">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+
+        <input 
+          type="text" 
+          class="search-input" 
+          value="standards"
+          placeholder="Search bookmarks, press Enter to query web..." 
+          aria-label="Search bookmarks"
+        >
+
+        <div class="search-bar-controls">
+          <button class="icon-dot-btn" title="Search Help" aria-label="Help">?</button>
+          <button class="folder-filter-btn" title="Filter by folder">
+            <svg viewBox="0 0 24 24">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            All Folders
+          </button>
+          <!-- Active filter indicators -->
+          <span class="match-count-chip tnum">12 matches</span>
+          <button class="clear-filter-btn" title="Clear all filters">
+            <svg viewBox="0 0 24 24">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+            Clear filters
+          </button>
+          <button class="clear-input-btn" title="Clear search text">
+            <svg viewBox="0 0 24 24">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tag Filter Row (Single neutral treatment, active is primary) -->
+      <div class="tag-filter-strip" role="navigation" aria-label="Tag filters">
+        <a href="#all" class="tag-pill">
+          All <span class="count">284</span>
+        </a>
+        <a href="#standards" class="tag-pill active">
+          Standards <span class="count">42</span>
+        </a>
+        <a href="#design" class="tag-pill">
+          Design <span class="count">38</span>
+        </a>
+        <a href="#dev" class="tag-pill">
+          Dev <span class="count">29</span>
+        </a>
+        <a href="#security" class="tag-pill">
+          Security <span class="count">24</span>
+        </a>
+        <a href="#network" class="tag-pill">
+          Network <span class="count">19</span>
+        </a>
+        <a href="#webapi" class="tag-pill">
+          WebAPI <span class="count">16</span>
+        </a>
+        <a href="#tokens" class="tag-pill">
+          Tokens <span class="count">14</span>
+        </a>
+        <a href="#database" class="tag-pill">
+          Database <span class="count">11</span>
+        </a>
+        <a href="#a11y" class="tag-pill">
+          A11y <span class="count">9</span>
+        </a>
+        <a href="#architecture" class="tag-pill">
+          Architecture <span class="count">8</span>
+        </a>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- MAIN RESULT AREA: FLAT COMPACT LIST VIEW (NO GROUPING, NO SECTIONS, NO CHECKBOXES) -->
+  <main class="main-content">
+    <div class="compact-table-container">
+      
+      <!-- Table Header Row -->
+      <div class="compact-header-row" role="row">
+        <div class="header-cell"></div>
+        <div class="header-cell">Title</div>
+        <div class="header-cell col-host">Host</div>
+        <div class="header-cell col-folder">Folder Path</div>
+        <div class="header-cell col-tags">Tags</div>
+        <div class="header-cell align-right">Actions</div>
+      </div>
+
+      <!-- Continuous Flat Bookmark List -->
+      <div class="compact-list" role="list">
+        
+        <!-- Row 1 (Standard State) -->
+        <div class="compact-row" role="listitem">
+          <div class="cell-fav">
+            <div class="fav-icon-box">R</div>
+          </div>
+          <div class="cell-title">
+            <a href="https://rfc-editor.org" class="bookmark-link" target="_blank" rel="noopener">RFC 9110: HTTP Semantics &amp; Status Code Specification</a>
+          </div>
+          <div class="cell-host">rfc-editor.org</div>
+          <div class="cell-folder" title="Full Path: Bookmarks Bar / IETF / HTTP">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span class="folder-segments">IETF / HTTP</span>
+          </div>
+          <div class="cell-tags">
+            <span class="item-chip">Standards</span>
+            <span class="item-chip">Network</span>
+            <span class="item-chip overflow">+2</span>
+          </div>
+          <div class="cell-actions">
+            <!-- Edit -->
+            <button class="action-btn" title="Edit bookmark" aria-label="Edit">
+              <svg viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </button>
+            <!-- AI Tag (Plump four-pointed rounded sparkle) -->
+            <button class="action-btn btn-ai" title="AI Auto-tag" aria-label="AI Tag">
+              <svg class="sparkle-icon" viewBox="0 0 24 24">
+                <path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"></path>
+              </svg>
+            </button>
+            <!-- Archive / Hide -->
+            <button class="action-btn" title="Archive / Hide" aria-label="Hide">
+              <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
+            <!-- Trash -->
+            <button class="action-btn btn-delete" title="Move to Trash" aria-label="Delete">
+              <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Row 2 -->
+        <div class="compact-row" role="listitem">
+          <div class="cell-fav">
+            <div class="fav-icon-box">W</div>
+          </div>
+          <div class="cell-title">
+            <a href="https://w3c.github.io" class="bookmark-link" target="_blank" rel="noopener">Design Tokens Community Group Spec (DTCG format 2024.1)</a>
+          </div>
+          <div class="cell-host">w3c.github.io</div>
+          <div class="cell-folder" title="Full Path: Standards / W3C / Tokens">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span class="folder-segments">W3C / Tokens</span>
+          </div>
+          <div class="cell-tags">
+            <span class="item-chip">Tokens</span>
+            <span class="item-chip">W3C</span>
+          </div>
+          <div class="cell-actions">
+            <button class="action-btn" title="Edit"><svg viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            <button class="action-btn btn-ai" title="AI Auto-tag">
+              <svg class="sparkle-icon" viewBox="0 0 24 24"><path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"></path></svg>
+            </button>
+            <button class="action-btn" title="Archive / Hide"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+            <button class="action-btn btn-delete" title="Move to Trash"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+          </div>
+        </div>
+
+        <!-- Row 3 (ARIA Selected Keyboard Focus Highlight - no checkbox!) -->
+        <div class="compact-row is-focused" role="listitem" aria-selected="true">
+          <div class="cell-fav">
+            <div class="fav-icon-box">S</div>
+          </div>
+          <div class="cell-title">
+            <a href="https://sqlite.org" class="bookmark-link" target="_blank" rel="noopener">SQLite in the Browser: Official WASM Build &amp; Persistent OPFS</a>
+          </div>
+          <div class="cell-host">sqlite.org</div>
+          <div class="cell-folder" title="Full Path: Engineering / Databases / SQLite">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span class="folder-segments">Databases / SQLite</span>
+          </div>
+          <div class="cell-tags">
+            <span class="item-chip">Database</span>
+            <span class="item-chip">WASM</span>
+          </div>
+          <div class="cell-actions">
+            <button class="action-btn" title="Edit"><svg viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            <button class="action-btn btn-ai" title="AI Auto-tag">
+              <svg class="sparkle-icon" viewBox="0 0 24 24"><path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"></path></svg>
+            </button>
+            <button class="action-btn" title="Archive / Hide"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+            <button class="action-btn btn-delete" title="Move to Trash"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+          </div>
+        </div>
+
+        <!-- Row 4 -->
+        <div class="compact-row" role="listitem">
+          <div class="cell-fav">
+            <div class="fav-icon-box">R</div>
+          </div>
+          <div class="cell-title">
+            <a href="https://radix-ui.com" class="bookmark-link" target="_blank" rel="noopener">Radix Primitives: Unstyled Accessible UI Components Guide</a>
+          </div>
+          <div class="cell-host">radix-ui.com</div>
+          <div class="cell-folder" title="Full Path: Frontend / Components / A11y">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span class="folder-segments">Components / A11y</span>
+          </div>
+          <div class="cell-tags">
+            <span class="item-chip">Components</span>
+            <span class="item-chip">A11y</span>
+          </div>
+          <div class="cell-actions">
+            <button class="action-btn" title="Edit"><svg viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            <button class="action-btn btn-ai" title="AI Auto-tag">
+              <svg class="sparkle-icon" viewBox="0 0 24 24"><path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"></path></svg>
+            </button>
+            <button class="action-btn" title="Archive / Hide"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+            <button class="action-btn btn-delete" title="Move to Trash"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+          </div>
+        </div>
+
+        <!-- Row 5 -->
+        <div class="compact-row" role="listitem">
+          <div class="cell-fav">
+            <div class="fav-icon-box">C</div>
+          </div>
+          <div class="cell-title">
+            <a href="https://w3.org" class="bookmark-link" target="_blank" rel="noopener">Color Contrast Matrix &amp; WCAG Contrast Algorithm Checker</a>
+          </div>
+          <div class="cell-host">w3.org</div>
+          <div class="cell-folder" title="Full Path: Design System / A11y">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span class="folder-segments">Design / A11y</span>
+          </div>
+          <div class="cell-tags">
+            <span class="item-chip">Contrast</span>
+            <span class="item-chip">A11y</span>
+          </div>
+          <div class="cell-actions">
+            <button class="action-btn" title="Edit"><svg viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            <button class="action-btn btn-ai" title="AI Auto-tag">
+              <svg class="sparkle-icon" viewBox="0 0 24 24"><path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"></path></svg>
+            </button>
+            <button class="action-btn" title="Archive / Hide"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+            <button class="action-btn btn-delete" title="Move to Trash"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+          </div>
+        </div>
+
+        <!-- Row 6 -->
+        <div class="compact-row" role="listitem">
+          <div class="cell-fav">
+            <div class="fav-icon-box">M</div>
+          </div>
+          <div class="cell-title">
+            <a href="https://moderncss.dev" class="bookmark-link" target="_blank" rel="noopener">Modern CSS Fluid Typography Calculator &amp; Method</a>
+          </div>
+          <div class="cell-host">moderncss.dev</div>
+          <div class="cell-folder" title="Full Path: Styling / CSS / Typography">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span class="folder-segments">CSS / Typography</span>
+          </div>
+          <div class="cell-tags">
+            <span class="item-chip">CSS</span>
+            <span class="item-chip">Typography</span>
+          </div>
+          <div class="cell-actions">
+            <button class="action-btn" title="Edit"><svg viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            <button class="action-btn btn-ai" title="AI Auto-tag">
+              <svg class="sparkle-icon" viewBox="0 0 24 24"><path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"></path></svg>
+            </button>
+            <button class="action-btn" title="Archive / Hide"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+            <button class="action-btn btn-delete" title="Move to Trash"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+          </div>
+        </div>
+
+        <!-- Row 7 -->
+        <div class="compact-row" role="listitem">
+          <div class="cell-fav">
+            <div class="fav-icon-box">M</div>
+          </div>
+          <div class="cell-title">
+            <a href="https://martinfowler.com" class="bookmark-link" target="_blank" rel="noopener">Patterns of Distributed Systems Guide (Fowler)</a>
+          </div>
+          <div class="cell-host">martinfowler.com</div>
+          <div class="cell-folder" title="Full Path: Architecture / Backend">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span class="folder-segments">Architecture / Backend</span>
+          </div>
+          <div class="cell-tags">
+            <span class="item-chip">Architecture</span>
+            <span class="item-chip">Backend</span>
+          </div>
+          <div class="cell-actions">
+            <button class="action-btn" title="Edit"><svg viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            <button class="action-btn btn-ai" title="AI Auto-tag">
+              <svg class="sparkle-icon" viewBox="0 0 24 24"><path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"></path></svg>
+            </button>
+            <button class="action-btn" title="Archive / Hide"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+            <button class="action-btn btn-delete" title="Move to Trash"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+          </div>
+        </div>
+
+        <!-- Row 8 -->
+        <div class="compact-row" role="listitem">
+          <div class="cell-fav">
+            <div class="fav-icon-box">D</div>
+          </div>
+          <div class="cell-title">
+            <a href="https://developer.mozilla.org" class="bookmark-link" target="_blank" rel="noopener">Web Workers &amp; SharedArrayBuffer Implementation Guidelines</a>
+          </div>
+          <div class="cell-host">developer.mozilla.org</div>
+          <div class="cell-folder" title="Full Path: MDN / WebAPI / Threading">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span class="folder-segments">WebAPI / Threading</span>
+          </div>
+          <div class="cell-tags">
+            <span class="item-chip">WebAPI</span>
+            <span class="item-chip">Threading</span>
+          </div>
+          <div class="cell-actions">
+            <button class="action-btn" title="Edit"><svg viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            <button class="action-btn btn-ai" title="AI Auto-tag">
+              <svg class="sparkle-icon" viewBox="0 0 24 24"><path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"></path></svg>
+            </button>
+            <button class="action-btn" title="Archive / Hide"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+            <button class="action-btn btn-delete" title="Move to Trash"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+          </div>
+        </div>
+
+        <!-- Row 9 -->
+        <div class="compact-row" role="listitem">
+          <div class="cell-fav">
+            <div class="fav-icon-box">C</div>
+          </div>
+          <div class="cell-title">
+            <a href="https://csp.withgoogle.com" class="bookmark-link" target="_blank" rel="noopener">Content Security Policy (CSP) Directives Reference</a>
+          </div>
+          <div class="cell-host">csp.withgoogle.com</div>
+          <div class="cell-folder" title="Full Path: Web Security / Headers / Browser">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span class="folder-segments">Headers / Browser</span>
+          </div>
+          <div class="cell-tags">
+            <span class="item-chip">Headers</span>
+            <span class="item-chip">Browser</span>
+          </div>
+          <div class="cell-actions">
+            <button class="action-btn" title="Edit"><svg viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            <button class="action-btn btn-ai" title="AI Auto-tag">
+              <svg class="sparkle-icon" viewBox="0 0 24 24"><path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"></path></svg>
+            </button>
+            <button class="action-btn" title="Archive / Hide"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+            <button class="action-btn btn-delete" title="Move to Trash"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+          </div>
+        </div>
+
+        <!-- Row 10 -->
+        <div class="compact-row" role="listitem">
+          <div class="cell-fav">
+            <div class="fav-icon-box">O</div>
+          </div>
+          <div class="cell-title">
+            <a href="https://owasp.org" class="bookmark-link" target="_blank" rel="noopener">OWASP Top 10 API Security Risks &amp; Mitigation Roadmap</a>
+          </div>
+          <div class="cell-host">owasp.org</div>
+          <div class="cell-folder" title="Full Path: Security Standards / Audit / API">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span class="folder-segments">Audit / API</span>
+          </div>
+          <div class="cell-tags">
+            <span class="item-chip">Audit</span>
+            <span class="item-chip">API</span>
+            <span class="item-chip overflow">+1</span>
+          </div>
+          <div class="cell-actions">
+            <button class="action-btn" title="Edit"><svg viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            <button class="action-btn btn-ai" title="AI Auto-tag">
+              <svg class="sparkle-icon" viewBox="0 0 24 24"><path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"></path></svg>
+            </button>
+            <button class="action-btn" title="Archive / Hide"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+            <button class="action-btn btn-delete" title="Move to Trash"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+          </div>
+        </div>
+
+        <!-- Row 11 -->
+        <div class="compact-row" role="listitem">
+          <div class="cell-fav">
+            <div class="fav-icon-box">P</div>
+          </div>
+          <div class="cell-title">
+            <a href="https://fidoalliance.org" class="bookmark-link" target="_blank" rel="noopener">Passkeys &amp; WebAuthn Integration Patterns (FIDO Alliance)</a>
+          </div>
+          <div class="cell-host">fidoalliance.org</div>
+          <div class="cell-folder" title="Full Path: Authentication / Auth / Passkeys">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span class="folder-segments">Auth / Passkeys</span>
+          </div>
+          <div class="cell-tags">
+            <span class="item-chip">Auth</span>
+            <span class="item-chip">Passkeys</span>
+            <span class="item-chip overflow">+2</span>
+          </div>
+          <div class="cell-actions">
+            <button class="action-btn" title="Edit"><svg viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            <button class="action-btn btn-ai" title="AI Auto-tag">
+              <svg class="sparkle-icon" viewBox="0 0 24 24"><path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"></path></svg>
+            </button>
+            <button class="action-btn" title="Archive / Hide"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+            <button class="action-btn btn-delete" title="Move to Trash"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+          </div>
+        </div>
+
+        <!-- Row 12 -->
+        <div class="compact-row" role="listitem">
+          <div class="cell-fav">
+            <div class="fav-icon-box">W</div>
+          </div>
+          <div class="cell-title">
+            <a href="https://w3.org" class="bookmark-link" target="_blank" rel="noopener">WebCrypto SubtleCrypto API Reference Documentation</a>
+          </div>
+          <div class="cell-host">w3.org</div>
+          <div class="cell-folder" title="Full Path: Web Platform / WebAPI / Cryptography">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span class="folder-segments">WebAPI / Cryptography</span>
+          </div>
+          <div class="cell-tags">
+            <span class="item-chip">Security</span>
+            <span class="item-chip">Crypto</span>
+          </div>
+          <div class="cell-actions">
+            <button class="action-btn" title="Edit"><svg viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+            <button class="action-btn btn-ai" title="AI Auto-tag">
+              <svg class="sparkle-icon" viewBox="0 0 24 24"><path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"></path></svg>
+            </button>
+            <button class="action-btn" title="Archive / Hide"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+            <button class="action-btn btn-delete" title="Move to Trash"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Table Statusbar (Keyboard shortcuts / quick scan hint) -->
+      <div class="table-statusbar">
+        <span>Showing <strong class="tnum" style="color: var(--ink);">12</strong> of <span class="tnum">284</span> bookmarks</span>
+        <div class="status-keys">
+          <span class="kbd-hint"><kbd>/</kbd> Focus search</span>
+          <span class="kbd-hint"><kbd>↑</kbd><kbd>↓</kbd> Navigate</span>
+          <span class="kbd-hint"><kbd>↵</kbd> Open URL</span>
+          <span class="kbd-hint"><kbd>Esc</kbd> Clear filters</span>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+</body>
+</html>

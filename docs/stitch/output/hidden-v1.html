@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=360, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Bookmark Manager - Hidden Tab</title>
+<style>
+:root {
+  /* Surface Tokens */
+  --bg: #f3f5f8;
+  --panel: #ffffff;
+  --sub: #f3f5f8;
+  --field: #ffffff;
+  
+  /* Text Tokens */
+  --ink: #101828;
+  --ink-2: #344054;
+  --muted: #667085;
+  
+  /* Line Tokens */
+  --line: #e7ebf0;
+  --line-2: #dce1e8;
+  
+  /* Accent & Status Tokens */
+  --primary: #2563eb;
+  --primary-soft: #e9f1fe;
+  --danger: #be123c;
+  --warn: #b45309;
+  --ok: #059669;
+
+  /* Geometry & Spacing */
+  --radius-xs: 7px;
+  --radius-sm: 10px;
+  --radius: 14px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+
+  --font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-float: 0 6px 20px rgba(15, 23, 42, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1117;
+    --panel: #171b24;
+    --sub: #1b202b;
+    --field: #1e2430;
+    
+    --ink: #f2f4f8;
+    --ink-2: #c3c9d4;
+    --muted: #8b93a3;
+    
+    --line: #242a36;
+    --line-2: #303845;
+    
+    --primary: #5da2f5;
+    --primary-soft: #1a2436;
+    --danger: #fb7185;
+    --warn: #fbbf24;
+    --ok: #34d399;
+
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.6);
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-family);
+  font-size: 13px;
+  line-height: 1.4;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 0;
+}
+
+/* Chrome Extension Side Panel Container: Exactly 360px */
+.panel-viewport {
+  width: 360px;
+  min-height: 100vh;
+  background-color: var(--bg);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+
+/* Fixed Header & Navigation Strip */
+header.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background-color: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.top-bar {
+  height: 48px;
+  padding: 0 var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand-section {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.brand-icon {
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+}
+
+.brand-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.badge-mv3 {
+  font-size: 11px;
+  font-weight: 600;
+  background-color: var(--sub);
+  color: var(--muted);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--line);
+}
+
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.icon-btn:hover {
+  background-color: var(--sub);
+  color: var(--ink);
+}
+
+/* Three-Tab Strip: Overview | Organize | Hidden */
+.tab-strip {
+  display: flex;
+  padding: 0 var(--space-4);
+  border-top: 1px solid var(--line);
+  gap: var(--space-2);
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 10px 0;
+  background: transparent;
+  border: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  transition: color 120ms ease;
+}
+
+.tab-btn:hover {
+  color: var(--ink);
+}
+
+.tab-btn.active {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--primary);
+  border-radius: var(--radius-pill);
+}
+
+/* Content Region */
+main.panel-content {
+  flex: 1;
+  padding: var(--space-3) var(--space-3) 80px var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Slim Toolbar Row for Hidden Tab */
+.hidden-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-2);
+  background-color: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+}
+
+.toolbar-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.toolbar-status .eye-icon {
+  color: var(--muted);
+  display: flex;
+}
+
+.toolbar-status strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.text-btn {
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+}
+
+.text-btn:hover {
+  background-color: var(--primary-soft);
+}
+
+/* Flat List of Hidden Bookmarks */
+.bookmark-list-card {
+  background-color: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+/* Hidden Bookmark Row */
+.bookmark-row {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: var(--space-2) var(--space-2);
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  gap: var(--space-2);
+  background-color: transparent;
+  transition: background-color 120ms ease;
+}
+
+.bookmark-row:last-child {
+  border-bottom: none;
+}
+
+/* De-emphasized Parked State */
+.bookmark-row.is-hidden {
+  opacity: 0.58;
+}
+
+.bookmark-row.is-hidden:hover {
+  opacity: 0.95;
+  background-color: var(--sub);
+}
+
+.bookmark-row.is-selected {
+  opacity: 0.98 !important;
+  background-color: var(--primary-soft) !important;
+}
+
+/* Row Left Controls: Drag Handle + Multi-select Checkbox */
+.row-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.drag-handle {
+  width: 14px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  cursor: grab;
+  opacity: 0.5;
+}
+
+.drag-handle:hover {
+  opacity: 1;
+}
+
+.custom-checkbox {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background-color: var(--field);
+  transition: all 120ms ease;
+  flex-shrink: 0;
+}
+
+.bookmark-row.is-selected .custom-checkbox {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+}
+
+/* Favicon */
+.site-favicon {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-xs);
+  background-color: var(--sub);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+}
+
+/* Central Info: Title + Metadata */
+.bookmark-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+
+.bookmark-title-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.bookmark-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-decoration: line-through;
+  text-decoration-color: var(--muted);
+}
+
+/* Small Neutral "Hidden" Chip */
+.status-chip {
+  font-size: 11px;
+  font-weight: 500;
+  background-color: var(--sub);
+  color: var(--ink-2);
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.bookmark-meta-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta-host {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta-sep {
+  color: var(--line-2);
+}
+
+.meta-folder {
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.tag-badge {
+  font-size: 11px;
+  background-color: var(--sub);
+  color: var(--ink-2);
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+}
+
+/* Actions Group */
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+
+/* PERMANENTLY VISIBLE Un-hide Action */
+.action-unhide {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-2);
+  background-color: var(--panel);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 120ms ease;
+  box-shadow: var(--shadow-sm);
+}
+
+.action-unhide:hover {
+  background-color: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Hover-Revealed Actions (Edit, AI Sparkle, Delete) */
+.action-secondary {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.bookmark-row:hover .action-secondary {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.action-secondary:hover {
+  background-color: var(--sub);
+  color: var(--ink);
+}
+
+.action-secondary.danger:hover {
+  background-color: var(--sub);
+  color: var(--danger);
+}
+
+/* Floating Bottom Multi-Select Bar */
+.bulk-bar {
+  position: absolute;
+  bottom: var(--space-4);
+  left: var(--space-3);
+  right: var(--space-3);
+  height: 44px;
+  background-color: var(--panel);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-float);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-3) 0 var(--space-2);
+  z-index: 50;
+  animation: slideUp 160ms cubic-bezier(.2, .8, .2, 1);
+}
+
+@keyframes slideUp {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.bulk-count-badge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.count-pill {
+  background-color: var(--primary);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+}
+
+.bulk-actions-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.bulk-btn-primary {
+  height: 30px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  background-color: var(--primary);
+  color: #ffffff;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  transition: opacity 120ms ease;
+}
+
+.bulk-btn-primary:hover {
+  opacity: 0.92;
+}
+
+.bulk-btn-ghost {
+  height: 30px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-2);
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.bulk-btn-ghost:hover {
+  background-color: var(--sub);
+  color: var(--ink);
+}
+
+.bulk-btn-danger {
+  height: 30px;
+  width: 30px;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--danger);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.bulk-btn-danger:hover {
+  background-color: var(--sub);
+}
+</style>
+</head>
+<body>
+
+<div class="panel-viewport">
+  <!-- Fixed Header -->
+  <header class="app-header">
+    <div class="top-bar">
+      <div class="brand-section">
+        <span class="brand-icon">
+          <!-- Bookmark Outline Icon -->
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>
+          </svg>
+        </span>
+        <span class="brand-title">Bookmark Manager</span>
+        <span class="badge-mv3">MV3</span>
+      </div>
+
+      <div class="top-actions">
+        <!-- Search Icon Button -->
+        <button class="icon-btn" aria-label="Search" title="Search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+          </svg>
+        </button>
+        <!-- Add Bookmark Button -->
+        <button class="icon-btn" aria-label="Add Bookmark" title="Add Bookmark">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h14"/><path d="M12 5v14"/>
+          </svg>
+        </button>
+        <!-- Settings Button -->
+        <button class="icon-btn" aria-label="Settings" title="Settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Exact 3-Tab Strip -->
+    <nav class="tab-strip">
+      <button class="tab-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>
+        </svg>
+        Overview
+      </button>
+      <button class="tab-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        Organize
+      </button>
+      <button class="tab-btn active">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>
+        </svg>
+        Hidden
+      </button>
+    </nav>
+  </header>
+
+  <!-- Main Scroll Area -->
+  <main class="panel-content">
+    <!-- Slim Toolbar: Eye-off icon + Count indicator + Clean/Un-hide quick action -->
+    <div class="hidden-toolbar">
+      <div class="toolbar-status">
+        <span class="eye-icon">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>
+          </svg>
+        </span>
+        <span>Hidden bookmarks: <strong>5</strong></span>
+      </div>
+      <div class="toolbar-actions">
+        <button class="text-btn">Restore All</button>
+      </div>
+    </div>
+
+    <!-- Flat List of Hidden Bookmarks (NO grouping headers) -->
+    <div class="bookmark-list-card">
+
+      <!-- Item 1 (Selected State) -->
+      <div class="bookmark-row is-hidden is-selected">
+        <div class="row-controls">
+          <div class="drag-handle" title="Reorder">
+            <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor">
+              <circle cx="2" cy="3" r="1.5"/><circle cx="8" cy="3" r="1.5"/>
+              <circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/>
+              <circle cx="2" cy="13" r="1.5"/><circle cx="8" cy="13" r="1.5"/>
+            </svg>
+          </div>
+          <div class="custom-checkbox">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="site-favicon">O</div>
+
+        <div class="bookmark-main">
+          <div class="bookmark-title-line">
+            <span class="bookmark-title">OWASP Top 10 API Security Risks & Mitigation</span>
+            <span class="status-chip">Hidden</span>
+          </div>
+          <div class="bookmark-meta-line">
+            <span class="meta-host">owasp.org</span>
+            <span class="meta-sep">•</span>
+            <span class="meta-folder">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+              Audit / API
+            </span>
+            <span class="tag-badge">Security</span>
+          </div>
+        </div>
+
+        <div class="row-actions">
+          <!-- Permanent Primary Action: Un-hide -->
+          <button class="action-unhide" title="Restore to daily view" aria-label="Restore bookmark">
+            <!-- Eye icon (restore) -->
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+          <!-- Hover-revealed AI Tag (Gemini-style 4-pointed concave sparkle) -->
+          <button class="action-secondary" title="Auto Tag">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"/>
+            </svg>
+          </button>
+          <!-- Hover-revealed Edit -->
+          <button class="action-secondary" title="Edit">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+            </svg>
+          </button>
+          <!-- Hover-revealed Delete -->
+          <button class="action-secondary danger" title="Delete permanently">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Item 2 (Selected State) -->
+      <div class="bookmark-row is-hidden is-selected">
+        <div class="row-controls">
+          <div class="drag-handle" title="Reorder">
+            <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor">
+              <circle cx="2" cy="3" r="1.5"/><circle cx="8" cy="3" r="1.5"/>
+              <circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/>
+              <circle cx="2" cy="13" r="1.5"/><circle cx="8" cy="13" r="1.5"/>
+            </svg>
+          </div>
+          <div class="custom-checkbox">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="site-favicon">P</div>
+
+        <div class="bookmark-main">
+          <div class="bookmark-title-line">
+            <span class="bookmark-title">Passkeys & WebAuthn Integration Patterns (FIDO)</span>
+            <span class="status-chip">Hidden</span>
+          </div>
+          <div class="bookmark-meta-line">
+            <span class="meta-host">fidoalliance.org</span>
+            <span class="meta-sep">•</span>
+            <span class="meta-folder">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+              Auth / Passkeys
+            </span>
+            <span class="tag-badge">Auth</span>
+          </div>
+        </div>
+
+        <div class="row-actions">
+          <button class="action-unhide" title="Restore to daily view" aria-label="Restore bookmark">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+          <button class="action-secondary" title="Auto Tag">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"/>
+            </svg>
+          </button>
+          <button class="action-secondary" title="Edit">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+            </svg>
+          </button>
+          <button class="action-secondary danger" title="Delete permanently">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Item 3 (Unchecked) -->
+      <div class="bookmark-row is-hidden">
+        <div class="row-controls">
+          <div class="drag-handle" title="Reorder">
+            <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor">
+              <circle cx="2" cy="3" r="1.5"/><circle cx="8" cy="3" r="1.5"/>
+              <circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/>
+              <circle cx="2" cy="13" r="1.5"/><circle cx="8" cy="13" r="1.5"/>
+            </svg>
+          </div>
+          <div class="custom-checkbox"></div>
+        </div>
+
+        <div class="site-favicon">W</div>
+
+        <div class="bookmark-main">
+          <div class="bookmark-title-line">
+            <span class="bookmark-title">WebCrypto SubtleCrypto API Reference Specs</span>
+            <span class="status-chip">Hidden</span>
+          </div>
+          <div class="bookmark-meta-line">
+            <span class="meta-host">w3.org</span>
+            <span class="meta-sep">•</span>
+            <span class="meta-folder">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+              WebAPI / Crypto
+            </span>
+            <span class="tag-badge">Crypto</span>
+          </div>
+        </div>
+
+        <div class="row-actions">
+          <button class="action-unhide" title="Restore to daily view" aria-label="Restore bookmark">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+          <button class="action-secondary" title="Auto Tag">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"/>
+            </svg>
+          </button>
+          <button class="action-secondary" title="Edit">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+            </svg>
+          </button>
+          <button class="action-secondary danger" title="Delete permanently">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Item 4 (Unchecked) -->
+      <div class="bookmark-row is-hidden">
+        <div class="row-controls">
+          <div class="drag-handle" title="Reorder">
+            <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor">
+              <circle cx="2" cy="3" r="1.5"/><circle cx="8" cy="3" r="1.5"/>
+              <circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/>
+              <circle cx="2" cy="13" r="1.5"/><circle cx="8" cy="13" r="1.5"/>
+            </svg>
+          </div>
+          <div class="custom-checkbox"></div>
+        </div>
+
+        <div class="site-favicon">C</div>
+
+        <div class="bookmark-main">
+          <div class="bookmark-title-line">
+            <span class="bookmark-title">Content Security Policy (CSP) Directives</span>
+            <span class="status-chip">Hidden</span>
+          </div>
+          <div class="bookmark-meta-line">
+            <span class="meta-host">csp.withgoogle.com</span>
+            <span class="meta-sep">•</span>
+            <span class="meta-folder">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+              Headers / Browser
+            </span>
+            <span class="tag-badge">Headers</span>
+          </div>
+        </div>
+
+        <div class="row-actions">
+          <button class="action-unhide" title="Restore to daily view" aria-label="Restore bookmark">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+          <button class="action-secondary" title="Auto Tag">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"/>
+            </svg>
+          </button>
+          <button class="action-secondary" title="Edit">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+            </svg>
+          </button>
+          <button class="action-secondary danger" title="Delete permanently">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Item 5 (Unchecked) -->
+      <div class="bookmark-row is-hidden">
+        <div class="row-controls">
+          <div class="drag-handle" title="Reorder">
+            <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor">
+              <circle cx="2" cy="3" r="1.5"/><circle cx="8" cy="3" r="1.5"/>
+              <circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/>
+              <circle cx="2" cy="13" r="1.5"/><circle cx="8" cy="13" r="1.5"/>
+            </svg>
+          </div>
+          <div class="custom-checkbox"></div>
+        </div>
+
+        <div class="site-favicon">M</div>
+
+        <div class="bookmark-main">
+          <div class="bookmark-title-line">
+            <span class="bookmark-title">Legacy System API Deprecations Roadmap</span>
+            <span class="status-chip">Hidden</span>
+          </div>
+          <div class="bookmark-meta-line">
+            <span class="meta-host">developer.mozilla.org</span>
+            <span class="meta-sep">•</span>
+            <span class="meta-folder">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+              Archive / WebAPI
+            </span>
+            <span class="tag-badge">Deprecated</span>
+          </div>
+        </div>
+
+        <div class="row-actions">
+          <button class="action-unhide" title="Restore to daily view" aria-label="Restore bookmark">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+          <button class="action-secondary" title="Auto Tag">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"/>
+            </svg>
+          </button>
+          <button class="action-secondary" title="Edit">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+            </svg>
+          </button>
+          <button class="action-secondary danger" title="Delete permanently">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Floating Bulk-Action Bar: 2 Selected -->
+  <div class="bulk-bar">
+    <div class="bulk-count-badge">
+      <span class="count-pill">2</span>
+      <span>Selected</span>
+    </div>
+    <div class="bulk-actions-group">
+      <!-- Primary Action in bulk: Restore Selected -->
+      <button class="bulk-btn-primary">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+        <span>Restore</span>
+      </button>
+
+      <!-- Move to Folder -->
+      <button class="bulk-btn-ghost">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
+        </svg>
+        <span>Move</span>
+      </button>
+
+      <!-- Permanent Delete in Bulk -->
+      <button class="bulk-btn-danger" title="Delete selected">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

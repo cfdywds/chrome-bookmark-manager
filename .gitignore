@@ -18,6 +18,16 @@ Thumbs.db
 *.tmp
 *.bak
 
+# 端到端验证产物（headless Chrome profile + 截图，内含真实书签/登录数据，禁止入库）
+.tmp-e2e/
+
+# 测试用临时复现脚本（正式用例请落在 tests/<主题>.test.js）
+tests/tmp-*.test.js
+
+# 与本项目无关的素材（保留在磁盘，仅排除出版本控制）
+/pelican-bicycle-candy.svg
+/海狮05-DMi 与 海狮06-DMi 2026款版本对比结论.md
+
 # 本地凭据
 .env
 .env.*

@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>书签管家 · 操作指南抽屉</title>
+  <style>
+    :root {
+      /* Typography */
+      --font-body: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+      --font-mono: ui-monospace, "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace, 'PingFang SC', 'Microsoft YaHei';
+
+      /* Spacing (ONLY 4, 8, 12, 16, 24px) */
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-6: 24px;
+
+      /* Corner Radii: ONLY 7, 10, 14, 18, 999px */
+      --radius-xs: 7px;
+      --radius-sm: 10px;
+      --radius: 14px;
+      --radius-lg: 18px;
+      --radius-pill: 999px;
+
+      /* Light Theme Tokens */
+      --c-bg: #f3f5f8;
+      --c-panel: #ffffff;
+      --c-sub: #f3f5f8;
+      --c-field: #ffffff;
+      --c-ink: #101828;
+      --c-ink-2: #344054;
+      --c-muted: #667085;
+      --c-line: #e7ebf0;
+      --c-line-2: #dce1e8;
+      --c-primary: #2563eb;
+      --c-primary-soft: #e9f1fe;
+      --c-danger: #be123c;
+      --c-warn: #b45309;
+      --c-ok: #059669;
+
+      /* Overlay Backdrop */
+      --c-overlay: rgba(16, 24, 40, 0.45);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        /* Dark Theme Tokens */
+        --c-bg: #0f1117;
+        --c-panel: #171b24;
+        --c-sub: #1b202b;
+        --c-field: #1e2430;
+        --c-ink: #f2f4f8;
+        --c-ink-2: #c3c9d4;
+        --c-muted: #8b93a3;
+        --c-line: #242a36;
+        --c-line-2: #303845;
+        --c-primary: #5da2f5;
+        --c-primary-soft: #1a2436;
+        --c-danger: #fb7185;
+        --c-warn: #fbbf24;
+        --c-ok: #34d399;
+
+        --c-overlay: rgba(0, 0, 0, 0.7);
+      }
+    }
+
+    /* Manual theme toggle support if forced */
+    [data-theme="dark"] {
+      --c-bg: #0f1117;
+      --c-panel: #171b24;
+      --c-sub: #1b202b;
+      --c-field: #1e2430;
+      --c-ink: #f2f4f8;
+      --c-ink-2: #c3c9d4;
+      --c-muted: #8b93a3;
+      --c-line: #242a36;
+      --c-line-2: #303845;
+      --c-primary: #5da2f5;
+      --c-primary-soft: #1a2436;
+      --c-danger: #fb7185;
+      --c-warn: #fbbf24;
+      --c-ok: #34d399;
+      --c-overlay: rgba(0, 0, 0, 0.7);
+    }
+
+    [data-theme="light"] {
+      --c-bg: #f3f5f8;
+      --c-panel: #ffffff;
+      --c-sub: #f3f5f8;
+      --c-field: #ffffff;
+      --c-ink: #101828;
+      --c-ink-2: #344054;
+      --c-muted: #667085;
+      --c-line: #e7ebf0;
+      --c-line-2: #dce1e8;
+      --c-primary: #2563eb;
+      --c-primary-soft: #e9f1fe;
+      --c-danger: #be123c;
+      --c-warn: #b45309;
+      --c-ok: #059669;
+      --c-overlay: rgba(16, 24, 40, 0.45);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      font-family: var(--font-body);
+      background-color: var(--c-bg);
+      color: var(--c-ink);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: var(--space-6) 0;
+    }
+
+    /* Outer Demo Canvas Container */
+    .workspace-stage {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-3);
+    }
+
+    .theme-toolbar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      font-size: 11px;
+      color: var(--c-muted);
+      margin-bottom: var(--space-1);
+    }
+
+    .theme-toggle-btn {
+      background: var(--c-panel);
+      border: 1px solid var(--c-line-2);
+      color: var(--c-ink-2);
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-pill);
+      font-size: 11px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+    .theme-toggle-btn:hover {
+      background: var(--c-sub);
+    }
+
+    /* 360px Mock Side Panel Container */
+    .sidepanel-frame {
+      width: 360px;
+      height: 680px;
+      background-color: var(--c-bg);
+      border: 1px solid var(--c-line-2);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 16px 48px rgba(15, 23, 42, 0.12);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Background Sidepanel Content (Underneath Dimmed Overlay) */
+    .mock-panel-header {
+      height: 48px;
+      background: var(--c-panel);
+      border-bottom: 1px solid var(--c-line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 var(--space-4);
+      flex-shrink: 0;
+    }
+    .mock-panel-title {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--c-ink);
+    }
+    .mock-panel-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+    .icon-btn-placeholder {
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--c-ink-2);
+      border-radius: var(--radius-sm);
+    }
+
+    .mock-panel-nav {
+      height: 40px;
+      background: var(--c-panel);
+      border-bottom: 1px solid var(--c-line);
+      display: flex;
+      align-items: center;
+      padding: 0 var(--space-4);
+      gap: var(--space-4);
+      font-size: 13px;
+      color: var(--c-muted);
+      flex-shrink: 0;
+    }
+    .mock-nav-item.active {
+      color: var(--c-primary);
+      font-weight: 600;
+      position: relative;
+      height: 100%;
+      display: flex;
+      align-items: center;
+    }
+    .mock-nav-item.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--c-primary);
+    }
+
+    .mock-panel-content {
+      flex: 1;
+      padding: var(--space-3);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+      background-color: var(--c-bg);
+      opacity: 0.6;
+    }
+
+    .mock-card {
+      background: var(--c-panel);
+      border: 1px solid var(--c-line);
+      border-radius: var(--radius);
+      padding: var(--space-3);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+    .mock-card-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--c-ink-2);
+    }
+    .mock-bookmark-row {
+      height: 44px;
+      background: var(--c-panel);
+      border: 1px solid var(--c-line);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      padding: 0 var(--space-3);
+      gap: var(--space-2);
+    }
+    .mock-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: var(--radius-xs);
+      background: var(--c-sub);
+    }
+    .mock-text-line {
+      height: 10px;
+      background: var(--c-line-2);
+      border-radius: var(--radius-xs);
+      flex: 1;
+    }
+
+    /* Dimmed Overlay Backdrop */
+    .drawer-overlay {
+      position: absolute;
+      inset: 0;
+      background-color: var(--c-overlay);
+      z-index: 50;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    /* DRAWER PANEL
+       Width: 88% capped at 440px (in 360px frame, 88% = 316.8px)
+       Slides from right edge. Rounded only on left corners per DS spec.
+    */
+    .drawer-container {
+      width: 88%;
+      max-width: 440px;
+      height: 100%;
+      background-color: var(--c-panel);
+      border-left: 1px solid var(--c-line);
+      border-top-left-radius: var(--radius-lg);
+      border-bottom-left-radius: var(--radius-lg);
+      box-shadow: -8px 0 24px rgba(0, 0, 0, 0.16);
+      display: flex;
+      flex-direction: column;
+      z-index: 60;
+      overflow: hidden;
+    }
+
+    /* 1. DRAWER HEAD */
+    .drawer-header {
+      height: 52px;
+      border-bottom: 1px solid var(--c-line);
+      padding: 0 var(--space-4);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      background-color: var(--c-panel);
+    }
+
+    .drawer-header-left {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .drawer-icon-badge {
+      width: 24px;
+      height: 24px;
+      border-radius: var(--radius-xs);
+      background-color: var(--c-primary-soft);
+      color: var(--c-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .drawer-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--c-ink);
+      letter-spacing: -0.01em;
+    }
+
+    .btn-close {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      border: none;
+      background: transparent;
+      color: var(--c-ink-2);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 120ms ease;
+    }
+    .btn-close:hover {
+      background-color: var(--c-sub);
+      color: var(--c-ink);
+    }
+    .btn-close:focus-visible {
+      outline: 2px solid var(--c-primary);
+      outline-offset: 1px;
+    }
+
+    /* 2. DRAWER BODY (Scrollable reference content) */
+    .drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: var(--space-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+      background-color: var(--c-panel);
+    }
+
+    /* Custom thin scrollbar */
+    .drawer-body::-webkit-scrollbar {
+      width: 5px;
+    }
+    .drawer-body::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .drawer-body::-webkit-scrollbar-thumb {
+      background-color: var(--c-line-2);
+      border-radius: var(--radius-pill);
+    }
+
+    /* Group card container */
+    .guide-group {
+      background-color: var(--c-panel);
+      border: 1px solid var(--c-line);
+      border-radius: var(--radius);
+      padding: var(--space-3);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    /* Group Title as small neutral label */
+    .group-label {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--c-muted);
+      padding-bottom: var(--space-1);
+      border-bottom: 1px solid var(--c-line);
+    }
+    .group-label-icon {
+      width: 14px;
+      height: 14px;
+      stroke-width: 1.8px;
+    }
+
+    /* Group 1: 主要入口 (Primary Navigation Entries) */
+    .entries-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      list-style: none;
+    }
+    .entry-item {
+      display: flex;
+      flex-direction: column;
+      background-color: var(--c-sub);
+      border-radius: var(--radius-sm);
+      padding: var(--space-2) var(--space-3);
+      gap: var(--space-1);
+      border: 1px solid transparent;
+    }
+    .entry-term-wrap {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .entry-tag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--c-ink);
+      background-color: var(--c-panel);
+      border: 1px solid var(--c-line-2);
+      border-radius: var(--radius-xs);
+      padding: 1px var(--space-2);
+      height: 20px;
+    }
+    .entry-dash {
+      color: var(--c-muted);
+      font-size: 12px;
+    }
+    .entry-desc {
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--c-ink-2);
+    }
+
+    /* Group 2: 通用技巧 (General Tips) */
+    .tips-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+    .tip-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-2);
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--c-ink-2);
+      padding: var(--space-1) 0;
+    }
+    .tip-bullet {
+      width: 5px;
+      height: 5px;
+      border-radius: var(--radius-pill);
+      background-color: var(--c-primary);
+      margin-top: 8px;
+      flex-shrink: 0;
+    }
+
+    /* Group 3: 键盘快捷键 (Keyboard Shortcuts Table) */
+    .shortcuts-table {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+    .shortcut-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-3);
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-xs);
+      min-height: 30px;
+    }
+    .shortcut-row:nth-child(even) {
+      background-color: var(--c-sub);
+    }
+    .shortcut-keys {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      flex-shrink: 0;
+    }
+    kbd.kbd-chip {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--c-ink);
+      background-color: var(--c-panel);
+      border: 1px solid var(--c-line-2);
+      border-radius: var(--radius-xs);
+      padding: 2px var(--space-2);
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+      line-height: 1.2;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px;
+      height: 22px;
+    }
+    .shortcut-desc {
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--c-ink-2);
+      text-align: right;
+      flex: 1;
+    }
+
+    /* 3. DRAWER FOOT (Hint strip) */
+    .drawer-footer {
+      background-color: var(--c-sub);
+      border-top: 1px solid var(--c-line);
+      padding: var(--space-3) var(--space-4);
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+    .footer-security-note {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      font-size: 11px;
+      color: var(--c-muted);
+      line-height: 1.4;
+    }
+    .footer-security-icon {
+      width: 14px;
+      height: 14px;
+      color: var(--c-ok);
+      flex-shrink: 0;
+    }
+    .footer-link-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      font-size: 11px;
+      color: var(--c-muted);
+      padding-left: 22px;
+    }
+    .footer-link {
+      color: var(--c-primary);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .footer-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Four-pointed plump rounded star SVG standard */
+    .sparkle-icon {
+      width: 13px;
+      height: 13px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.6;
+    }
+  </style>
+<style>/* ==== DESIGN FIX : 评审反馈修正 ==== */
+    /* ==== 修正 4：复选框统一为 16px 方形 ==== */
+    input[type="checkbox"], .checkbox, .item-checkbox,
+    .custom-checkbox, .row-checkbox {
+      width: 16px; height: 16px; border-radius: 2px;
+      accent-color: var(--primary); flex-shrink: 0;
+    }
+    .custom-checkbox { border-width: 1px; }
+  </style>
+</head>
+<body>
+
+  <div class="workspace-stage">
+    <!-- Quick Theme Switcher for Reviewing OS preference compliance -->
+    <div class="theme-toolbar">
+      <span>预览主题：</span>
+      <button class="theme-toggle-btn" onclick="toggleTheme()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+        </svg>
+        <span id="theme-btn-text">跟随系统 / Toggle</span>
+      </button>
+      <span>(Follows @media prefers-color-scheme by default)</span>
+    </div>
+
+    <!-- 360px Chrome Side Panel Canvas Frame -->
+    <div class="sidepanel-frame" id="sidepanel">
+
+      <!-- Underlying Host Page: 360px Bookmark Manager Side Panel -->
+      <header class="mock-panel-header">
+        <div class="mock-panel-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--c-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+          </svg>
+          <span>书签管家</span>
+        </div>
+        <div class="mock-panel-actions">
+          <div class="icon-btn-placeholder" title="搜索">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </div>
+          <div class="icon-btn-placeholder" title="新增书签">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </div>
+          <div class="icon-btn-placeholder" title="Settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </div>
+        </div>
+      </header>
+
+      <nav class="mock-panel-nav">
+        <span class="mock-nav-item">概览</span>
+        <span class="mock-nav-item active">组织</span>
+        <span class="mock-nav-item">隐藏</span>
+      </nav>
+
+      <main class="mock-panel-content">
+        <div class="mock-card">
+          <div class="mock-card-header">
+            <span>工程与规范</span>
+            <span>4</span>
+          </div>
+          <div class="mock-bookmark-row">
+            <div class="mock-dot"></div>
+            <div class="mock-text-line" style="width: 70%;"></div>
+          </div>
+          <div class="mock-bookmark-row">
+            <div class="mock-dot"></div>
+            <div class="mock-text-line" style="width: 55%;"></div>
+          </div>
+        </div>
+        <div class="mock-card">
+          <div class="mock-card-header">
+            <span>设计令牌</span>
+            <span>2</span>
+          </div>
+          <div class="mock-bookmark-row">
+            <div class="mock-dot"></div>
+            <div class="mock-text-line" style="width: 60%;"></div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Dimmed Overlay & Slide-in Drawer (88% width, max 440px) -->
+      <div class="drawer-overlay" id="drawerBackdrop">
+        <aside class="drawer-container" role="dialog" aria-modal="true" aria-labelledby="drawer-heading">
+
+          <!-- 1. DRAWER HEAD -->
+          <div class="drawer-header">
+            <div class="drawer-header-left">
+              <div class="drawer-icon-badge" aria-hidden="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </div>
+              <h2 class="drawer-title" id="drawer-heading">操作指南</h2>
+            </div>
+            <button class="btn-close" aria-label="Close Guide (Esc)" data-tip="Esc" onclick="alert('Close drawer triggered')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- 2. DRAWER BODY (Grouped Reference Content) -->
+          <div class="drawer-body">
+
+            <!-- GROUP: 主要入口 (Primary Navigation Entries) -->
+            <section class="guide-group">
+              <div class="group-label">
+                <svg class="group-label-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                  <polyline points="9 22 9 12 15 12 15 22"/>
+                </svg>
+                <span>主要入口</span>
+              </div>
+              <ul class="entries-list">
+                <li class="entry-item">
+                  <div class="entry-term-wrap">
+                    <span class="entry-tag">概览</span>
+                    <span class="entry-dash">—</span>
+                  </div>
+                  <p class="entry-desc">Quick statistics, health audits, tag cloud, and one-click duplicate/empty cleanup tools.</p>
+                </li>
+                <li class="entry-item">
+                  <div class="entry-term-wrap">
+                    <span class="entry-tag">组织</span>
+                    <span class="entry-dash">—</span>
+                  </div>
+                  <p class="entry-desc">Full hierarchical folder tree and tag groups with drag-to-reorder and bulk editing.</p>
+                </li>
+                <li class="entry-item">
+                  <div class="entry-term-wrap">
+                    <span class="entry-tag">隐藏</span>
+                    <span class="entry-dash">—</span>
+                  </div>
+                  <p class="entry-desc">Private bookmark vault isolated from browser omnibox, search, and new tab display.</p>
+                </li>
+              </ul>
+            </section>
+
+            <!-- GROUP: 通用技巧 (General Tips) -->
+            <section class="guide-group">
+              <div class="group-label">
+                <svg class="group-label-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="16" x2="12" y2="12"/>
+                  <line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+                <span>通用技巧</span>
+              </div>
+              <ul class="tips-list">
+                <li class="tip-item">
+                  <span class="tip-bullet"></span>
+                  <span>Select any bookmark row to reveal the bottom bulk-action bar (Move, Tag, Delete).</span>
+                </li>
+                <li class="tip-item">
+                  <span class="tip-bullet"></span>
+                  <span>Click bookmark title to open directly; hold <kbd class="kbd-chip">Ctrl</kbd> / <kbd class="kbd-chip">⌘</kbd> 在后台标签页打开。</span>
+                </li>
+                <li class="tip-item">
+                  <span class="tip-bullet"></span>
+                  <span>Drag row handle to reorder, or drop into another folder to merge hierarchy.</span>
+                </li>
+                <li class="tip-item">
+                  <span class="tip-bullet"></span>
+                  <span>All deletions are safely routed to Recycle Bin (retained for 30 days before purge).</span>
+                </li>
+                <li class="tip-item">
+                  <span class="tip-bullet"></span>
+                  <span>点击四角星图标 
+                    <svg class="sparkle-icon" viewBox="0 0 24 24" style="display:inline-block; vertical-align:text-bottom;">
+                      <path d="M12 2 C12 7.5, 16.5 12, 22 12 C16.5 12, 12 16.5, 12 22 C12 16.5, 7.5 12, 2 12 C7.5 12, 12 7.5, 12 2 Z"/>
+                    </svg>
+                    on any row to generate smart tags using your configured LLM.
+                  </span>
+                </li>
+                <li class="tip-item">
+                  <span class="tip-bullet"></span>
+                  <span>Duplicate bookmarks are highlighted with alert indicators for safe one-click merge.</span>
+                </li>
+                <li class="tip-item">
+                  <span class="tip-bullet"></span>
+                  <span>Click folder header chip to filter view exclusively to items in that specific sub-tree.</span>
+                </li>
+                <li class="tip-item">
+                  <span class="tip-bullet"></span>
+                  <span>Export a complete JSON backup at any time from Settings &rarr; Danger Zone.</span>
+                </li>
+              </ul>
+            </section>
+
+            <!-- GROUP: 键盘快捷键 (Keyboard Shortcuts Table) -->
+            <section class="guide-group">
+              <div class="group-label">
+                <svg class="group-label-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="4" width="20" height="16" rx="2"/>
+                  <line x1="6" y1="8" x2="6" y2="8"/>
+                  <line x1="10" y1="8" x2="10" y2="8"/>
+                  <line x1="14" y1="8" x2="14" y2="8"/>
+                  <line x1="18" y1="8" x2="18" y2="8"/>
+                  <line x1="6" y1="12" x2="6" y2="12"/>
+                  <line x1="10" y1="12" x2="10" y2="12"/>
+                  <line x1="14" y1="12" x2="14" y2="12"/>
+                  <line x1="18" y1="12" x2="18" y2="12"/>
+                  <line x1="8" y1="16" x2="16" y2="16"/>
+                </svg>
+                <span>键盘快捷键</span>
+              </div>
+              <div class="shortcuts-table">
+                <div class="shortcut-row">
+                  <div class="shortcut-keys">
+                    <kbd class="kbd-chip">/</kbd>
+                  </div>
+                  <span class="shortcut-desc">聚焦搜索框</span>
+                </div>
+                <div class="shortcut-row">
+                  <div class="shortcut-keys">
+                    <kbd class="kbd-chip">Ctrl</kbd>
+                    <span style="font-size: 10px; color: var(--c-muted);">+</span>
+                    <kbd class="kbd-chip">K</kbd>
+                  </div>
+                  <span class="shortcut-desc">快速搜索</span>
+                </div>
+                <div class="shortcut-row">
+                  <div class="shortcut-keys">
+                    <kbd class="kbd-chip">j</kbd>
+                    <span style="font-size: 10px; color: var(--c-muted);">/</span>
+                    <kbd class="kbd-chip">k</kbd>
+                  </div>
+                  <span class="shortcut-desc">上下移动高亮行</span>
+                </div>
+                <div class="shortcut-row">
+                  <div class="shortcut-keys">
+                    <kbd class="kbd-chip">Enter</kbd>
+                  </div>
+                  <span class="shortcut-desc">打开高亮书签</span>
+                </div>
+                <div class="shortcut-row">
+                  <div class="shortcut-keys">
+                    <kbd class="kbd-chip">Shift</kbd>
+                    <span style="font-size: 10px; color: var(--c-muted);">+</span>
+                    <kbd class="kbd-chip">Enter</kbd>
+                  </div>
+                  <span class="shortcut-desc">后台打开高亮书签</span>
+                </div>
+                <div class="shortcut-row">
+                  <div class="shortcut-keys">
+                    <kbd class="kbd-chip">Ctrl</kbd>
+                    <span style="font-size: 10px; color: var(--c-muted);">+</span>
+                    <kbd class="kbd-chip">&uarr;</kbd>
+                    <kbd class="kbd-chip">&darr;</kbd>
+                  </div>
+                  <span class="shortcut-desc">在文件夹内移动书签</span>
+                </div>
+                <div class="shortcut-row">
+                  <div class="shortcut-keys">
+                    <kbd class="kbd-chip">N</kbd>
+                    <kbd class="kbd-chip">F2</kbd>
+                    <kbd class="kbd-chip">Del</kbd>
+                  </div>
+                  <span class="shortcut-desc">新建 / Rename / Delete folder</span>
+                </div>
+                <div class="shortcut-row">
+                  <div class="shortcut-keys">
+                    <kbd class="kbd-chip">?</kbd>
+                  </div>
+                  <span class="shortcut-desc">打开本指南</span>
+                </div>
+                <div class="shortcut-row">
+                  <div class="shortcut-keys">
+                    <kbd class="kbd-chip">Esc</kbd>
+                  </div>
+                  <span class="shortcut-desc">关闭抽屉 / 弹层</span>
+                </div>
+              </div>
+            </section>
+
+          </div>
+
+          <!-- 3. DRAWER FOOT (Hint Strip) -->
+          <footer class="drawer-footer">
+            <div class="footer-security-note">
+              <svg class="footer-security-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                <polyline points="9 12 11 14 15 10"/>
+              </svg>
+              <span>All data stored strictly in local browser storage; zero external telemetry.</span>
+            </div>
+            <div class="footer-link-row">
+              <span>查看源码：</span>
+              <a href="https://github.com/example/bookmark-manager" target="_blank" rel="noreferrer" class="footer-link">GitHub Repository &rarr;</a>
+            </div>
+          </footer>
+
+        </aside>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    function toggleTheme() {
+      const el = document.documentElement;
+      const current = el.getAttribute('data-theme');
+      const next = current === 'dark' ? 'light' : 'dark';
+      el.setAttribute('data-theme', next);
+      document.getElementById('theme-btn-text').innerText = next === 'dark' ? 'Dark Mode' : 'Light Mode';
+    }
+  </script>
+</body>
+</html>
+
+
+
+
+

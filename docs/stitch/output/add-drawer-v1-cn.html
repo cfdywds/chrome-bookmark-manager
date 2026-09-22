@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>书签管家 · 新增书签抽屉</title>
+<style>
+  :root {
+    --bg: #f3f5f8;
+    --panel: #ffffff;
+    --sub: #f3f5f8;
+    --field: #ffffff;
+    --ink: #101828;
+    --ink-2: #344054;
+    --muted: #667085;
+    --line: #e7ebf0;
+    --line-2: #dce1e8;
+    --primary: #2563eb;
+    --primary-soft: #e9f1fe;
+    --danger: #be123c;
+    --warn: #b45309;
+    --ok: #059669;
+
+    --radius-xs: 7px;
+    --radius-sm: 10px;
+    --radius: 14px;
+    --radius-lg: 18px;
+    --radius-pill: 999px;
+
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+    --shadow-default: 0 6px 20px rgba(15, 23, 42, 0.09);
+    --shadow-lg: 0 16px 48px rgba(15, 23, 42, 0.16);
+
+    --font-stack: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1117;
+      --panel: #171b24;
+      --sub: #1b202b;
+      --field: #1e2430;
+      --ink: #f2f4f8;
+      --ink-2: #c3c9d4;
+      --muted: #8b93a3;
+      --line: #242a36;
+      --line-2: #303845;
+      --primary: #5da2f5;
+      --primary-soft: #1a2436;
+      --danger: #fb7185;
+      --warn: #fbbf24;
+      --ok: #34d399;
+
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+      --shadow-default: 0 6px 20px rgba(0, 0, 0, 0.45);
+      --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.65);
+    }
+  }
+
+  /* Manual toggle support if preview wrapper toggled */
+  [data-theme="dark"] {
+    --bg: #0f1117;
+    --panel: #171b24;
+    --sub: #1b202b;
+    --field: #1e2430;
+    --ink: #f2f4f8;
+    --ink-2: #c3c9d4;
+    --muted: #8b93a3;
+    --line: #242a36;
+    --line-2: #303845;
+    --primary: #5da2f5;
+    --primary-soft: #1a2436;
+    --danger: #fb7185;
+    --warn: #fbbf24;
+    --ok: #34d399;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-default: 0 6px 20px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.65);
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-color: #dbe2ec;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    padding: 24px;
+    font-family: var(--font-stack);
+    color: var(--ink);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    body {
+      background-color: #08090d;
+    }
+  }
+
+  /* 360px Browser Side Panel Frame */
+  .side-panel-frame {
+    width: 360px;
+    height: 640px;
+    background-color: var(--bg);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Underlying Panel Header */
+  .panel-header {
+    height: 48px;
+    background-color: var(--panel);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    flex-shrink: 0;
+  }
+
+  .brand-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .brand-icon {
+    width: 18px;
+    height: 18px;
+    color: var(--primary);
+  }
+
+  .brand-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+
+  .brand-badge {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    background-color: var(--sub);
+    padding: 2px 6px;
+    border-radius: var(--radius-xs);
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--ink-2);
+    cursor: pointer;
+    transition: background-color 120ms ease;
+  }
+
+  .icon-btn:hover {
+    background-color: var(--sub);
+  }
+
+  .icon-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* Nav Tabs */
+  .nav-tabs {
+    height: 40px;
+    background-color: var(--panel);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+  }
+
+  .tab-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .tab-btn.active {
+    color: var(--primary);
+    background-color: var(--primary-soft);
+    font-weight: 600;
+  }
+
+  /* Background Content (dimmed when drawer open) */
+  .panel-body-content {
+    flex: 1;
+    padding: 12px 16px;
+    overflow-y: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .search-mock {
+    height: 34px;
+    background-color: var(--field);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .search-mock svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .group-mock {
+    background-color: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .group-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+
+  .item-row-mock {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .item-favicon {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    background-color: var(--sub);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  .item-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .item-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .item-meta {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* Translucent Dimmed Overlay */
+  .drawer-overlay {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(16, 24, 40, 0.45);
+    backdrop-filter: blur(1px);
+    z-index: 60;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .drawer-overlay {
+      background-color: rgba(0, 0, 0, 0.65);
+    }
+  }
+
+  [data-theme="dark"] .drawer-overlay {
+    background-color: rgba(0, 0, 0, 0.65);
+  }
+
+  /* DRAWER CONTAINER: slides from right edge, covers 88% width (max 440px), rounded left only */
+  .drawer-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 88%;
+    max-width: 440px;
+    background-color: var(--panel);
+    border-left: 1px solid var(--line-2);
+    border-top-left-radius: var(--radius-lg);
+    border-bottom-left-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    z-index: 80;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* 1. DRAWER HEAD: plus icon + title "Add Bookmark", small '?' help dot, close (X) button */
+  .drawer-head {
+    height: 52px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+    background-color: var(--panel);
+    flex-shrink: 0;
+  }
+
+  .drawer-head-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .drawer-head-icon {
+    width: 18px;
+    height: 18px;
+    color: var(--primary);
+    stroke-width: 2;
+  }
+
+  .drawer-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+
+  .help-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius-pill);
+    background-color: var(--sub);
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: help;
+    border: 1px solid var(--line);
+    transition: all 120ms ease;
+  }
+
+  .help-dot:hover {
+    color: var(--ink);
+    border-color: var(--line-2);
+    background-color: var(--line);
+  }
+
+  .drawer-head-right {
+    display: flex;
+    align-items: center;
+  }
+
+  .close-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-xs);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 120ms ease;
+  }
+
+  .close-btn:hover {
+    background-color: var(--sub);
+    color: var(--ink);
+  }
+
+  .close-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 2;
+  }
+
+  /* 2. DRAWER BODY - vertical form with three fields */
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .form-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-2);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .label-optional {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--muted);
+  }
+
+  .input-field {
+    width: 100%;
+    height: 38px;
+    background-color: var(--field);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-sm);
+    padding: 0 12px;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+
+  .input-field::placeholder {
+    color: var(--muted);
+    opacity: 0.85;
+  }
+
+  .input-field:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-soft);
+  }
+
+  /* Inline warn row directly beneath URL field */
+  .field-warn-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    background-color: var(--sub);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--warn);
+    border-radius: var(--radius-xs);
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--warn);
+  }
+
+  .field-warn-row svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--warn);
+    stroke-width: 2;
+  }
+
+  /* Tag input composite field with inside "AI Tag" button */
+  .tag-field-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+
+  .tag-input {
+    padding-right: 86px; /* give room for the inline ghost button */
+  }
+
+  .ai-tag-button {
+    position: absolute;
+    right: 4px;
+    height: 30px;
+    padding: 0 8px;
+    background: transparent;
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-xs);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ink-2);
+    cursor: pointer;
+    transition: all 120ms ease;
+  }
+
+  .ai-tag-button:hover {
+    background-color: var(--sub);
+    border-color: var(--line);
+    color: var(--primary);
+  }
+
+  /* Plump, balanced rounded four-pointed sparkle icon */
+  .four-point-sparkle {
+    width: 13px;
+    height: 13px;
+    color: var(--primary);
+  }
+
+  /* Suggested tag chips wrapped row */
+  .suggestions-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .suggestions-label {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .suggested-chips-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Local rule suggestions: visually lighter than real tag chips, dashed border, "+" prefix, muted */
+  .suggested-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    padding: 0 8px;
+    background-color: var(--sub);
+    border: 1px dashed var(--line-2);
+    border-radius: var(--radius-pill);
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+    transition: all 120ms ease;
+  }
+
+  .suggested-chip:hover {
+    color: var(--ink-2);
+    border-color: var(--muted);
+    background-color: var(--line);
+  }
+
+  .suggested-chip .prefix-plus {
+    font-size: 12px;
+    line-height: 1;
+    font-weight: 500;
+  }
+
+  /* 3. DRAWER FOOT: inline status message (empty) + primary Save button */
+  .drawer-foot {
+    height: 56px;
+    padding: 0 16px;
+    background-color: var(--sub);
+    border-top: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .foot-status-message {
+    font-size: 11px;
+    color: var(--muted);
+    min-height: 16px;
+    display: flex;
+    align-items: center;
+  }
+
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 16px;
+    background-color: var(--primary);
+    color: #ffffff;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: opacity 120ms ease, background-color 120ms ease;
+  }
+
+  .btn-primary:hover {
+    opacity: 0.92;
+  }
+
+  .btn-primary:active {
+    transform: translateY(1px);
+  }
+
+  .btn-primary svg {
+    width: 15px;
+    height: 15px;
+    stroke-width: 2;
+  }
+
+  /* Minimal theme switcher for manual preview testing in mockup canvas */
+  .theme-switch-bar {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 100;
+  }
+</style>
+<style>/* ==== DESIGN FIX : 评审反馈修正 ==== */
+    /* ==== 修正 4：复选框统一为 16px 方形 ==== */
+    input[type="checkbox"], .checkbox, .item-checkbox,
+    .custom-checkbox, .row-checkbox {
+      width: 16px; height: 16px; border-radius: 2px;
+      accent-color: var(--primary); flex-shrink: 0;
+    }
+    .custom-checkbox { border-width: 1px; }
+  </style>
+</head>
+<body>
+
+  <!-- 360px Browser Side Panel Frame -->
+  <div class="side-panel-frame" id="sidePanel">
+    
+    <!-- Background Panel Header -->
+    <header class="panel-header">
+      <div class="brand-group">
+        <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <span class="brand-title">书签管家</span>
+        <span class="brand-badge">MV3</span>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" aria-label="搜索" title="搜索">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+        <button class="icon-btn" aria-label="新增书签" title="新增书签" style="background-color: var(--primary-soft); color: var(--primary);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+        <button class="icon-btn" aria-label="Settings" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Nav Tabs -->
+    <nav class="nav-tabs">
+      <button class="tab-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+        </svg>
+        概览
+      </button>
+      <button class="tab-btn active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+        组织
+      </button>
+      <button class="tab-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+          <line x1="1" y1="1" x2="23" y2="23"></line>
+        </svg>
+        隐藏
+      </button>
+    </nav>
+
+    <!-- Background Under-layer Content -->
+    <div class="panel-body-content">
+      <div class="search-mock">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <span>搜索文件夹或书签…</span>
+      </div>
+
+      <div class="group-mock">
+        <div class="group-title-row">
+          <span>架构与规范</span>
+          <span style="font-weight: 500; color: var(--muted);">4 项</span>
+        </div>
+        <div class="item-row-mock">
+          <div class="item-favicon">R</div>
+          <div class="item-text">
+            <div class="item-title">RFC 9110：HTTP 语义</div>
+            <div class="item-meta">rfc-editor.org &bull; Standards</div>
+          </div>
+        </div>
+        <div class="item-row-mock">
+          <div class="item-favicon">W</div>
+          <div class="item-text">
+            <div class="item-title">设计令牌规范 2024</div>
+            <div class="item-meta">w3c.github.io &bull; Tokens</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Translucent Dimmed Overlay behind drawer -->
+    <div class="drawer-overlay" aria-hidden="true"></div>
+
+    <!-- DRAWER: Slides in from right, covers 88% width (max 440px), rounded left only -->
+    <aside class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawerHeading">
+      
+      <!-- 1. DRAWER HEAD -->
+      <div class="drawer-head">
+        <div class="drawer-head-left">
+          <svg class="drawer-head-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <h2 class="drawer-title" id="drawerHeading">新增书签</h2>
+          <span class="help-dot" title="Bookmark details and tags" aria-label="帮助">?</span>
+        </div>
+        <div class="drawer-head-right">
+          <button class="close-btn" aria-label="Close drawer" title="关闭">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 2. DRAWER BODY (Vertical form with 3 fields) -->
+      <div class="drawer-body">
+        
+        <!-- Field 1: URL (Required) -->
+        <div class="form-group">
+          <label class="form-label" for="urlInput">
+            URL
+            <span style="color: var(--danger); font-size: 11px;">*</span>
+          </label>
+          <input 
+            type="url" 
+            id="urlInput" 
+            class="input-field" 
+            placeholder="https://example.com" 
+            value="https://w3c.github.io/design-tokens"
+            required
+            spellcheck="false"
+          />
+          <!-- Inline warn row directly beneath URL field -->
+          <div class="field-warn-row" role="status">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            <span>该网址已存在，保存后会合并标签</span>
+          </div>
+        </div>
+
+        <!-- Field 2: Title (Leave empty to auto-generate) -->
+        <div class="form-group">
+          <label class="form-label" for="titleInput">
+            标题
+            <span class="label-optional">(auto-generated if empty)</span>
+          </label>
+          <input 
+            type="text" 
+            id="titleInput" 
+            class="input-field" 
+            placeholder="Auto-generate title from page" 
+            value="Design Tokens Format Module - 2024 Community Draft"
+          />
+        </div>
+
+        <!-- Field 3: Tags (Multiple, comma-separated) -->
+        <div class="form-group">
+          <label class="form-label" for="tagsInput">
+            标签
+            <span class="label-optional">(comma separated)</span>
+          </label>
+          <div class="tag-field-container">
+            <input 
+              type="text" 
+              id="tagsInput" 
+              class="input-field tag-input" 
+              placeholder="code, work, tutorial" 
+              value="Tokens, W3C"
+            />
+            <!-- "AI Tag" ghost button inside right edge of input -->
+            <button type="button" class="ai-tag-button" title="Auto-detect tags with local AI">
+              <!-- Plump, rounded four-pointed star with concave inward curving sides -->
+              <svg class="four-point-sparkle" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C12 7.52 7.52 12 2 12C7.52 12 12 16.48 12 22C12 16.48 16.48 12 22 12C16.48 12 12 7.52 12 2Z"></path>
+              </svg>
+              <span>AI 打标</span>
+            </button>
+          </div>
+
+          <!-- Suggested tag chips (Local rule suggestions) -->
+          <div class="suggestions-section">
+            <span class="suggestions-label">域名规则建议：</span>
+            <div class="suggested-chips-row">
+              <button type="button" class="suggested-chip">
+                <span class="prefix-plus">+</span>
+                <span>规范</span>
+              </button>
+              <button type="button" class="suggested-chip">
+                <span class="prefix-plus">+</span>
+                <span>设计</span>
+              </button>
+              <button type="button" class="suggested-chip">
+                <span class="prefix-plus">+</span>
+                <span>架构</span>
+              </button>
+              <button type="button" class="suggested-chip">
+                <span class="prefix-plus">+</span>
+                <span>规范</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 3. DRAWER FOOT: Inline status message (empty) + primary Save button -->
+      <footer class="drawer-foot">
+        <div class="foot-status-message">
+          <!-- Rendered empty as requested -->
+        </div>
+        <button type="button" class="btn-primary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+            <polyline points="17 21 17 13 7 13 7 21"></polyline>
+            <polyline points="7 3 7 8 15 8"></polyline>
+          </svg>
+          <span>保存书签</span>
+        </button>
+      </footer>
+
+    </aside>
+
+  </div>
+
+</body>
+</html>
+
+
+
+
+

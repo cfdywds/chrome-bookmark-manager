@@ -53,11 +53,16 @@ describe('弹窗大列表渲染', () => {
 
   it('标签按钮悬浮态使用低透明度底色', () => {
     const rule = popupCss.match(/\.tag-chip:hover,\s*\.tag-chip:focus-visible\s*\{([^}]*)\}/)?.[1] || '';
-    expect(flat(rule)).toMatch(/background: rgba\(22, 163, 74, 0?\.12\)/);
-    expect(rule).toContain('color: var(--ok-strong)');
+    // 设计稿把行内标签 chip 收敛为中性底衬：悬浮时底衬加深一档，颜色只留给真实状态
+    expect(flat(rule)).toContain('background: var(--surface-sub-hover)');
+    expect(flat(rule)).toContain('border-color: var(--line-2)');
+    expect(rule).toContain('color: var(--ink)');
     // 语义色统一由 css/tokens.css 定义，popup.css 只消费变量
     expect(tokensCss).toContain('--c-ok-strong-l: #047857');
-    expect(flat(popupCss)).toContain('.tag-chip:focus-visible { outline: 2px solid var(--ok-strong)');
+    expect(flat(popupCss)).toContain('.tag-chip:focus-visible { outline: 2px solid var(--primary)');
+    // chip 里不再残留绿色 hex / rgba 逃逸
+    expect(popupCss).not.toContain('rgba(22, 163, 74');
+    expect(popupCss).not.toContain('#16a34a');
   });
 
   it('待清理卡片仅保留动作名称，不重复展示说明', () => {
@@ -543,7 +548,7 @@ describe('自定义规则批量应用', () => {
     expect(popupHtml).toContain('id="confirmFourth"');
     expect(popupHtml).toContain('id="operationNoticeAction"');
     expect(popupCss).toContain('grid-template-columns: minmax(0, 1fr) auto;');
-    expect(popupCss).toContain('justify-content: flex-end; gap: 8px; flex-wrap: wrap;');
+    expect(flat(popupCss)).toContain('justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap;');
     const source = getFunctionSource('applyCustomRules');
     expect(source).toContain("fourthText: '仅未标'");
     expect(source).toContain("thirdText: '覆盖'");

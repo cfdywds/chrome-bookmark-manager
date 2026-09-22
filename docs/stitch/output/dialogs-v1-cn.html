@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>书签管家 · 弹层族</title>
+<style>
+  /* -------------------------------------------------------------
+     DESIGN TOKENS & ROOTS
+     ------------------------------------------------------------- */
+  :root {
+    /* Color Palette - Light (Default) */
+    --bg: #f3f5f8;
+    --panel: #ffffff;
+    --sub: #f3f5f8;
+    --field: #ffffff;
+    --ink: #101828;
+    --ink-2: #344054;
+    --muted: #667085;
+    --line: #e7ebf0;
+    --line-2: #dce1e8;
+    --primary: #2563eb;
+    --primary-soft: #e9f1fe;
+    --danger: #be123c;
+    --danger-soft: #ffe7ec;
+    --warn: #b45309;
+    --warn-soft: #fdf1d7;
+    --ok: #059669;
+
+    /* Corner Radii - Hard Constraints */
+    --radius-xs: 7px;
+    --radius-sm: 10px;
+    --radius: 14px;
+    --radius-lg: 18px;
+    --radius-pill: 999px;
+
+    /* Spacing Scale - 4, 8, 12, 16, 24 */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-6: 24px;
+
+    /* Elevation */
+    --shadow-modal: 0 16px 48px rgba(15, 23, 42, 0.18), 0 4px 12px rgba(15, 23, 42, 0.08);
+    --scrim: rgba(15, 17, 23, 0.45);
+
+    /* Fonts */
+    --font-stack: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', Consolas, monospace, 'PingFang SC', 'Microsoft YaHei';
+  }
+
+  /* Automatic Dark Mode */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1117;
+      --panel: #171b24;
+      --sub: #1b202b;
+      --field: #1e2430;
+      --ink: #f2f4f8;
+      --ink-2: #c3c9d4;
+      --muted: #8b93a3;
+      --line: #242a36;
+      --line-2: #303845;
+      --primary: #5da2f5;
+      --primary-soft: #1a2436;
+      --danger: #fb7185;
+      --danger-soft: #3a2229;
+      --warn: #fbbf24;
+      --warn-soft: #332a14;
+      --ok: #34d399;
+      --shadow-modal: 0 20px 48px rgba(0, 0, 0, 0.65), 0 4px 16px rgba(0, 0, 0, 0.45);
+      --scrim: rgba(0, 0, 0, 0.75);
+    }
+  }
+
+  /* Manual toggle support via data attribute */
+  [data-theme="dark"] {
+    --bg: #0f1117;
+    --panel: #171b24;
+    --sub: #1b202b;
+    --field: #1e2430;
+    --ink: #f2f4f8;
+    --ink-2: #c3c9d4;
+    --muted: #8b93a3;
+    --line: #242a36;
+    --line-2: #303845;
+    --primary: #5da2f5;
+    --primary-soft: #1a2436;
+    --danger: #fb7185;
+    --danger-soft: #3a2229;
+    --warn: #fbbf24;
+    --warn-soft: #332a14;
+    --ok: #34d399;
+    --shadow-modal: 0 20px 48px rgba(0, 0, 0, 0.65), 0 4px 16px rgba(0, 0, 0, 0.45);
+    --scrim: rgba(0, 0, 0, 0.75);
+  }
+
+  [data-theme="light"] {
+    --bg: #f3f5f8;
+    --panel: #ffffff;
+    --sub: #f3f5f8;
+    --field: #ffffff;
+    --ink: #101828;
+    --ink-2: #344054;
+    --muted: #667085;
+    --line: #e7ebf0;
+    --line-2: #dce1e8;
+    --primary: #2563eb;
+    --primary-soft: #e9f1fe;
+    --danger: #be123c;
+    --danger-soft: #ffe7ec;
+    --warn: #b45309;
+    --warn-soft: #fdf1d7;
+    --ok: #059669;
+    --shadow-modal: 0 16px 48px rgba(15, 23, 42, 0.18), 0 4px 12px rgba(15, 23, 42, 0.08);
+    --scrim: rgba(15, 17, 23, 0.45);
+  }
+
+  /* -------------------------------------------------------------
+     BASE STYLES
+     ------------------------------------------------------------- */
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-stack);
+    font-size: 13px;
+    line-height: 1.5;
+    padding: var(--space-6) var(--space-4);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Sheet Canvas Frame: 360px wide */
+  .sheet-container {
+    width: 100%;
+    max-width: 360px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  /* Header of Component Sheet */
+  .sheet-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .sheet-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+
+  .theme-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    background-color: var(--sub);
+    border: 1px solid var(--line);
+    color: var(--ink-2);
+    font-size: 11px;
+    font-weight: 500;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .theme-toggle-btn:hover {
+    background-color: var(--line);
+  }
+
+  /* -------------------------------------------------------------
+     DIALOG BLOCK & CAPTION
+     ------------------------------------------------------------- */
+  .dialog-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  /* Backdrop / Scrim container representing parent viewport with mock background behind scrim */
+  .dialog-viewport-mock {
+    position: relative;
+    width: 100%;
+    min-height: 280px;
+    background-color: var(--bg);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4) var(--space-3);
+  }
+
+  /* Mock subtle list rows underneath to convey realistic context */
+  .viewport-underlay {
+    position: absolute;
+    inset: 0;
+    padding: var(--space-4);
+    opacity: 0.35;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .mock-row {
+    height: 40px;
+    background-color: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+  }
+
+  /* Scrim overlay */
+  .scrim-overlay {
+    position: absolute;
+    inset: 0;
+    background-color: var(--scrim);
+    backdrop-filter: blur(1px);
+    z-index: 1;
+  }
+
+  /* Common Modal Card Container */
+  .modal-card {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: 320px;
+    background-color: var(--panel);
+    border-radius: var(--radius); /* 14px */
+    box-shadow: var(--shadow-modal);
+    padding: 18px; /* Required modal padding */
+    border: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  /* Dialog #5 Wider Card Constraint */
+  .modal-card.modal-card-wide {
+    max-width: 336px; /* Bound to 360px viewport margins */
+  }
+
+  .dialog-caption {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding-left: var(--space-1);
+  }
+
+  /* -------------------------------------------------------------
+     DIALOG ELEMENTS: HEADER, BODY, FOOTER
+     ------------------------------------------------------------- */
+  .modal-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .modal-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.35;
+  }
+
+  .modal-description {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+
+  .modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  /* Alert / Warn Strip */
+  .warn-strip {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    background-color: var(--warn-soft);
+    border: 1px solid var(--warn);
+    border-radius: var(--radius-xs); /* 7px */
+    padding: var(--space-2) var(--space-3);
+    color: var(--warn);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .warn-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+  }
+
+  /* Inputs */
+  .field-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .text-input {
+    width: 100%;
+    height: 38px;
+    background-color: var(--field);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-sm); /* 10px */
+    padding: 0 var(--space-3);
+    color: var(--ink);
+    font-family: var(--font-stack);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  /* Visible Focus Ring */
+  .text-input.has-focus,
+  .text-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-soft);
+  }
+
+  /* Buttons */
+  .modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    margin-top: var(--space-1);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap; /* Prevent multi-line wrapping */
+    font-family: var(--font-stack);
+    font-size: 13px;
+    font-weight: 500;
+    height: 34px;
+    padding: 0 var(--space-3);
+    border-radius: var(--radius-sm); /* 10px */
+    border: 1px solid transparent;
+    cursor: pointer;
+    user-select: none;
+    line-height: 1;
+    text-decoration: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+  }
+
+  .btn-ghost {
+    background-color: transparent;
+    border-color: var(--line);
+    color: var(--ink-2);
+  }
+
+  .btn-ghost:hover {
+    background-color: var(--sub);
+    border-color: var(--line-2);
+  }
+
+  .btn-primary {
+    background-color: var(--primary);
+    border-color: var(--primary);
+    color: #ffffff;
+  }
+
+  .btn-primary:hover {
+    opacity: 0.92;
+  }
+
+  .btn-danger {
+    background-color: var(--danger);
+    border-color: var(--danger);
+    color: #ffffff;
+  }
+
+  .btn-danger:hover {
+    opacity: 0.92;
+  }
+
+  .btn-subtle {
+    background-color: var(--sub);
+    border-color: var(--line);
+    color: var(--ink-2);
+  }
+
+  .btn-subtle:hover {
+    background-color: var(--line);
+  }
+
+  /* Icon Buttons */
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-xs); /* 7px */
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color 0.15s, background-color 0.15s;
+  }
+
+  .icon-btn:hover {
+    background-color: var(--line);
+    color: var(--ink);
+  }
+
+  .icon-btn.icon-btn-danger:hover {
+    background-color: var(--danger-soft);
+    color: var(--danger);
+  }
+
+  /* -------------------------------------------------------------
+     DIALOG 2: 4-ACTION FOOTER SPECIFIC WRAPPING
+     ------------------------------------------------------------- */
+  .footer-quad {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--space-2);
+    width: 100%;
+  }
+
+  .footer-quad .actions-left,
+  .footer-quad .actions-right {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .footer-quad .btn {
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  /* -------------------------------------------------------------
+     DIALOG 4: TAG MANAGEMENT LIST
+     ------------------------------------------------------------- */
+  .tag-scroll-container {
+    max-height: 184px;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm); /* 10px */
+    background-color: var(--sub);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tag-scroll-container::-webkit-scrollbar {
+    width: 4px;
+  }
+  .tag-scroll-container::-webkit-scrollbar-thumb {
+    background: var(--line-2);
+    border-radius: var(--radius-pill);
+  }
+
+  .tag-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 38px;
+    padding: 0 var(--space-3);
+    background-color: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .tag-row:last-child {
+    border-bottom: none;
+  }
+
+  .tag-pill-neutral {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    height: 22px;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-pill);
+    background-color: var(--sub);
+    color: var(--ink-2);
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .tag-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  /* -------------------------------------------------------------
+     DIALOG 5: FOLDER FILTER TREE
+     ------------------------------------------------------------- */
+  .summary-badge-line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 11px;
+    color: var(--muted);
+    padding: var(--space-1) var(--space-2);
+    background-color: var(--sub);
+    border-radius: var(--radius-xs);
+  }
+
+  .summary-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--ok);
+  }
+
+  .folder-tree-container {
+    max-height: 172px;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background-color: var(--panel);
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-1);
+  }
+
+  .folder-tree-container::-webkit-scrollbar {
+    width: 4px;
+  }
+  .folder-tree-container::-webkit-scrollbar-thumb {
+    background: var(--line-2);
+    border-radius: var(--radius-pill);
+  }
+
+  .folder-tree-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 34px;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.12s ease;
+  }
+
+  .folder-tree-row:hover {
+    background-color: var(--sub);
+  }
+
+  .folder-tree-row.is-active {
+    background-color: var(--primary-soft);
+    color: var(--primary);
+  }
+
+  .folder-tree-row.is-active .folder-name {
+    font-weight: 600;
+    color: var(--primary);
+  }
+
+  .folder-tree-row.is-active .folder-icon-svg {
+    stroke: var(--primary);
+  }
+
+  .folder-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .folder-indent-1 {
+    margin-left: 0px;
+  }
+
+  .folder-indent-2 {
+    margin-left: 16px;
+  }
+
+  .folder-indent-3 {
+    margin-left: 32px;
+  }
+
+  .folder-name {
+    font-size: 12px;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .count-chip-neutral {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: var(--radius-pill);
+    background-color: var(--sub);
+    color: var(--ink-2);
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .folder-tree-row.is-active .count-chip-neutral {
+    background-color: var(--panel);
+    color: var(--primary);
+  }
+
+  /* SVG Icons Inline Styles */
+  .ui-icon {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.75px;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex-shrink: 0;
+  }
+
+  /* Four-pointed sparkle: Plump rounded concave sides in Gemini spirit */
+  .sparkle-icon {
+    width: 15px;
+    height: 15px;
+    fill: currentColor;
+    stroke: none;
+  }
+</style>
+<style>/* ==== DESIGN FIX : 评审反馈修正 ==== */
+    /* ==== 修正 4：复选框统一为 16px 方形 ==== */
+    input[type="checkbox"], .checkbox, .item-checkbox,
+    .custom-checkbox, .row-checkbox {
+      width: 16px; height: 16px; border-radius: 2px;
+      accent-color: var(--primary); flex-shrink: 0;
+    }
+    .custom-checkbox { border-width: 1px; }
+  </style>
+</head>
+<body>
+
+<div class="sheet-container">
+
+  <!-- SHEET META HEADER -->
+  <header class="sheet-header">
+    <span class="sheet-title">弹层族规格板</span>
+    <button class="theme-toggle-btn" id="themeToggle" type="button" aria-label="Toggle light or dark theme">
+      <svg class="ui-icon" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="5"></circle>
+        <line x1="12" y1="1" x2="12" y2="3"></line>
+        <line x1="12" y1="21" x2="12" y2="23"></line>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+        <line x1="1" y1="12" x2="3" y2="12"></line>
+        <line x1="21" y1="12" x2="23" y2="12"></line>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+      </svg>
+      <span>切换主题</span>
+    </button>
+  </header>
+
+  <!-- =========================================================
+       1. 危险操作确认 (Destructive Action Confirmation)
+       ========================================================= -->
+  <section class="dialog-block">
+    <div class="dialog-viewport-mock">
+      <div class="viewport-underlay">
+        <div class="mock-row"></div>
+        <div class="mock-row"></div>
+        <div class="mock-row"></div>
+      </div>
+      <div class="scrim-overlay"></div>
+
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="title-dialog-1">
+        <div class="modal-header">
+          <h2 class="modal-title" id="title-dialog-1">Delete Selected Bookmarks?</h2>
+          <p class="modal-description">14 bookmarks will be moved to Recycle Bin and purged after 30 days.</p>
+        </div>
+
+        <div class="modal-body">
+          <div class="warn-strip" role="alert">
+            <svg class="ui-icon warn-icon" viewBox="0 0 24 24">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            <span>此操作不可撤销</span>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost">取消</button>
+          <button type="button" class="btn btn-danger">确认删除</button>
+        </div>
+      </div>
+    </div>
+    <span class="dialog-caption">危险操作确认</span>
+  </section>
+
+  <!-- =========================================================
+       2. 多选项确认 (Multi-Action Decision Confirmation)
+       ========================================================= -->
+  <section class="dialog-block">
+    <div class="dialog-viewport-mock">
+      <div class="viewport-underlay">
+        <div class="mock-row"></div>
+        <div class="mock-row"></div>
+        <div class="mock-row"></div>
+      </div>
+      <div class="scrim-overlay"></div>
+
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="title-dialog-2">
+        <div class="modal-header">
+          <h2 class="modal-title" id="title-dialog-2">Merge Duplicate Folder?</h2>
+          <p class="modal-description">Found duplicate items across 'Frontend' and 'Web Dev'. Choose how to consolidate.</p>
+        </div>
+
+        <div class="modal-body">
+          <div class="warn-strip" role="alert">
+            <svg class="ui-icon warn-icon" viewBox="0 0 24 24">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            <span>现有文件夹结构将被更新</span>
+          </div>
+        </div>
+
+        <!-- 4 Actions: Two secondary ghost on left, Ghost cancel and Danger primary on right -->
+        <div class="footer-quad">
+          <div class="actions-left">
+            <button type="button" class="btn btn-subtle">跳过</button>
+            <button type="button" class="btn btn-subtle">归档</button>
+          </div>
+          <div class="actions-right">
+            <button type="button" class="btn btn-ghost">取消</button>
+            <button type="button" class="btn btn-danger">覆盖</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <span class="dialog-caption">多选项确认</span>
+  </section>
+
+  <!-- =========================================================
+       3. 输入弹层 (Input Modal with Visible Focus Ring)
+       ========================================================= -->
+  <section class="dialog-block">
+    <div class="dialog-viewport-mock">
+      <div class="viewport-underlay">
+        <div class="mock-row"></div>
+        <div class="mock-row"></div>
+        <div class="mock-row"></div>
+      </div>
+      <div class="scrim-overlay"></div>
+
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="title-dialog-3">
+        <div class="modal-header">
+          <h2 class="modal-title" id="title-dialog-3">重命名标签</h2>
+          <p class="modal-description">Updates tag name across all 24 assigned bookmarks immediately.</p>
+        </div>
+
+        <div class="modal-body">
+          <div class="field-group">
+            <input 
+              type="text" 
+              class="text-input has-focus" 
+              value="Standards & Specifications" 
+              placeholder="Enter new tag name..." 
+              aria-label="Tag name"
+              spellcheck="false"
+            />
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost">取消</button>
+          <button type="button" class="btn btn-primary">保存标签</button>
+        </div>
+      </div>
+    </div>
+    <span class="dialog-caption">输入弹层</span>
+  </section>
+
+  <!-- =========================================================
+       4. 标签管理 (Tag Pool Management List)
+       ========================================================= -->
+  <section class="dialog-block">
+    <div class="dialog-viewport-mock" style="min-height: 330px;">
+      <div class="viewport-underlay">
+        <div class="mock-row"></div>
+        <div class="mock-row"></div>
+        <div class="mock-row"></div>
+      </div>
+      <div class="scrim-overlay"></div>
+
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="title-dialog-4">
+        <div class="modal-header">
+          <h2 class="modal-title" id="title-dialog-4">管理标签（固定池）</h2>
+          <p class="modal-description">固定标签池会约束自动建议规则。</p>
+        </div>
+
+        <div class="modal-body">
+          <!-- Scrollable list with 6 realistic items -->
+          <div class="tag-scroll-container" role="list">
+            
+            <div class="tag-row" role="listitem">
+              <span class="tag-pill-neutral">
+                <svg class="ui-icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24">
+                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                  <line x1="7" y1="7" x2="7.01" y2="7"></line>
+                </svg>
+                规范
+              </span>
+              <div class="tag-actions">
+                <button type="button" class="icon-btn" aria-label="重命名标签">
+                  <svg class="ui-icon" viewBox="0 0 24 24">
+                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                  </svg>
+                </button>
+                <button type="button" class="icon-btn icon-btn-danger" aria-label="Delete tag">
+                  <svg class="ui-icon" viewBox="0 0 24 24">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="tag-row" role="listitem">
+              <span class="tag-pill-neutral">
+                <svg class="ui-icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24">
+                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                  <line x1="7" y1="7" x2="7.01" y2="7"></line>
+                </svg>
+                设计系统
+              </span>
+              <div class="tag-actions">
+                <button type="button" class="icon-btn" aria-label="重命名标签">
+                  <svg class="ui-icon" viewBox="0 0 24 24">
+                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                  </svg>
+                </button>
+                <button type="button" class="icon-btn icon-btn-danger" aria-label="Delete tag">
+                  <svg class="ui-icon" viewBox="0 0 24 24">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="tag-row" role="listitem">
+              <span class="tag-pill-neutral">
+                <svg class="ui-icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24">
+                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                  <line x1="7" y1="7" x2="7.01" y2="7"></line>
+                </svg>
+                Web API
+              </span>
+              <div class="tag-actions">
+                <button type="button" class="icon-btn" aria-label="重命名标签">
+                  <svg class="ui-icon" viewBox="0 0 24 24">
+                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                  </svg>
+                </button>
+                <button type="button" class="icon-btn icon-btn-danger" aria-label="Delete tag">
+                  <svg class="ui-icon" viewBox="0 0 24 24">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="tag-row" role="listitem">
+              <span class="tag-pill-neutral">
+                <svg class="ui-icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24">
+                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                  <line x1="7" y1="7" x2="7.01" y2="7"></line>
+                </svg>
+                安全
+              </span>
+              <div class="tag-actions">
+                <button type="button" class="icon-btn" aria-label="重命名标签">
+                  <svg class="ui-icon" viewBox="0 0 24 24">
+                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                  </svg>
+                </button>
+                <button type="button" class="icon-btn icon-btn-danger" aria-label="Delete tag">
+                  <svg class="ui-icon" viewBox="0 0 24 24">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="tag-row" role="listitem">
+              <span class="tag-pill-neutral">
+                <svg class="ui-icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24">
+                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                  <line x1="7" y1="7" x2="7.01" y2="7"></line>
+                </svg>
+                数据库
+              </span>
+              <div class="tag-actions">
+                <button type="button" class="icon-btn" aria-label="重命名标签">
+                  <svg class="ui-icon" viewBox="0 0 24 24">
+                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                  </svg>
+                </button>
+                <button type="button" class="icon-btn icon-btn-danger" aria-label="Delete tag">
+                  <svg class="ui-icon" viewBox="0 0 24 24">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="tag-row" role="listitem">
+              <span class="tag-pill-neutral">
+                <svg class="ui-icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24">
+                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                  <line x1="7" y1="7" x2="7.01" y2="7"></line>
+                </svg>
+                排版
+              </span>
+              <div class="tag-actions">
+                <button type="button" class="icon-btn" aria-label="重命名标签">
+                  <svg class="ui-icon" viewBox="0 0 24 24">
+                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                  </svg>
+                </button>
+                <button type="button" class="icon-btn icon-btn-danger" aria-label="Delete tag">
+                  <svg class="ui-icon" viewBox="0 0 24 24">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" style="width: 100%;">关闭</button>
+        </div>
+      </div>
+    </div>
+    <span class="dialog-caption">标签管理</span>
+  </section>
+
+  <!-- =========================================================
+       5. 按文件夹筛选 (Filter by Folder Tree, Wider Card)
+       ========================================================= -->
+  <section class="dialog-block">
+    <div class="dialog-viewport-mock" style="min-height: 330px;">
+      <div class="viewport-underlay">
+        <div class="mock-row"></div>
+        <div class="mock-row"></div>
+        <div class="mock-row"></div>
+      </div>
+      <div class="scrim-overlay"></div>
+
+      <!-- Wider card max-width 440px, bounded to canvas -->
+      <div class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-labelledby="title-dialog-5">
+        <div class="modal-header">
+          <h2 class="modal-title" id="title-dialog-5">按文件夹筛选</h2>
+          <div class="summary-badge-line">
+            <span class="summary-dot"></span>
+            <span>Current folder: Engineering &middot; 12 visible bookmarks</span>
+          </div>
+        </div>
+
+        <div class="modal-body">
+          <div class="folder-tree-container" role="tree">
+            
+            <div class="folder-tree-row" role="treeitem" tabindex="0">
+              <div class="folder-left folder-indent-1">
+                <svg class="ui-icon folder-icon-svg" viewBox="0 0 24 24">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span class="folder-name">书签栏</span>
+              </div>
+              <span class="count-chip-neutral">284</span>
+            </div>
+
+            <!-- Active Row Highlighted -->
+            <div class="folder-tree-row is-active" role="treeitem" aria-selected="true" tabindex="0">
+              <div class="folder-left folder-indent-2">
+                <svg class="ui-icon folder-icon-svg" viewBox="0 0 24 24">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span class="folder-name">工程</span>
+              </div>
+              <span class="count-chip-neutral">12</span>
+            </div>
+
+            <div class="folder-tree-row" role="treeitem" tabindex="0">
+              <div class="folder-left folder-indent-3">
+                <svg class="ui-icon folder-icon-svg" viewBox="0 0 24 24">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span class="folder-name">前端架构</span>
+              </div>
+              <span class="count-chip-neutral">7</span>
+            </div>
+
+            <div class="folder-tree-row" role="treeitem" tabindex="0">
+              <div class="folder-left folder-indent-3">
+                <svg class="ui-icon folder-icon-svg" viewBox="0 0 24 24">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span class="folder-name">Standards &amp; W3C</span>
+              </div>
+              <span class="count-chip-neutral">5</span>
+            </div>
+
+            <div class="folder-tree-row" role="treeitem" tabindex="0">
+              <div class="folder-left folder-indent-2">
+                <svg class="ui-icon folder-icon-svg" viewBox="0 0 24 24">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span class="folder-name">Design &amp; Systems</span>
+              </div>
+              <span class="count-chip-neutral">38</span>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost">全部文件夹</button>
+          <button type="button" class="btn btn-primary">完成</button>
+        </div>
+      </div>
+    </div>
+    <span class="dialog-caption">按文件夹筛选</span>
+  </section>
+
+</div>
+
+<script>
+  // Theme toggle script for manual previewing light/dark tokens
+  const toggleBtn = document.getElementById('themeToggle');
+  toggleBtn?.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme');
+    if (current === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else if (current === 'light') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      // If none set, check OS preference
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', prefersDark ? 'light' : 'dark');
+    }
+  });
+</script>
+
+</body>
+</html>
+
+
+
+
+

@@ -45,7 +45,8 @@
   --c-grad-soft-l: linear-gradient(135deg, #eaf2fe 0%, #e8f9fd 100%);
   --c-danger-l: #be123c;
   --c-danger-soft-l: #ffe7ec;
-  --c-warn-l: #b45309;
+  /* WCAG AA：原 #b45309 在 --c-warn-soft-l 上仅 4.48:1，调深到 6.3:1 */
+  --c-warn-l: #92400e;
   --c-warn-soft-l: #fdf1d7;
   --c-ok-l: #059669;
   --c-ok-strong-l: #047857;
@@ -68,9 +69,10 @@
   --c-primary-soft-d: #1a2436;
   --c-accent-d: #22d3ee;
   --c-pink-d: #f472b6;
-  --c-grad-d: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  --c-grad-action-d: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  --c-grad-brand-d: linear-gradient(135deg, #3b82f6 0%, #22d3ee 100%);
+  /* 渐变起点取 #2563eb：白字在 #3b82f6 上仅 3.68:1，加深后达 AA（三个深色渐变统一） */
+  --c-grad-d: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  --c-grad-action-d: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  --c-grad-brand-d: linear-gradient(135deg, #2563eb 0%, #22d3ee 100%);
   --c-grad-soft-d: linear-gradient(135deg, #182234 0%, #16232c 100%);
   --c-danger-d: #fb7185;
   --c-danger-soft-d: #3a2229;
@@ -92,6 +94,13 @@
   --c-foot-l: #ffffff;
   --c-field-l: #ffffff;
   --c-toast-bg-l: rgba(27, 30, 44, 0.97);
+  /* toast 是深色浮层，两套主题下都是深底浅字，故 -l / -d 同值 */
+  --c-toast-ink-l: #ffffff;
+  --c-toast-muted-l: #94a3b8;
+  /* 实底前景：亮色语义色偏深 → 白字（5.2:1）；深色语义色偏浅 → 深墨字（7.1:1） */
+  --c-on-solid-l: #ffffff;
+  /* 动作渐变实底（两套主题都是深蓝渐变）上的前景，恒为白色 */
+  --c-on-grad-l: #ffffff;
   --c-mark-bg-l: #fde68a;
   --c-mark-ink-l: inherit;
   --c-progress-l: #ffffff;
@@ -105,6 +114,10 @@
   --c-foot-d: #141822;
   --c-field-d: #1e2430;
   --c-toast-bg-d: rgba(10, 12, 18, 0.96);
+  --c-toast-ink-d: #ffffff;
+  --c-toast-muted-d: #94a3b8;
+  --c-on-solid-d: #0f1117;
+  --c-on-grad-d: #ffffff;
   --c-mark-bg-d: #7a5d10;
   --c-mark-ink-d: #ffffff;
   --c-progress-d: rgba(20, 24, 34, 0.97);
@@ -151,6 +164,10 @@
   --surface-foot: var(--c-foot-l);
   --field-bg: var(--c-field-l);
   --toast-bg: var(--c-toast-bg-l);
+  --toast-ink: var(--c-toast-ink-l);
+  --toast-muted: var(--c-toast-muted-l);
+  --on-solid: var(--c-on-solid-l);
+  --on-grad: var(--c-on-grad-l);
   --mark-bg: var(--c-mark-bg-l);
   --mark-ink: var(--c-mark-ink-l);
   --progress-bg: var(--c-progress-l);
@@ -197,6 +214,10 @@
     --surface-foot: var(--c-foot-d);
     --field-bg: var(--c-field-d);
     --toast-bg: var(--c-toast-bg-d);
+    --toast-ink: var(--c-toast-ink-d);
+    --toast-muted: var(--c-toast-muted-d);
+    --on-solid: var(--c-on-solid-d);
+    --on-grad: var(--c-on-grad-d);
     --mark-bg: var(--c-mark-bg-d);
     --mark-ink: var(--c-mark-ink-d);
     --progress-bg: var(--c-progress-d);
@@ -243,6 +264,10 @@
   --surface-foot: var(--c-foot-l);
   --field-bg: var(--c-field-l);
   --toast-bg: var(--c-toast-bg-l);
+  --toast-ink: var(--c-toast-ink-l);
+  --toast-muted: var(--c-toast-muted-l);
+  --on-solid: var(--c-on-solid-l);
+  --on-grad: var(--c-on-grad-l);
   --mark-bg: var(--c-mark-bg-l);
   --mark-ink: var(--c-mark-ink-l);
   --progress-bg: var(--c-progress-l);
@@ -288,6 +313,10 @@
   --surface-foot: var(--c-foot-d);
   --field-bg: var(--c-field-d);
   --toast-bg: var(--c-toast-bg-d);
+  --toast-ink: var(--c-toast-ink-d);
+  --toast-muted: var(--c-toast-muted-d);
+  --on-solid: var(--c-on-solid-d);
+  --on-grad: var(--c-on-grad-d);
   --mark-bg: var(--c-mark-bg-d);
   --mark-ink: var(--c-mark-ink-d);
   --progress-bg: var(--c-progress-d);
@@ -300,9 +329,21 @@
 }
 
 /* ---------------------------------------------------------
-   3. 尺寸 / 间距 / 圆角 / 层级 / 动效
+   3. 字体 / 尺寸 / 间距 / 圆角 / 层级 / 动效
    --------------------------------------------------------- */
 :root {
+  /* 字体族：全站唯一声明，页面样式表一律消费 var(--font-sans) */
+  --font-sans: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  /* 等宽栈带中文回退：路径 / 错误详情混排中文时不会掉到非等宽字体 */
+  --font-mono: ui-monospace, 'SF Mono', Consolas, 'PingFang SC', 'Microsoft YaHei', monospace;
+
+  /* 字号阶梯（DESIGN.md Typography：meta / title / body / section / display） */
+  --fs-meta: 11px;
+  --fs-title: 13px;
+  --fs-body: 14px;
+  --fs-section: 16px;
+  --fs-display: 22px;
+
   --radius-xs: 7px;
   --radius-sm: 10px;
   --radius: 14px;
@@ -328,5 +369,4 @@
 
   /* 组件级通用表面 */
   --overlay-bg: rgba(20, 16, 60, 0.35);
-  --focus-ring: 2px solid var(--primary);
 }

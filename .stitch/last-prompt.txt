@@ -1,0 +1,143 @@
+PROJECT CONTEXT
+A Chrome/Edge Manifest V3 bookmark-manager browser extension.
+Zero-build stack: plain HTML + plain CSS + vanilla JS. No frameworks, no Tailwind, no UI libraries.
+
+The current implementation is described below — use it to understand the existing
+information architecture, then REDESIGN it. Do not simply restyle it.
+
+DESIGN SYSTEM
+Use ONLY the tokens listed below. Do not invent colors, corner radii, spacing values, or shadows.
+
+COLOR PALETTE (exact values; these already exist as CSS custom properties in the codebase)
+Light: bg #f3f5f8 | panel #ffffff | sub #f3f5f8 | field #ffffff
+       ink #101828 | ink-2 #344054 | muted #667085
+       line #e7ebf0 | line-2 #dce1e8
+       primary #2563eb | primary-soft #e9f1fe
+       danger #be123c | warn #b45309 | ok #059669
+Dark:  bg #0f1117 | panel #171b24 | sub #1b202b | field #1e2430
+       ink #f2f4f8 | ink-2 #c3c9d4 | muted #8b93a3
+       line #242a36 | line-2 #303845
+       primary #5da2f5 | primary-soft #1a2436
+       danger #fb7185 | warn #fbbf24 | ok #34d399
+Surface hierarchy is critical: bg -> panel -> sub. Dark mode must keep all three levels
+distinguishable — never one flat background colour.
+
+HARD CONSTRAINTS
+- Output semantic HTML + plain CSS driven by CSS custom properties (var(--...)).
+  Do NOT output Tailwind class names or inline styles.
+- Support BOTH light and dark themes, driven by `@media (prefers-color-scheme: dark)` so the
+  interface follows the operating system automatically. Do not rely on a manual toggle
+  attribute alone. Dark must NOT be a mechanical inversion: keep three visually distinct
+  surface levels (bg -> panel -> sub) so cards never merge together.
+- Corner radii: ONLY 7px, 10px, 14px, 18px, 999px.
+  CSS variables are --radius-xs (7px), --radius-sm (10px), --radius (14px),
+  --radius-lg (18px), --radius-pill (999px).
+  IMPORTANT: there is no --radius-md — do not invent variables that are not listed here.
+- Spacing: ONLY 4px, 8px, 12px, 16px, 24px. Never use 3px, 15px, 22px or other values.
+- UI copy: English placeholders only. I will localize to Chinese myself.
+  Do NOT attempt to render Chinese glyphs.
+
+VISUAL DIRECTION
+Quiet, dense, content-first utility UI. This gets opened dozens of times a day.
+- No purple gradients, no glassmorphism, no neon glow, no decorative illustration.
+- No Material Design, no Google brand blue (#4285F4).
+- No marketing blocks: no hero imagery, no pricing cards, no subscription prompts,
+  no analytics dashboards with charts.
+- No oversized rounded "display cards" floating in generous whitespace.
+
+COLOUR DISCIPLINE (critical — earlier attempts failed exactly here)
+- Tag chips, category chips and count badges ALL use one identical neutral treatment:
+  background sub (#f3f5f8 light / #1b202b dark) with text ink-2 (#344054 / #c3c9d4).
+  Do NOT give each tag or category its own colour.
+- Status colours are ONLY for real status: danger #be123c / #fb7185,
+  warn #b45309 / #fbbf24, ok #059669 / #34d399. Never decorative.
+- Absolutely NO violet, indigo, purple, magenta or pink anywhere in the UI.
+  No Tailwind palette colours (nothing like #8b5cf6, #6366f1, #3b82f6, #10b981, #f59e0b).
+- Every colour in your output must appear in the COLOR PALETTE list above.
+  If you feel you need another colour, use ink-2 or muted instead.
+
+SCOPE — WHAT TO DRAW
+Draw ONE screen of the real, populated product, exactly as a user sees it with data.
+Do NOT produce a design-system showcase, a state gallery, or annotated documentation.
+Do NOT render metadata labels in the UI such as "Empty State", "Loading State",
+"Error State", "Required States" — and do not add a section that enumerates states.
+(Empty / loading / error are separate screens; we design them later.)
+
+REQUIRED COMPONENTS — all must be visible, with realistic data
+- At least 3 collapsible groups, each with a name and a count badge, expanded,
+  each containing 4-6 bookmark rows.
+- Every bookmark row must contain: a drag handle, a multi-select checkbox, the title,
+  a secondary muted meta line, a category chip, and up to two tag chips plus a "+N" overflow chip.
+- Show the hover-revealed row action buttons on at least one row so their placement is clear.
+- Include the bulk-action bar (appears when items are selected) at the bottom.
+
+DENSITY AND READABILITY (feedback from the previous round: it came out too cramped)
+- Title/body text at least 13px. Secondary meta text at least 11px. Never below 11px anywhere.
+- Bookmark rows about 44px tall — generous, not cramped.
+- At least 12px of vertical space between group cards.
+- Row internals: 16px horizontal padding; 8px gap between title line and meta line.
+- Prefer breathing room over fitting more rows. This is a redesign — readability wins over density.
+
+ICONS
+- Simple outline icons only, 1.5-2px stroke. No filled icons, no emoji.
+- The "AI tag" row action uses a FOUR-POINTED SPARKLE: a FULL, ROUNDED four-pointed star
+  with concave (inward-curving) sides — plump, symmetric, evenly balanced, in the spirit
+  of Google Gemini's mark.
+  It must NOT be a thin sharply-spiked star, and must NOT be a five-pointed star
+  (a five-pointed star reads as rating/favourite and is wrong here).
+- Only use these icon concepts: search, plus, gear, help(?), home, folder, eye, eye-off,
+  tag, trash, pencil(edit), refresh, alert-triangle, archive, four-pointed-sparkle.
+  Do not invent unrelated iconography.
+
+Design the ORGANIZE tab of the same 360px side panel.
+
+CANVAS
+360px wide, narrow column, no horizontal scrolling.
+
+STRUCTURE (top to bottom)
+1. Same fixed top bar as the Overview tab, then a tab strip with EXACTLY THREE
+   equal-width tabs, each with an icon: "Overview", "Organize", "Hidden".
+   The "Organize" tab is the active one.
+   Do NOT invent extra tabs — this product has no "Clean-up", "Vault", "Settings"
+   or "Archive" tab. Three tabs only.
+2. A segmented control with two options: Tags / Folders, plus a compact toolbar button
+   ("Directory tree") on the same row.
+3. A one-line hint under the segmented control explaining what this view does.
+4. Scrollable content: a list of collapsible GROUPS.
+   Each group header contains: a type icon, the group name, a count badge, and (on hover)
+   group-level actions. The header is a click target for collapse/expand.
+   Each group body is a list of BOOKMARK ROWS.
+
+BOOKMARK ROW (the most important component)
+A single row, about 44px tall, comfortable rather than cramped. Left to right:
+  - a drag handle: a 24x24px grip (two columns of three dots), vertically centred, muted.
+    It sits at ~35% opacity at rest and becomes fully opaque on row hover.
+    It must NEVER be completely invisible, and must not be smaller than 24x24px —
+    the current implementation hides it entirely until hover and it is almost impossible
+    to discover, which makes reordering look broken. This is a bug to fix, not to copy.
+  - a checkbox for multi-select
+  - the bookmark title (13px, single line, ellipsised)
+  - the host or URL as secondary muted text (11px)
+  - a category chip + up to two tag chips (with "+N" overflow) — all neutral coloured
+  - row actions on the right, only visible on hover or focus:
+    hide (eye), AI tag (plump four-pointed sparkle, not a five-pointed star), edit (pencil)
+The entire row is clickable to open the link.
+
+ROW METRICS
+16px horizontal padding, 8px between the title line and the meta line, 44px total height.
+Do not shrink these to fit more rows — the previous attempt was too dense.
+
+REDESIGN GOAL
+Drag-and-drop is currently undiscoverable and row actions are cramped. Make the drag affordance
+obvious without stealing space (e.g. a handle that appears on hover), and give the row a clear
+visual hierarchy between title, meta line, and chips. Multi-select must remain obvious enough
+that users discover the bulk-action bar.
+
+INTERACTION NOTES (describe visually, do not implement)
+- Hovering a row reveals its handle and actions.
+- A row being dragged shows a lifted state; a valid drop target group header highlights.
+- Selected rows remain clearly marked while scrolling.
+
+DENSITY
+Rows about 40px. This is a dense management list, not a card gallery — do NOT turn rows into
+cards.

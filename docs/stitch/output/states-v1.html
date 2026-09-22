@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bookmark Manager - List Lifecycle States Sheet (360px)</title>
+  <style>
+    :root {
+      /* Colors - Light (Default) */
+      --c-bg: #f3f5f8;
+      --c-panel: #ffffff;
+      --c-sub: #f3f5f8;
+      --c-field: #ffffff;
+      --c-ink: #101828;
+      --c-ink-2: #344054;
+      --c-muted: #667085;
+      --c-line: #e7ebf0;
+      --c-line-2: #dce1e8;
+      --c-primary: #2563eb;
+      --c-primary-soft: #e9f1fe;
+      --c-danger: #be123c;
+      --c-warn: #b45309;
+      --c-ok: #059669;
+
+      /* Radii */
+      --radius-xs: 7px;
+      --radius-sm: 10px;
+      --radius: 14px;
+      --radius-lg: 18px;
+      --radius-pill: 999px;
+
+      /* Spacing */
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-6: 24px;
+
+      /* Typography */
+      --font-body: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+      --font-mono: ui-monospace, 'SF Mono', Consolas, monospace;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --c-bg: #0f1117;
+        --c-panel: #171b24;
+        --c-sub: #1b202b;
+        --c-field: #1e2430;
+        --c-ink: #f2f4f8;
+        --c-ink-2: #c3c9d4;
+        --c-muted: #8b93a3;
+        --c-line: #242a36;
+        --c-line-2: #303845;
+        --c-primary: #5da2f5;
+        --c-primary-soft: #1a2436;
+        --c-danger: #fb7185;
+        --c-warn: #fbbf24;
+        --c-ok: #34d399;
+      }
+    }
+
+    /* Manual theme toggle override support */
+    [data-theme="dark"] {
+      --c-bg: #0f1117;
+      --c-panel: #171b24;
+      --c-sub: #1b202b;
+      --c-field: #1e2430;
+      --c-ink: #f2f4f8;
+      --c-ink-2: #c3c9d4;
+      --c-muted: #8b93a3;
+      --c-line: #242a36;
+      --c-line-2: #303845;
+      --c-primary: #5da2f5;
+      --c-primary-soft: #1a2436;
+      --c-danger: #fb7185;
+      --c-warn: #fbbf24;
+      --c-ok: #34d399;
+    }
+    [data-theme="light"] {
+      --c-bg: #f3f5f8;
+      --c-panel: #ffffff;
+      --c-sub: #f3f5f8;
+      --c-field: #ffffff;
+      --c-ink: #101828;
+      --c-ink-2: #344054;
+      --c-muted: #667085;
+      --c-line: #e7ebf0;
+      --c-line-2: #dce1e8;
+      --c-primary: #2563eb;
+      --c-primary-soft: #e9f1fe;
+      --c-danger: #be123c;
+      --c-warn: #b45309;
+      --c-ok: #059669;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--c-bg);
+      color: var(--c-ink);
+      font-family: var(--font-body);
+      font-size: 13px;
+      line-height: 1.5;
+      padding: var(--space-6) var(--space-4);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .sheet-wrapper {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-6);
+    }
+
+    .sheet-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: var(--space-2);
+      border-bottom: 1px solid var(--c-line);
+    }
+
+    .sheet-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--c-ink);
+      letter-spacing: -0.01em;
+    }
+
+    .sheet-badge {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      background-color: var(--c-sub);
+      color: var(--c-ink-2);
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-xs);
+      border: 1px solid var(--c-line);
+    }
+
+    .theme-toggle-btn {
+      background: var(--c-panel);
+      border: 1px solid var(--c-line);
+      color: var(--c-ink-2);
+      font-size: 11px;
+      font-family: var(--font-body);
+      padding: 4px var(--space-2);
+      border-radius: var(--radius-xs);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Component Sections */
+    .section-block {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+
+    .section-caption {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--c-ink-2);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding-left: var(--space-1);
+    }
+
+    .section-caption::before {
+      content: "";
+      display: inline-block;
+      width: 4px;
+      height: 12px;
+      background-color: var(--c-primary);
+      border-radius: var(--radius-xs);
+    }
+
+    /* Phone / Side-panel mockup container: strictly 360px wide */
+    .panel-frame {
+      width: 360px;
+      background-color: var(--c-panel);
+      border: 1px solid var(--c-line);
+      border-radius: var(--radius);
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+      overflow: hidden;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top bar context mock to ground the content area */
+    .mock-topbar {
+      height: 40px;
+      background-color: var(--c-panel);
+      border-bottom: 1px solid var(--c-line);
+      padding: 0 var(--space-3);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .mock-title-area {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--c-ink);
+    }
+
+    .mock-tabs {
+      display: flex;
+      height: 32px;
+      background-color: var(--c-panel);
+      border-bottom: 1px solid var(--c-line);
+      padding: 0 var(--space-3);
+      gap: var(--space-4);
+    }
+
+    .mock-tab {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--c-muted);
+      border-bottom: 2px solid transparent;
+      padding: 0 2px;
+    }
+
+    .mock-tab.active {
+      color: var(--c-primary);
+      font-weight: 500;
+      border-bottom-color: var(--c-primary);
+    }
+
+    .mock-content-area {
+      background-color: var(--c-panel);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    /* 1. Empty State Styles */
+    .empty-state-card {
+      width: 100%;
+      height: 320px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: var(--space-6) var(--space-4);
+      text-align: center;
+    }
+
+    .empty-state-divider {
+      height: 1px;
+      background-color: var(--c-line);
+      width: 100%;
+    }
+
+    .empty-icon-holder {
+      width: 56px;
+      height: 56px;
+      border-radius: var(--radius-pill);
+      background-color: var(--c-sub);
+      border: 1px solid var(--c-line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: var(--space-4);
+      color: var(--c-muted);
+    }
+
+    .empty-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--c-ink);
+      margin-bottom: var(--space-1);
+    }
+
+    .empty-desc {
+      font-size: 12px;
+      color: var(--c-muted);
+      line-height: 1.4;
+      max-width: 240px;
+    }
+
+    .btn-primary {
+      margin-top: var(--space-4);
+      background-color: var(--c-primary);
+      color: #ffffff;
+      border: none;
+      font-size: 13px;
+      font-weight: 500;
+      font-family: var(--font-body);
+      padding: 6px var(--space-4);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-1);
+      transition: opacity 0.15s ease;
+    }
+
+    .btn-primary:hover {
+      opacity: 0.92;
+    }
+
+    .btn-ghost {
+      background-color: transparent;
+      color: var(--c-ink-2);
+      border: 1px solid var(--c-line-2);
+      font-size: 13px;
+      font-weight: 500;
+      font-family: var(--font-body);
+      padding: 6px var(--space-3);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-1);
+      transition: background-color 0.15s ease;
+    }
+
+    .btn-ghost:hover {
+      background-color: var(--c-sub);
+    }
+
+    /* 2. Loading State Styles */
+    .loading-spinner-box {
+      width: 100%;
+      height: 180px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-3);
+    }
+
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 2.5px solid var(--c-line-2);
+      border-top-color: var(--c-primary);
+      border-radius: var(--radius-pill);
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loading-status-text {
+      font-size: 12px;
+      color: var(--c-muted);
+      letter-spacing: -0.01em;
+    }
+
+    /* Skeleton Bookmark Rows */
+    .skeleton-list {
+      padding: var(--space-2) 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .skeleton-row {
+      height: 44px;
+      display: flex;
+      align-items: center;
+      padding: 0 var(--space-4);
+      gap: var(--space-3);
+      border-bottom: 1px solid var(--c-line);
+    }
+
+    .skeleton-row:last-child {
+      border-bottom: none;
+    }
+
+    .skeleton-fav {
+      width: 22px;
+      height: 22px;
+      border-radius: var(--radius-xs);
+      background-color: var(--c-sub);
+      flex-shrink: 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .skeleton-content {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .skeleton-bar-title {
+      height: 11px;
+      border-radius: var(--radius-xs);
+      background-color: var(--c-sub);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .skeleton-bar-meta {
+      height: 9px;
+      width: 55%;
+      border-radius: var(--radius-xs);
+      background-color: var(--c-sub);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Shimmer Effect */
+    .shimmer::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      transform: translateX(-100%);
+      background-image: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0) 0,
+        rgba(255, 255, 255, 0.45) 50%,
+        rgba(255, 255, 255, 0) 100%
+      );
+      animation: shimmer 1.6s infinite;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .shimmer::after {
+        background-image: linear-gradient(
+          90deg,
+          rgba(255, 255, 255, 0) 0,
+          rgba(255, 255, 255, 0.08) 50%,
+          rgba(255, 255, 255, 0) 100%
+        );
+      }
+    }
+    [data-theme="dark"] .shimmer::after {
+      background-image: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0) 0,
+        rgba(255, 255, 255, 0.08) 50%,
+        rgba(255, 255, 255, 0) 100%
+      );
+    }
+    [data-theme="light"] .shimmer::after {
+      background-image: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0) 0,
+        rgba(255, 255, 255, 0.45) 50%,
+        rgba(255, 255, 255, 0) 100%
+      );
+    }
+
+    @keyframes shimmer {
+      100% {
+        transform: translateX(100%);
+      }
+    }
+
+    /* 3. Error State Styles */
+    .error-container {
+      padding: var(--space-4);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 240px;
+    }
+
+    .error-card {
+      background-color: var(--c-panel);
+      border: 1px solid var(--c-line);
+      border-left: 4px solid var(--c-danger);
+      border-radius: var(--radius-sm);
+      padding: var(--space-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+    }
+
+    .error-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .error-icon {
+      color: var(--c-danger);
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .error-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--c-ink);
+    }
+
+    .error-mono-detail {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--c-muted);
+      background-color: var(--c-sub);
+      border: 1px solid var(--c-line);
+      border-radius: var(--radius-xs);
+      padding: var(--space-2) var(--space-3);
+      word-break: break-all;
+    }
+
+    .error-actions {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: var(--space-2);
+      margin-top: var(--space-1);
+    }
+
+    /* Inline SVGs styled strictly with standard stroke weights */
+    .icon {
+      width: 16px;
+      height: 16px;
+      stroke-width: 1.8px;
+      stroke: currentColor;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .icon-lg {
+      width: 24px;
+      height: 24px;
+      stroke-width: 1.8px;
+      stroke: currentColor;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="sheet-wrapper">
+    <!-- Meta Header -->
+    <header class="sheet-header">
+      <div>
+        <h1 class="sheet-title">Lifecycle States Sheet</h1>
+        <span style="font-size: 11px; color: var(--c-muted);">List states component specifications</span>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <span class="sheet-badge">360px UI</span>
+        <button class="theme-toggle-btn" onclick="toggleTheme()">
+          <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          Theme
+        </button>
+      </div>
+    </header>
+
+    <!-- 1. EMPTY STATE BLOCK -->
+    <section class="section-block">
+      <div class="section-caption">空状态 (Empty State)</div>
+      
+      <div class="panel-frame">
+        <!-- Mock Nav Context -->
+        <div class="mock-topbar">
+          <div class="mock-title-area">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+            <span>Bookmark Manager</span>
+          </div>
+          <svg class="icon" viewBox="0 0 24 24" style="color: var(--c-muted);"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
+        </div>
+        <div class="mock-tabs">
+          <div class="mock-tab">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span>Organize</span>
+          </div>
+          <div class="mock-tab active">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            <span>Hidden</span>
+          </div>
+        </div>
+
+        <div class="mock-content-area">
+          <!-- Empty Variant A: Eye-off (No Hidden Bookmarks) -->
+          <div class="empty-state-card">
+            <div class="empty-icon-holder">
+              <svg class="icon-lg" viewBox="0 0 24 24">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+            </div>
+            <h3 class="empty-title">没有隐藏的书签</h3>
+            <p class="empty-desc">隐藏的书签会显示在这里</p>
+          </div>
+
+          <div class="empty-state-divider"></div>
+
+          <!-- Empty Variant B: Search filter mismatch (With primary reset action) -->
+          <div class="empty-state-card">
+            <div class="empty-icon-holder">
+              <svg class="icon-lg" viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </div>
+            <h3 class="empty-title">没有匹配的书签</h3>
+            <p class="empty-desc">换个关键词，或清空筛选条件</p>
+            <button class="btn-primary">
+              <svg class="icon" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              <span>清除筛选</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. LOADING STATE BLOCK -->
+    <section class="section-block">
+      <div class="section-caption">加载态 (Loading State)</div>
+      
+      <div class="panel-frame">
+        <!-- Mock Nav Context -->
+        <div class="mock-topbar">
+          <div class="mock-title-area">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+            <span>Bookmark Manager</span>
+          </div>
+          <span style="font-size: 11px; color: var(--c-muted);">Scanning...</span>
+        </div>
+
+        <div class="mock-content-area">
+          <!-- Variant A: Centered Spinner with status line -->
+          <div class="loading-spinner-box">
+            <div class="spinner"></div>
+            <div class="loading-status-text">正在扫描书签…</div>
+          </div>
+
+          <div class="empty-state-divider"></div>
+
+          <!-- Variant B: 5 Bookmark skeleton placeholder rows with subtle shimmer -->
+          <div class="skeleton-list">
+            <!-- Skeleton Row 1 -->
+            <div class="skeleton-row">
+              <div class="skeleton-fav shimmer"></div>
+              <div class="skeleton-content">
+                <div class="skeleton-bar-title shimmer" style="width: 78%;"></div>
+                <div class="skeleton-bar-meta shimmer" style="width: 45%;"></div>
+              </div>
+            </div>
+
+            <!-- Skeleton Row 2 -->
+            <div class="skeleton-row">
+              <div class="skeleton-fav shimmer"></div>
+              <div class="skeleton-content">
+                <div class="skeleton-bar-title shimmer" style="width: 88%;"></div>
+                <div class="skeleton-bar-meta shimmer" style="width: 52%;"></div>
+              </div>
+            </div>
+
+            <!-- Skeleton Row 3 -->
+            <div class="skeleton-row">
+              <div class="skeleton-fav shimmer"></div>
+              <div class="skeleton-content">
+                <div class="skeleton-bar-title shimmer" style="width: 65%;"></div>
+                <div class="skeleton-bar-meta shimmer" style="width: 40%;"></div>
+              </div>
+            </div>
+
+            <!-- Skeleton Row 4 -->
+            <div class="skeleton-row">
+              <div class="skeleton-fav shimmer"></div>
+              <div class="skeleton-content">
+                <div class="skeleton-bar-title shimmer" style="width: 82%;"></div>
+                <div class="skeleton-bar-meta shimmer" style="width: 60%;"></div>
+              </div>
+            </div>
+
+            <!-- Skeleton Row 5 -->
+            <div class="skeleton-row">
+              <div class="skeleton-fav shimmer"></div>
+              <div class="skeleton-content">
+                <div class="skeleton-bar-title shimmer" style="width: 72%;"></div>
+                <div class="skeleton-bar-meta shimmer" style="width: 48%;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. ERROR STATE BLOCK -->
+    <section class="section-block">
+      <div class="section-caption">错误态 (Error State)</div>
+      
+      <div class="panel-frame">
+        <!-- Mock Nav Context -->
+        <div class="mock-topbar">
+          <div class="mock-title-area">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+            <span>Bookmark Manager</span>
+          </div>
+          <svg class="icon" viewBox="0 0 24 24" style="color: var(--c-danger);"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        </div>
+
+        <div class="mock-content-area">
+          <div class="error-container">
+            <div class="error-card">
+              <div class="error-header">
+                <div class="error-icon">
+                  <svg class="icon-lg" viewBox="0 0 24 24">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                  </svg>
+                </div>
+                <h3 class="error-title">扫描失败</h3>
+              </div>
+
+              <div class="error-mono-detail">
+                chrome.runtime.lastError: Tree walk exceeded quota limit (max 5000 nodes traversed). Storage quota exceeded at BookmarkTree.traverse.
+              </div>
+
+              <div class="error-actions">
+                <button class="btn-ghost" title="Copy error message to clipboard">
+                  <svg class="icon" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  <span>复制详情</span>
+                </button>
+                <button class="btn-primary">
+                  <svg class="icon" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                  <span>重试</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme');
+      if (current === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'light');
+      } else if (current === 'light') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      } else {
+        // Fallback or read media query
+        const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+      }
+    }
+  </script>
+</body>
+</html>

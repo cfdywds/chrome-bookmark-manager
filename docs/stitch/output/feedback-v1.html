@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bookmark Manager - Feedback & Notification Component Sheet</title>
+  <style>
+    :root {
+      /* Colors - Light Theme */
+      --bg: #f3f5f8;
+      --panel: #ffffff;
+      --sub: #f3f5f8;
+      --field: #ffffff;
+      --ink: #101828;
+      --ink-2: #344054;
+      --muted: #667085;
+      --line: #e7ebf0;
+      --line-2: #dce1e8;
+      --primary: #2563eb;
+      --primary-soft: #e9f1fe;
+      --danger: #be123c;
+      --warn: #b45309;
+      --ok: #059669;
+
+      /* Radii */
+      --radius-xs: 7px;
+      --radius-sm: 10px;
+      --radius: 14px;
+      --radius-lg: 18px;
+      --radius-pill: 999px;
+
+      /* Toast background token from DESIGN.md */
+      --toast-bg: rgba(27, 30, 44, 0.96);
+      --toast-ink: #ffffff;
+      --toast-muted: #94a3b8;
+
+      /* Typography */
+      --font-stack: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1117;
+        --panel: #171b24;
+        --sub: #1b202b;
+        --field: #1e2430;
+        --ink: #f2f4f8;
+        --ink-2: #c3c9d4;
+        --muted: #8b93a3;
+        --line: #242a36;
+        --line-2: #303845;
+        --primary: #5da2f5;
+        --primary-soft: #1a2436;
+        --danger: #fb7185;
+        --warn: #fbbf24;
+        --ok: #34d399;
+        --toast-bg: #1e2430;
+      }
+    }
+
+    /* Support manual toggle attribute as fallback */
+    [data-theme="dark"] {
+      --bg: #0f1117;
+      --panel: #171b24;
+      --sub: #1b202b;
+      --field: #1e2430;
+      --ink: #f2f4f8;
+      --ink-2: #c3c9d4;
+      --muted: #8b93a3;
+      --line: #242a36;
+      --line-2: #303845;
+      --primary: #5da2f5;
+      --primary-soft: #1a2436;
+      --danger: #fb7185;
+      --warn: #fbbf24;
+      --ok: #34d399;
+      --toast-bg: #1e2430;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--ink);
+      font-family: var(--font-stack);
+      font-size: 13px;
+      line-height: 1.5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 48px;
+      min-height: 100vh;
+    }
+
+    /* Container fixed to 360px side panel width */
+    .sheet-canvas {
+      width: 100%;
+      max-width: 360px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Header Bar */
+    .sheet-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .sheet-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .sheet-badge {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+      background-color: var(--sub);
+      color: var(--ink-2);
+      border: 1px solid var(--line);
+    }
+
+    .theme-toggle-btn {
+      background: transparent;
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius-xs);
+      padding: 4px 8px;
+      font-size: 11px;
+      color: var(--ink-2);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .theme-toggle-btn:hover {
+      background: var(--sub);
+    }
+
+    /* Section Component Container */
+    .component-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .section-caption {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .section-caption::before {
+      content: "";
+      display: inline-block;
+      width: 4px;
+      height: 12px;
+      border-radius: var(--radius-pill);
+      background-color: var(--primary);
+    }
+
+    /* Spec Surface / Mock panel viewport */
+    .mock-panel-viewport {
+      background-color: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      position: relative;
+    }
+
+    /* 1. & 2. Toast System */
+    .toast-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+    }
+
+    /* Toast: width 86% of 360px ~ 310px, 12px border-radius, left color bar 4px */
+    .toast-item {
+      width: 88%;
+      max-width: 310px;
+      background: var(--toast-bg);
+      color: var(--toast-ink);
+      border-radius: 12px;
+      position: relative;
+      overflow: hidden;
+      padding: 10px 14px 10px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.22);
+    }
+
+    /* 4px coloured bar on the left edge */
+    .toast-item::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+    }
+
+    .toast-ok::before {
+      background-color: var(--ok);
+    }
+    .toast-warn::before {
+      background-color: var(--warn);
+    }
+    .toast-danger::before {
+      background-color: var(--danger);
+    }
+    .toast-info::before {
+      background-color: var(--primary);
+    }
+
+    .toast-content {
+      font-size: 13px;
+      line-height: 1.45;
+      font-weight: 400;
+      flex: 1;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      word-break: break-word;
+    }
+
+    .toast-icon {
+      flex-shrink: 0;
+      width: 14px;
+      height: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .toast-ok .toast-icon { color: var(--ok); }
+    .toast-warn .toast-icon { color: var(--warn); }
+    .toast-danger .toast-icon { color: var(--danger); }
+    .toast-info .toast-icon { color: var(--primary); }
+
+    /* Toast Undo Button */
+    .toast-btn-undo {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: #ffffff;
+      padding: 4px 10px;
+      border-radius: var(--radius-xs);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .toast-btn-undo:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.4);
+    }
+
+    /* 3. Compact Light Confirmation Toast */
+    .toast-lightweight {
+      width: auto;
+      max-width: 240px;
+      background: var(--toast-bg);
+      color: var(--toast-ink);
+      border-radius: var(--radius-pill);
+      padding: 6px 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      box-shadow: 0 4px 16px rgba(15, 23, 42, 0.18);
+      margin: 4px auto;
+    }
+    .toast-lightweight .check-icon {
+      color: var(--ok);
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    /* 4. Batch Operation Progress Strip */
+    .batch-progress-strip {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+
+    .progress-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .progress-label-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    /* Four-pointed sparkle: plump, concave, rounded star matching Google Gemini style */
+    .sparkle-icon {
+      width: 14px;
+      height: 14px;
+      fill: var(--primary);
+      flex-shrink: 0;
+    }
+
+    .progress-count {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+      margin-left: 2px;
+    }
+
+    .btn-ghost-sm {
+      background: transparent;
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius-xs);
+      color: var(--ink-2);
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 8px;
+      cursor: pointer;
+      line-height: 1.2;
+    }
+    .btn-ghost-sm:hover {
+      background: var(--sub);
+      color: var(--danger);
+      border-color: var(--line);
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 5px;
+      background: var(--sub);
+      border-radius: var(--radius-pill);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 32.8%; /* 42/128 */
+      background: var(--primary);
+      border-radius: var(--radius-pill);
+    }
+
+    /* 5. Persistent Error Banner (Resumable) */
+    .persistent-error-bar {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-top: 3px solid var(--danger);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+    }
+
+    .error-icon-box {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+      color: var(--danger);
+      margin-top: 1px;
+    }
+
+    .error-content-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .error-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink);
+      line-height: 1.3;
+      margin-bottom: 3px;
+    }
+
+    .error-desc {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .btn-primary-sm {
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      border-radius: var(--radius-xs);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 6px 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      align-self: center;
+    }
+    .btn-primary-sm:hover {
+      opacity: 0.92;
+    }
+
+    /* 6. Form Inline Feedback (Side by Side) */
+    .form-spec-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .form-field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .form-field-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ink-2);
+    }
+
+    .form-field-input {
+      width: 100%;
+      height: 34px;
+      background: var(--field);
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius-sm);
+      padding: 0 10px;
+      font-size: 13px;
+      color: var(--ink);
+      outline: none;
+      font-family: inherit;
+    }
+    .form-field-input.has-error {
+      border-color: var(--danger);
+    }
+    .form-field-input.has-ok {
+      border-color: var(--ok);
+    }
+
+    .inline-feedback-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      line-height: 1.3;
+    }
+
+    .inline-feedback-row.status-ok {
+      color: var(--ok);
+    }
+
+    .inline-feedback-row.status-danger {
+      color: var(--danger);
+    }
+
+    .feedback-icon-svg {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+    }
+
+    .two-col-feedback-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .feedback-card-cell {
+      background: var(--sub);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .cell-title {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+    }
+
+    /* 7. Input Suggestion (Warn-tinted inline banner) */
+    .input-suggestion-box {
+      background: var(--sub);
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .suggestion-icon {
+      width: 14px;
+      height: 14px;
+      color: var(--warn);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .suggestion-text {
+      font-size: 12px;
+      color: var(--ink-2);
+      line-height: 1.4;
+    }
+    .suggestion-text strong {
+      color: var(--warn);
+      font-weight: 600;
+    }
+
+    /* Decorative layout divider */
+    .spec-divider {
+      height: 1px;
+      background: var(--line);
+      margin: 4px 0;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="sheet-canvas">
+    
+    <!-- Top Bar -->
+    <header class="sheet-header">
+      <div class="sheet-title">
+        <span>Feedback & Notification</span>
+        <span class="sheet-badge">360px Side Panel</span>
+      </div>
+      <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" aria-label="Toggle Theme">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <span>Toggle Theme</span>
+      </button>
+    </header>
+
+    <!-- 1. Toast · 四个级别 -->
+    <section class="component-section">
+      <div class="section-caption">Toast · 四个级别</div>
+      <div class="mock-panel-viewport">
+        <div class="toast-stack">
+          <!-- ok (green) -->
+          <div class="toast-item toast-ok" role="status">
+            <div class="toast-content">
+              <span class="toast-icon">✓</span>
+              <span>已删除书签 ✓</span>
+            </div>
+          </div>
+
+          <!-- warn (amber) -->
+          <div class="toast-item toast-warn" role="status">
+            <div class="toast-content">
+              <span class="toast-icon">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+              </span>
+              <span>回收站恢复中，请稍候</span>
+            </div>
+          </div>
+
+          <!-- danger (red) -->
+          <div class="toast-item toast-danger" role="alert">
+            <div class="toast-content">
+              <span class="toast-icon">✕</span>
+              <span>删除失败：书签未能从浏览器移除，请重试</span>
+            </div>
+          </div>
+
+          <!-- info (blue) -->
+          <div class="toast-item toast-info" role="status">
+            <div class="toast-content">
+              <span class="toast-icon">ℹ</span>
+              <span>AI 打标已完成，部分书签保留了原有标签</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Toast · 带撤销操作 -->
+    <section class="component-section">
+      <div class="section-caption">Toast · 带撤销操作</div>
+      <div class="mock-panel-viewport">
+        <div class="toast-stack">
+          <div class="toast-item toast-ok" role="status">
+            <div class="toast-content">
+              <span class="toast-icon">✓</span>
+              <span>已删除书签 ✓</span>
+            </div>
+            <button class="toast-btn-undo" type="button">撤销</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Toast · 轻量提示 -->
+    <section class="component-section">
+      <div class="section-caption">Toast · 轻量提示</div>
+      <div class="mock-panel-viewport" style="align-items: center;">
+        <div class="toast-lightweight" role="status">
+          <span class="check-icon">✓</span>
+          <span>已复制链接 ✓</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. 批量操作进度 -->
+    <section class="component-section">
+      <div class="section-caption">批量操作进度</div>
+      <div class="mock-panel-viewport">
+        <div class="batch-progress-strip">
+          <div class="progress-meta-row">
+            <div class="progress-label-group">
+              <!-- Four-pointed plump rounded concave sparkle icon -->
+              <svg class="sparkle-icon" viewBox="0 0 24 24">
+                <path d="M12 2C12 7.523 7.523 12 2 12C7.523 12 12 16.477 12 22C12 16.477 16.477 12 22 12C16.477 12 12 7.523 12 2Z"></path>
+              </svg>
+              <span>AI 打标中…</span>
+              <span class="progress-count">42/128</span>
+            </div>
+            <button class="btn-ghost-sm" type="button">终止</button>
+          </div>
+          <div class="progress-track" role="progressbar" aria-valuenow="42" aria-valuemin="0" aria-valuemax="128">
+            <div class="progress-fill"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. 常驻错误条 · 可续打 -->
+    <section class="component-section">
+      <div class="section-caption">常驻错误条 · 可续打</div>
+      <div class="mock-panel-viewport">
+        <div class="persistent-error-bar">
+          <div class="error-icon-box">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+          </div>
+          <div class="error-content-body">
+            <div class="error-title">批量打标未完成</div>
+            <div class="error-desc">已成功 42 个，3 个失败，可继续重试</div>
+          </div>
+          <button class="btn-primary-sm" type="button">继续打标</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. 表单内联反馈 -->
+    <section class="component-section">
+      <div class="section-caption">表单内联反馈</div>
+      <div class="mock-panel-viewport">
+        <div class="form-spec-container">
+          <div class="two-col-feedback-grid">
+            
+            <!-- OK State cell -->
+            <div class="feedback-card-cell">
+              <div class="cell-title">成功状态</div>
+              <input type="text" class="form-field-input has-ok" value="Standards & Specs" readonly>
+              <div class="inline-feedback-row status-ok">
+                <svg class="feedback-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <span>已保存</span>
+              </div>
+            </div>
+
+            <!-- Error State cell -->
+            <div class="feedback-card-cell">
+              <div class="cell-title">错误状态</div>
+              <input type="text" class="form-field-input has-danger" value="https://api.internal/invalid" readonly>
+              <div class="inline-feedback-row status-danger">
+                <svg class="feedback-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="15" y1="9" x2="9" y2="15"></line>
+                  <line x1="9" y1="9" x2="15" y2="15"></line>
+                </svg>
+                <span>接口地址无效，请检查后重试</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. 输入建议 -->
+    <section class="component-section">
+      <div class="section-caption">输入建议</div>
+      <div class="mock-panel-viewport">
+        <div class="form-field-group">
+          <label class="form-field-label">URL *</label>
+          <input type="text" class="form-field-input" value="https://w3c.github.io/design-tokens" readonly>
+          
+          <div class="input-suggestion-box">
+            <svg class="suggestion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            <div class="suggestion-text">
+              该网址已存在，保存后会合并标签
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script>
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme');
+      if (current === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'light');
+      } else {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    }
+  </script>
+</body>
+</html>

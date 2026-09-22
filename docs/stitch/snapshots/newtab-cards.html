@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>书签管家 · 新标签页</title>
+    <link rel="stylesheet" href="../../../css/tokens.css" />
+    <link rel="stylesheet" href="../../../css/popup.css" />
+    <link rel="stylesheet" href="../../../css/newtab.css" />
+  </head>
+  <body class="nt-body">
+    <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+      <symbol id="i-search" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24">
+        <line x1="12" y1="5" x2="12" y2="19" />
+        <line x1="5" y1="12" x2="19" y2="12" />
+      </symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3" />
+        <path
+          d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+        />
+      </symbol>
+      <symbol id="i-help" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+      </symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24">
+        <polyline points="23 4 23 10 17 10" />
+        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+      </symbol>
+      <symbol id="i-home" viewBox="0 0 24 24">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        <polyline points="9 22 9 12 15 12 15 22" />
+      </symbol>
+      <symbol id="i-repeat" viewBox="0 0 24 24">
+        <polyline points="17 1 21 5 17 9" />
+        <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+        <polyline points="7 23 3 19 7 15" />
+        <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+      </symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="2" y1="12" x2="22" y2="12" />
+        <path
+          d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+        />
+      </symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24">
+        <polyline points="3 6 5 6 21 6" />
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      </symbol>
+      <symbol id="i-link" viewBox="0 0 24 24">
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+      </symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      </symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+      </symbol>
+      <symbol id="i-archive" viewBox="0 0 24 24">
+        <rect x="2" y="3" width="20" height="5" rx="1" />
+        <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+        <path d="M10 12h4" />
+      </symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24">
+        <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" />
+      </symbol>
+      <symbol id="i-undo" viewBox="0 0 24 24">
+        <path d="M3 7v6h6" />
+        <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+      </symbol>
+      <symbol id="i-download" viewBox="0 0 24 24">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+      </symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="17 8 12 3 7 8" />
+        <line x1="12" y1="3" x2="12" y2="15" />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24">
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
+      </symbol>
+      <symbol id="i-arrow-r" viewBox="0 0 24 24">
+        <line x1="5" y1="12" x2="19" y2="12" />
+        <polyline points="12 5 19 12 12 19" />
+      </symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24">
+        <path
+          d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+        />
+        <line x1="12" y1="9" x2="12" y2="13" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+      </symbol>
+      <symbol id="i-sparkles" viewBox="0 0 24 24">
+        <path
+          d="M12 3l1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3z"
+        />
+      </symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      </symbol>
+      <symbol id="i-kbd" viewBox="0 0 24 24">
+        <rect x="2" y="6" width="20" height="12" rx="2" />
+        <line x1="6" y1="10" x2="6.01" y2="10" />
+        <line x1="10" y1="10" x2="10.01" y2="10" />
+        <line x1="14" y1="10" x2="14.01" y2="10" />
+        <line x1="18" y1="10" x2="18.01" y2="10" />
+        <line x1="6" y1="14" x2="6.01" y2="14" />
+        <line x1="10" y1="14" x2="10.01" y2="14" />
+        <line x1="14" y1="14" x2="14.01" y2="14" />
+        <line x1="18" y1="14" x2="18.01" y2="14" />
+      </symbol>
+      <symbol id="i-tag" viewBox="0 0 24 24">
+        <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.83z" />
+        <line x1="7" y1="7" x2="7.01" y2="7" />
+      </symbol>
+      <symbol id="i-drag" viewBox="0 0 24 24">
+        <circle cx="9" cy="6" r="1.4" />
+        <circle cx="15" cy="6" r="1.4" />
+        <circle cx="9" cy="12" r="1.4" />
+        <circle cx="15" cy="12" r="1.4" />
+        <circle cx="9" cy="18" r="1.4" />
+        <circle cx="15" cy="18" r="1.4" />
+      </symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+        <circle cx="12" cy="12" r="3" />
+      </symbol>
+      <symbol id="i-eye-off" viewBox="0 0 24 24">
+        <path
+          d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"
+        />
+        <line x1="1" y1="1" x2="23" y2="23" />
+      </symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24">
+        <rect x="9" y="9" width="11" height="11" rx="2" />
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+      </symbol>
+      <symbol id="i-save" viewBox="0 0 24 24">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+        <polyline points="17 21 17 13 7 13 7 21" />
+        <polyline points="7 3 7 8 15 8" />
+      </symbol>
+      <symbol id="i-list" viewBox="0 0 24 24">
+        <line x1="8" y1="6" x2="21" y2="6" />
+        <line x1="8" y1="12" x2="21" y2="12" />
+        <line x1="8" y1="18" x2="21" y2="18" />
+        <line x1="3" y1="6" x2="3.01" y2="6" />
+        <line x1="3" y1="12" x2="3.01" y2="12" />
+        <line x1="3" y1="18" x2="3.01" y2="18" />
+      </symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="14" width="7" height="7" rx="1.5" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      </symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24">
+        <polyline points="6 9 12 15 18 9" />
+      </symbol>
+      <symbol id="i-external" viewBox="0 0 24 24">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+        <polyline points="15 3 21 3 21 9" />
+        <line x1="10" y1="14" x2="21" y2="3" />
+      </symbol>
+    </svg>
+    <div class="nt-wrap">
+      <!-- 吸顶容器：logo / 搜索 / 筛选 / 标签固定在顶部，仅下方书签列表滚动 -->
+      <div class="nt-head" id="ntHead">
+        <!-- 顶栏：品牌 + 打开管理面板 -->
+        <header class="nt-top">
+          <div class="nt-brand">
+            <img class="brand-icon" src="../../../icons/icon48.png" alt="" width="22" height="22" />
+            <span>书签管家</span>
+            <span class="nt-version" id="ntVersion" data-tip="扩展版本号">v1.0.1</span>
+          </div>
+          <div class="nt-top-actions">
+            <span class="nt-count" id="ntCount">共 128 个书签</span>
+            <a
+              class="nt-source-link"
+              href="https://github.com/cfdywds/chrome-bookmark-manager"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-tip="查看开源仓库"
+              aria-label="查看开源仓库"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <use href="#i-external" />
+              </svg>
+              <span>开源仓库</span>
+            </a>
+            <button id="ntOpenPanel" class="btn small ghost">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="ico ico-sm"
+              >
+                <use href="#i-gear" />
+              </svg>
+              打开管理面板
+            </button>
+            <div class="nt-view-toggle" role="group" aria-label="视图切换">
+              <button
+                id="ntViewGrid"
+                class="nt-view-btn active"
+                type="button"
+                data-tip="卡片视图"
+                aria-label="卡片视图"
+                aria-pressed="true"
+              >
+                <svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <use href="#i-grid" />
+                </svg>
+              </button>
+              <button
+                id="ntViewList"
+                class="nt-view-btn"
+                type="button"
+                data-tip="紧凑列表视图"
+                aria-label="紧凑列表视图"
+                aria-pressed="false"
+              >
+                <svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <use href="#i-list" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <!-- 搜索（随吸顶头部固定在顶部） -->
+        <div class="nt-search search-box lg" id="ntSearchBar">
+          <div class="nt-engine-picker" id="ntSearchEnginePicker">
+            <button
+              id="ntSearchEngineBtn"
+              class="nt-engine-btn"
+              type="button"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-controls="ntSearchEngineMenu"
+              data-tip="点击切换网页搜索引擎"
+              aria-label="选择网页搜索引擎"
+            >
+              <span class="nt-engine-logo google" id="ntSearchEngineLogo" aria-hidden="true">
+                <img class="nt-engine-icon" src="../../../icons/engines/google.svg" alt="" draggable="false" />
+              </span>
+              <svg class="nt-engine-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <use href="#i-chevron-down" />
+              </svg>
+            </button>
+            <!-- select 仅作状态载体（持久化/测试），交互走自绘菜单 -->
+            <select id="ntSearchEngine" class="nt-engine-select" hidden tabindex="-1" aria-hidden="true">
+              <option value="google">Google</option>
+              <option value="bing">Bing</option>
+              <option value="baidu">百度</option>
+              <option value="duckduckgo">DuckDuckGo</option>
+            </select>
+            <div
+              class="nt-engine-menu"
+              id="ntSearchEngineMenu"
+              role="listbox"
+              aria-label="选择网页搜索引擎"
+              hidden
+            ></div>
+          </div>
+          <svg
+            class="nt-search-ico"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <use href="#i-search" />
+          </svg>
+          <!-- autofocus：打开新标签页即把光标放进搜索框（JS 侧 js/newtab.js 的 focusSearch 再做兜底） -->
+          <input
+            id="ntSearch"
+            type="text"
+            placeholder="搜索书签，回车搜索网页"
+            autocomplete="off"
+            spellcheck="false"
+            autofocus
+          />
+          <button
+            class="help-dot"
+            type="button"
+            data-tip="输入内容实时筛选书签；回车使用所选引擎搜索网页；以 #标签名开头可按标签筛选。"
+            aria-label="输入内容实时筛选书签，回车搜索网页；以标签名开头可按标签筛选。"
+          >
+            ?
+          </button>
+          <button
+            id="ntFilterToggle"
+            class="nt-filter-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-haspopup="dialog"
+            aria-controls="ntFolderModal"
+            aria-pressed="false"
+            data-tip="按文件夹筛选"
+            aria-label="按文件夹筛选"
+          >
+            <svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <use href="#i-folder" />
+            </svg>
+          </button>
+          <span id="ntResultCount" class="nt-result-count hidden"></span>
+          <button
+            id="ntFilterClear"
+            class="nt-filter-clear hidden"
+            type="button"
+            data-tip="清除搜索、标签与文件夹筛选"
+            aria-label="清除搜索、标签与文件夹筛选"
+          >
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <use href="#i-x" />
+            </svg>
+            <span>清除筛选</span>
+          </button>
+          <button id="ntClear" class="nt-clear hidden" data-tip="清空搜索" aria-label="清空搜索">✕</button>
+        </div>
+
+        <!-- 标签筛选条 -->
+        <div class="nt-tags" id="ntTags"><button class="nt-tag active" data-tag="" aria-pressed="true">全部 <span class="cnt">128</span></button><button class="nt-tag" data-tag="代码" aria-pressed="false">#代码 <span class="cnt">18</span></button><button class="nt-tag" data-tag="工具" aria-pressed="false">#工具 <span class="cnt">15</span></button><button class="nt-tag" data-tag="学习" aria-pressed="false">#学习 <span class="cnt">12</span></button><button class="nt-tag" data-tag="设计" aria-pressed="false">#设计 <span class="cnt">9</span></button><button class="nt-tag" data-tag="文档" aria-pressed="false">#文档 <span class="cnt">8</span></button><button class="nt-tag" data-tag="资讯" aria-pressed="false">#资讯 <span class="cnt">7</span></button><button class="nt-tag" data-tag="社区" aria-pressed="false">#社区 <span class="cnt">6</span></button><button class="nt-tag" data-tag="运维" aria-pressed="false">#运维 <span class="cnt">4</span></button></div>
+      </div>
+
+      <!-- 书签卡片网格 -->
+      <main class="nt-main">
+        <!-- 首屏骨架屏：初始化期间展示，首次渲染后隐藏 -->
+        <div class="nt-loading hidden" id="ntLoading" aria-hidden="true">
+          <div class="nt-skeleton"></div>
+          <div class="nt-skeleton"></div>
+          <div class="nt-skeleton"></div>
+          <div class="nt-skeleton"></div>
+          <div class="nt-skeleton"></div>
+          <div class="nt-skeleton"></div>
+          <div class="nt-skeleton"></div>
+          <div class="nt-skeleton"></div>
+        </div>
+        <div class="nt-grid" id="ntGrid" role="listbox" aria-label="书签列表" tabindex="0">
+        <div class="nt-card-wrap" id="nt-card-github.com" role="option" aria-selected="false">
+          <a class="nt-card" href="https://github.com/" data-tip="GitHub · 代码托管平台">
+            <span class="nt-fav" aria-hidden="true" style="--fav-hue: 318">
+            <span class="nt-fav-fallback">G</span>
+            <img class="nt-fav-img" src="https://www.google.com/s2/favicons?domain=github.com&sz=64" alt="" loading="lazy" />
+          </span>
+            <div class="nt-card-body">
+              <div class="nt-card-title">GitHub · 代码托管平台</div>
+              <div class="nt-card-host">github.com</div>
+              <div class="nt-card-tags"><span class="nt-tag-chip">#代码</span><span class="nt-tag-chip">#工具</span></div>
+            </div>
+          </a>
+        <div class="nt-actions">
+          <button type="button" class="nt-action" data-tip="复制链接" aria-label="复制链接"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-copy"/></svg></button>
+          <button type="button" class="nt-action" data-tip="隐藏" aria-label="隐藏"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eye"/></svg></button>
+          <button type="button" class="nt-action" data-tip="编辑" aria-label="编辑"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-edit"/></svg></button>
+          <button type="button" class="nt-action danger" data-tip="删除（30 天内可恢复）" aria-label="删除"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg></button>
+        </div>
+        </div>
+        <div class="nt-card-wrap" id="nt-card-developer.mozilla.org" role="option" aria-selected="false">
+          <a class="nt-card" href="https://developer.mozilla.org/zh-CN/" data-tip="MDN Web Docs">
+            <span class="nt-fav" aria-hidden="true" style="--fav-hue: 226">
+            <span class="nt-fav-fallback">D</span>
+            <img class="nt-fav-img" src="https://www.google.com/s2/favicons?domain=developer.mozilla.org&sz=64" alt="" loading="lazy" />
+          </span>
+            <div class="nt-card-body">
+              <div class="nt-card-title">MDN Web Docs</div>
+              <div class="nt-card-host">developer.mozilla.org</div>
+              <div class="nt-card-tags"><span class="nt-tag-chip">#学习</span><span class="nt-tag-chip">#文档</span></div>
+            </div>
+          </a>
+        <div class="nt-actions">
+          <button type="button" class="nt-action" data-tip="复制链接" aria-label="复制链接"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-copy"/></svg></button>
+          <button type="button" class="nt-action" data-tip="隐藏" aria-label="隐藏"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eye"/></svg></button>
+          <button type="button" class="nt-action" data-tip="编辑" aria-label="编辑"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-edit"/></svg></button>
+          <button type="button" class="nt-action danger" data-tip="删除（30 天内可恢复）" aria-label="删除"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg></button>
+        </div>
+        </div>
+        <div class="nt-card-wrap" id="nt-card-developer.chrome.com" role="option" aria-selected="false">
+          <a class="nt-card" href="https://developer.chrome.com/docs/extensions" data-tip="Chrome 扩展开发文档">
+            <span class="nt-fav" aria-hidden="true" style="--fav-hue: 305">
+            <span class="nt-fav-fallback">D</span>
+            <img class="nt-fav-img" src="https://www.google.com/s2/favicons?domain=developer.chrome.com&sz=64" alt="" loading="lazy" />
+          </span>
+            <div class="nt-card-body">
+              <div class="nt-card-title">Chrome 扩展开发文档</div>
+              <div class="nt-card-host">developer.chrome.com</div>
+              <div class="nt-card-tags"><span class="nt-tag-chip">#文档</span></div>
+            </div>
+          </a>
+        <div class="nt-actions">
+          <button type="button" class="nt-action" data-tip="复制链接" aria-label="复制链接"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-copy"/></svg></button>
+          <button type="button" class="nt-action" data-tip="隐藏" aria-label="隐藏"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eye"/></svg></button>
+          <button type="button" class="nt-action" data-tip="编辑" aria-label="编辑"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-edit"/></svg></button>
+          <button type="button" class="nt-action danger" data-tip="删除（30 天内可恢复）" aria-label="删除"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg></button>
+        </div>
+        </div>
+        <div class="nt-card-wrap" id="nt-card-figma.com" role="option" aria-selected="false">
+          <a class="nt-card" href="https://www.figma.com/" data-tip="Figma · 协作设计工具">
+            <span class="nt-fav" aria-hidden="true" style="--fav-hue: 251">
+            <span class="nt-fav-fallback">F</span>
+            <img class="nt-fav-img" src="https://www.google.com/s2/favicons?domain=figma.com&sz=64" alt="" loading="lazy" />
+          </span>
+            <div class="nt-card-body">
+              <div class="nt-card-title">Figma · 协作设计工具</div>
+              <div class="nt-card-host">figma.com</div>
+              <div class="nt-card-tags"><span class="nt-tag-chip">#设计</span><span class="nt-tag-chip">#工具</span></div>
+            </div>
+          </a>
+        <div class="nt-actions">
+          <button type="button" class="nt-action" data-tip="复制链接" aria-label="复制链接"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-copy"/></svg></button>
+          <button type="button" class="nt-action" data-tip="隐藏" aria-label="隐藏"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eye"/></svg></button>
+          <button type="button" class="nt-action" data-tip="编辑" aria-label="编辑"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-edit"/></svg></button>
+          <button type="button" class="nt-action danger" data-tip="删除（30 天内可恢复）" aria-label="删除"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg></button>
+        </div>
+        </div>
+        <div class="nt-card-wrap" id="nt-card-tailwindcss.com" role="option" aria-selected="false">
+          <a class="nt-card" href="https://tailwindcss.com/docs" data-tip="Tailwind CSS 文档">
+            <span class="nt-fav" aria-hidden="true" style="--fav-hue: 294">
+            <span class="nt-fav-fallback">T</span>
+            <img class="nt-fav-img" src="https://www.google.com/s2/favicons?domain=tailwindcss.com&sz=64" alt="" loading="lazy" />
+          </span>
+            <div class="nt-card-body">
+              <div class="nt-card-title">Tailwind CSS 文档</div>
+              <div class="nt-card-host">tailwindcss.com</div>
+              <div class="nt-card-tags"><span class="nt-tag-chip">#文档</span><span class="nt-tag-chip">#代码</span></div>
+            </div>
+          </a>
+        <div class="nt-actions">
+          <button type="button" class="nt-action" data-tip="复制链接" aria-label="复制链接"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-copy"/></svg></button>
+          <button type="button" class="nt-action" data-tip="隐藏" aria-label="隐藏"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eye"/></svg></button>
+          <button type="button" class="nt-action" data-tip="编辑" aria-label="编辑"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-edit"/></svg></button>
+          <button type="button" class="nt-action danger" data-tip="删除（30 天内可恢复）" aria-label="删除"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg></button>
+        </div>
+        </div>
+        <div class="nt-card-wrap" id="nt-card-caniuse.com" role="option" aria-selected="false">
+          <a class="nt-card" href="https://caniuse.com/" data-tip="Can I use · 浏览器兼容性查询">
+            <span class="nt-fav" aria-hidden="true" style="--fav-hue: 89">
+            <span class="nt-fav-fallback">C</span>
+            <img class="nt-fav-img" src="https://www.google.com/s2/favicons?domain=caniuse.com&sz=64" alt="" loading="lazy" />
+          </span>
+            <div class="nt-card-body">
+              <div class="nt-card-title">Can I use · 浏览器兼容性查询</div>
+              <div class="nt-card-host">caniuse.com</div>
+              <div class="nt-card-tags"><span class="nt-tag-chip">#工具</span><span class="nt-tag-chip">#学习</span></div>
+            </div>
+          </a>
+        <div class="nt-actions">
+          <button type="button" class="nt-action" data-tip="复制链接" aria-label="复制链接"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-copy"/></svg></button>
+          <button type="button" class="nt-action" data-tip="隐藏" aria-label="隐藏"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eye"/></svg></button>
+          <button type="button" class="nt-action" data-tip="编辑" aria-label="编辑"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-edit"/></svg></button>
+          <button type="button" class="nt-action danger" data-tip="删除（30 天内可恢复）" aria-label="删除"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg></button>
+        </div>
+        </div>
+        <div class="nt-card-wrap" id="nt-card-platform.deepseek.com" role="option" aria-selected="false">
+          <a class="nt-card" href="https://platform.deepseek.com/" data-tip="DeepSeek 开放平台">
+            <span class="nt-fav" aria-hidden="true" style="--fav-hue: 18">
+            <span class="nt-fav-fallback">P</span>
+            <img class="nt-fav-img" src="https://www.google.com/s2/favicons?domain=platform.deepseek.com&sz=64" alt="" loading="lazy" />
+          </span>
+            <div class="nt-card-body">
+              <div class="nt-card-title">DeepSeek 开放平台</div>
+              <div class="nt-card-host">platform.deepseek.com</div>
+              <div class="nt-card-tags"><span class="nt-tag-chip">#工具</span></div>
+            </div>
+          </a>
+        <div class="nt-actions">
+          <button type="button" class="nt-action" data-tip="复制链接" aria-label="复制链接"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-copy"/></svg></button>
+          <button type="button" class="nt-action" data-tip="隐藏" aria-label="隐藏"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eye"/></svg></button>
+          <button type="button" class="nt-action" data-tip="编辑" aria-label="编辑"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-edit"/></svg></button>
+          <button type="button" class="nt-action danger" data-tip="删除（30 天内可恢复）" aria-label="删除"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg></button>
+        </div>
+        </div>
+        <div class="nt-card-wrap" id="nt-card-juejin.cn" role="option" aria-selected="false">
+          <a class="nt-card" href="https://juejin.cn/" data-tip="掘金 · 开发者社区">
+            <span class="nt-fav" aria-hidden="true" style="--fav-hue: 180">
+            <span class="nt-fav-fallback">J</span>
+            <img class="nt-fav-img" src="https://www.google.com/s2/favicons?domain=juejin.cn&sz=64" alt="" loading="lazy" />
+          </span>
+            <div class="nt-card-body">
+              <div class="nt-card-title">掘金 · 开发者社区</div>
+              <div class="nt-card-host">juejin.cn</div>
+              <div class="nt-card-tags"><span class="nt-tag-chip">#社区</span><span class="nt-tag-chip">#学习</span></div>
+            </div>
+          </a>
+        <div class="nt-actions">
+          <button type="button" class="nt-action" data-tip="复制链接" aria-label="复制链接"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-copy"/></svg></button>
+          <button type="button" class="nt-action" data-tip="隐藏" aria-label="隐藏"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eye"/></svg></button>
+          <button type="button" class="nt-action" data-tip="编辑" aria-label="编辑"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-edit"/></svg></button>
+          <button type="button" class="nt-action danger" data-tip="删除（30 天内可恢复）" aria-label="删除"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg></button>
+        </div>
+        </div>
+        <div class="nt-card-wrap" id="nt-card-v2ex.com" role="option" aria-selected="false">
+          <a class="nt-card" href="https://v2ex.com/" data-tip="V2EX · 创意工作者社区">
+            <span class="nt-fav" aria-hidden="true" style="--fav-hue: 274">
+            <span class="nt-fav-fallback">V</span>
+            <img class="nt-fav-img" src="https://www.google.com/s2/favicons?domain=v2ex.com&sz=64" alt="" loading="lazy" />
+          </span>
+            <div class="nt-card-body">
+              <div class="nt-card-title">V2EX · 创意工作者社区</div>
+              <div class="nt-card-host">v2ex.com</div>
+              <div class="nt-card-tags"><span class="nt-tag-chip">#社区</span></div>
+            </div>
+          </a>
+        <div class="nt-actions">
+          <button type="button" class="nt-action" data-tip="复制链接" aria-label="复制链接"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-copy"/></svg></button>
+          <button type="button" class="nt-action" data-tip="隐藏" aria-label="隐藏"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eye"/></svg></button>
+          <button type="button" class="nt-action" data-tip="编辑" aria-label="编辑"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-edit"/></svg></button>
+          <button type="button" class="nt-action danger" data-tip="删除（30 天内可恢复）" aria-label="删除"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg></button>
+        </div>
+        </div>
+        <div class="nt-card-wrap" id="nt-card-sspai.com" role="option" aria-selected="false">
+          <a class="nt-card" href="https://sspai.com/" data-tip="少数派 · 高效工作与品质生活">
+            <span class="nt-fav" aria-hidden="true" style="--fav-hue: 339">
+            <span class="nt-fav-fallback">S</span>
+            <img class="nt-fav-img" src="https://www.google.com/s2/favicons?domain=sspai.com&sz=64" alt="" loading="lazy" />
+          </span>
+            <div class="nt-card-body">
+              <div class="nt-card-title">少数派 · 高效工作与品质生活</div>
+              <div class="nt-card-host">sspai.com</div>
+              <div class="nt-card-tags"><span class="nt-tag-chip">#资讯</span></div>
+            </div>
+          </a>
+        <div class="nt-actions">
+          <button type="button" class="nt-action" data-tip="复制链接" aria-label="复制链接"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-copy"/></svg></button>
+          <button type="button" class="nt-action" data-tip="隐藏" aria-label="隐藏"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eye"/></svg></button>
+          <button type="button" class="nt-action" data-tip="编辑" aria-label="编辑"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-edit"/></svg></button>
+          <button type="button" class="nt-action danger" data-tip="删除（30 天内可恢复）" aria-label="删除"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg></button>
+        </div>
+        </div>
+        <div class="nt-card-wrap" id="nt-card-aliyun.com" role="option" aria-selected="false">
+          <a class="nt-card" href="https://home.console.aliyun.com/" data-tip="阿里云控制台">
+            <span class="nt-fav" aria-hidden="true" style="--fav-hue: 183">
+            <span class="nt-fav-fallback">A</span>
+            <img class="nt-fav-img" src="https://www.google.com/s2/favicons?domain=aliyun.com&sz=64" alt="" loading="lazy" />
+          </span>
+            <div class="nt-card-body">
+              <div class="nt-card-title">阿里云控制台</div>
+              <div class="nt-card-host">aliyun.com</div>
+              <div class="nt-card-tags"><span class="nt-tag-chip">#运维</span></div>
+            </div>
+          </a>
+        <div class="nt-actions">
+          <button type="button" class="nt-action" data-tip="复制链接" aria-label="复制链接"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-copy"/></svg></button>
+          <button type="button" class="nt-action" data-tip="隐藏" aria-label="隐藏"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eye"/></svg></button>
+          <button type="button" class="nt-action" data-tip="编辑" aria-label="编辑"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-edit"/></svg></button>
+          <button type="button" class="nt-action danger" data-tip="删除（30 天内可恢复）" aria-label="删除"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg></button>
+        </div>
+        </div>
+        <div class="nt-card-wrap" id="nt-card-icourse163.org" role="option" aria-selected="false">
+          <a class="nt-card" href="https://www.icourse163.org/" data-tip="中国大学 MOOC">
+            <span class="nt-fav" aria-hidden="true" style="--fav-hue: 240">
+            <span class="nt-fav-fallback">I</span>
+            <img class="nt-fav-img" src="https://www.google.com/s2/favicons?domain=icourse163.org&sz=64" alt="" loading="lazy" />
+          </span>
+            <div class="nt-card-body">
+              <div class="nt-card-title">中国大学 MOOC</div>
+              <div class="nt-card-host">icourse163.org</div>
+              <div class="nt-card-tags"><span class="nt-tag-chip">#学习</span></div>
+            </div>
+          </a>
+        <div class="nt-actions">
+          <button type="button" class="nt-action" data-tip="复制链接" aria-label="复制链接"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-copy"/></svg></button>
+          <button type="button" class="nt-action" data-tip="隐藏" aria-label="隐藏"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eye"/></svg></button>
+          <button type="button" class="nt-action" data-tip="编辑" aria-label="编辑"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-edit"/></svg></button>
+          <button type="button" class="nt-action danger" data-tip="删除（30 天内可恢复）" aria-label="删除"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg></button>
+        </div>
+        </div>
+      </div>
+        <div class="nt-more" id="ntMore"></div>
+        <div class="nt-empty hidden" id="ntEmpty">
+          <div class="nt-empty-icon">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              width="44"
+              height="44"
+              aria-hidden="true"
+            >
+              <use href="#i-search" />
+            </svg>
+          </div>
+          <div class="nt-empty-title" id="ntEmptyTitle">没有匹配的书签</div>
+          <div class="nt-empty-desc" id="ntEmptyDesc">换个关键词，或清空筛选条件</div>
+        </div>
+      </main>
+    </div>
+
+    <!-- 文件夹筛选弹窗：入口是搜索框里的「筛选」，卡片与列表视图共用 -->
+    <div
+      id="ntFolderModal"
+      class="modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ntFolderModalTitle"
+    >
+      <div class="modal-card nt-folder-modal">
+        <div class="modal-title nt-folder-modal-title" id="ntFolderModalTitle">
+          <svg
+            class="ico ico-sm"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <use href="#i-folder" />
+          </svg>
+          按文件夹筛选
+        </div>
+        <div class="nt-folder-modal-summary" id="ntFolderSummary" aria-live="polite">正在加载目录…</div>
+        <div class="nt-folder-options" id="ntFolderMenu" role="listbox" aria-label="文件夹目录"></div>
+        <div class="modal-actions">
+          <button id="ntFolderClear" class="btn ghost" type="button">全部文件夹</button>
+          <button id="ntFolderClose" class="btn primary" type="button">完成</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 轻量确认弹层（删除等危险操作） -->
+    <div
+      id="ntConfirmWrap"
+      class="modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ntConfirmTitle"
+    >
+      <div class="modal-card">
+        <div class="modal-title" id="ntConfirmTitle">确认操作？</div>
+        <div class="modal-msg" id="ntConfirmMsg"></div>
+        <div class="modal-actions">
+          <button id="ntConfirmNo" class="btn ghost">取消</button>
+          <button id="ntConfirmYes" class="btn danger">确认</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

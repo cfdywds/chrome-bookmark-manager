@@ -1,0 +1,890 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>书签管家 · 设置</title>
+    <link rel="stylesheet" href="../../../css/tokens.css" />
+    <link rel="stylesheet" href="../../../css/popup.css" />
+  </head>
+  <body class="opt-body">
+    <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+      <symbol id="i-search" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24">
+        <line x1="12" y1="5" x2="12" y2="19" />
+        <line x1="5" y1="12" x2="19" y2="12" />
+      </symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3" />
+        <path
+          d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+        />
+      </symbol>
+      <symbol id="i-help" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+      </symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24">
+        <polyline points="23 4 23 10 17 10" />
+        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+      </symbol>
+      <symbol id="i-home" viewBox="0 0 24 24">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        <polyline points="9 22 9 12 15 12 15 22" />
+      </symbol>
+      <symbol id="i-repeat" viewBox="0 0 24 24">
+        <polyline points="17 1 21 5 17 9" />
+        <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+        <polyline points="7 23 3 19 7 15" />
+        <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+      </symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="2" y1="12" x2="22" y2="12" />
+        <path
+          d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+        />
+      </symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24">
+        <polyline points="3 6 5 6 21 6" />
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      </symbol>
+      <symbol id="i-link" viewBox="0 0 24 24">
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+      </symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      </symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+      </symbol>
+      <symbol id="i-archive" viewBox="0 0 24 24">
+        <rect x="2" y="3" width="20" height="5" rx="1" />
+        <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+        <path d="M10 12h4" />
+      </symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24">
+        <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" />
+      </symbol>
+      <symbol id="i-undo" viewBox="0 0 24 24">
+        <path d="M3 7v6h6" />
+        <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+      </symbol>
+      <symbol id="i-download" viewBox="0 0 24 24">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+      </symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="17 8 12 3 7 8" />
+        <line x1="12" y1="3" x2="12" y2="15" />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24">
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
+      </symbol>
+      <symbol id="i-arrow-r" viewBox="0 0 24 24">
+        <line x1="5" y1="12" x2="19" y2="12" />
+        <polyline points="12 5 19 12 12 19" />
+      </symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24">
+        <path
+          d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+        />
+        <line x1="12" y1="9" x2="12" y2="13" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+      </symbol>
+      <symbol id="i-sparkles" viewBox="0 0 24 24">
+        <path
+          d="M12 3l1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3z"
+        />
+      </symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      </symbol>
+      <symbol id="i-kbd" viewBox="0 0 24 24">
+        <rect x="2" y="6" width="20" height="12" rx="2" />
+        <line x1="6" y1="10" x2="6.01" y2="10" />
+        <line x1="10" y1="10" x2="10.01" y2="10" />
+        <line x1="14" y1="10" x2="14.01" y2="10" />
+        <line x1="18" y1="10" x2="18.01" y2="10" />
+        <line x1="6" y1="14" x2="6.01" y2="14" />
+        <line x1="10" y1="14" x2="10.01" y2="14" />
+        <line x1="14" y1="14" x2="14.01" y2="14" />
+        <line x1="18" y1="14" x2="18.01" y2="14" />
+      </symbol>
+      <symbol id="i-tag" viewBox="0 0 24 24">
+        <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.83z" />
+        <line x1="7" y1="7" x2="7.01" y2="7" />
+      </symbol>
+      <symbol id="i-drag" viewBox="0 0 24 24">
+        <circle cx="9" cy="6" r="1.4" />
+        <circle cx="15" cy="6" r="1.4" />
+        <circle cx="9" cy="12" r="1.4" />
+        <circle cx="15" cy="12" r="1.4" />
+        <circle cx="9" cy="18" r="1.4" />
+        <circle cx="15" cy="18" r="1.4" />
+      </symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+        <circle cx="12" cy="12" r="3" />
+      </symbol>
+      <symbol id="i-eye-off" viewBox="0 0 24 24">
+        <path
+          d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"
+        />
+        <line x1="1" y1="1" x2="23" y2="23" />
+      </symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24">
+        <rect x="9" y="9" width="11" height="11" rx="2" />
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+      </symbol>
+      <symbol id="i-save" viewBox="0 0 24 24">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+        <polyline points="17 21 17 13 7 13 7 21" />
+        <polyline points="7 3 7 8 15 8" />
+      </symbol>
+      <symbol id="i-list" viewBox="0 0 24 24">
+        <line x1="8" y1="6" x2="21" y2="6" />
+        <line x1="8" y1="12" x2="21" y2="12" />
+        <line x1="8" y1="18" x2="21" y2="18" />
+        <line x1="3" y1="6" x2="3.01" y2="6" />
+        <line x1="3" y1="12" x2="3.01" y2="12" />
+        <line x1="3" y1="18" x2="3.01" y2="18" />
+      </symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="14" width="7" height="7" rx="1.5" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      </symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24">
+        <polyline points="6 9 12 15 18 9" />
+      </symbol>
+      <symbol id="i-external" viewBox="0 0 24 24">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+        <polyline points="15 3 21 3 21 9" />
+        <line x1="10" y1="14" x2="21" y2="3" />
+      </symbol>
+    </svg>
+    <div class="opt-wrap">
+      <div class="opt-hero">
+        <h1>
+          <span class="brand-icon"
+            ><svg
+              class="ico"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <use href="#i-gear" />
+              </svg
+          ></span>
+          书签管家 · 设置
+        </h1>
+        <p><b id="optVersion">v1.0.1</b> · 所有数据仅保存在你的浏览器本地 · 修改即时生效，无需手动保存</p>
+      </div>
+
+      <!-- ===== 设置分组导航（P2-3-1：桌面左侧 sticky 锚点导航，窄屏横向滚动）===== -->
+      <nav id="optNav" class="opt-nav" aria-label="设置分组导航"><div class="opt-nav-title">设置分组</div><a class="opt-nav-link" href="#opt-ai" data-target="opt-ai">AI 分类</a><a class="opt-nav-link" href="#opt-tags" data-target="opt-tags">标签体系</a><a class="opt-nav-link" href="#opt-browser" data-target="opt-browser">浏览器集成</a><a class="opt-nav-link" href="#opt-appearance" data-target="opt-appearance">新标签页外观</a><a class="opt-nav-link" href="#opt-danger" data-target="opt-danger">危险操作</a><select id="optNavSelect" class="opt-nav-select" aria-label="跳转到设置分组"><option value="opt-ai">AI 分类</option><option value="opt-tags">标签体系</option><option value="opt-browser">浏览器集成</option><option value="opt-appearance">新标签页外观</option><option value="opt-danger">危险操作</option></select></nav>
+
+      <!-- ===== 分组 1：AI 分类 ===== -->
+      <section class="opt-section" id="opt-ai">
+        <div class="opt-section-head">
+          <div class="opt-section-icon opt-section-icon-ai">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 8V4H8" />
+              <rect width="16" height="12" x="4" y="8" rx="2" />
+              <path d="M2 14h2" />
+              <path d="M20 14h2" />
+              <path d="M15 13v2" />
+              <path d="M9 13v2" />
+            </svg>
+          </div>
+          <div class="opt-section-text">
+            <h2>
+              AI 分类
+              <button
+                class="help-dot"
+                type="button"
+                data-tip="不配置 AI 服务商时，普通书签管理和本地规则仍可使用。"
+                aria-label="不配置 AI 服务商时，普通书签管理和本地规则仍可使用。"
+              >
+                ?
+              </button>
+            </h2>
+          </div>
+          <span class="section-status" data-status-for="ai"></span>
+        </div>
+
+        <div class="opt-card">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                class="ico"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <use href="#i-gear" />
+                </svg
+            ></span>
+            <div>
+              <div class="opt-card-title">
+                LLM 服务商配置
+                <button
+                  class="help-dot"
+                  type="button"
+                  data-tip="API Key 仅保存在本地，不会同步或发送给扩展开发者。保存配置或测试连接时，会请求当前 API 域名的网络访问权限；AI 仅发送标题与 URL 的域名、路径。"
+                >
+                  ?
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="llm-profile-bar">
+            <div class="form-row">
+              <label>已保存的配置</label>
+              <select id="setProfile"></select>
+            </div>
+            <div class="profile-actions">
+              <button id="profileNew" type="button" class="btn ghost">新建配置</button>
+            </div>
+          </div>
+          <div class="opt-grid">
+            <div class="form-row form-row-wide">
+              <label>配置名称</label>
+              <input
+                id="setProfileName"
+                type="text"
+                maxlength="80"
+                placeholder="例如：公司 Kimi"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </div>
+            <div class="form-row">
+              <label>服务商 / 协议</label>
+              <select id="setProvider">
+                <option value="openai">OpenAI</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="grok">Grok (xAI)</option>
+                <option value="groq">Groq</option>
+                <option value="gemini">Gemini（OpenAI 兼容层）</option>
+                <option value="ollama">Ollama（本地）</option>
+                <option value="custom">自定义</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Base URL</label>
+              <input
+                id="setBase"
+                type="text"
+                placeholder="https://api.example.com/v1"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </div>
+            <div class="form-row form-row-wide">
+              <label>API Key</label>
+              <div class="secret-row">
+                <input
+                  id="setKey"
+                  type="password"
+                  placeholder="sk-..."
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <button id="setKeyToggle" type="button" class="text-btn">显示</button>
+              </div>
+            </div>
+            <div class="form-row form-row-wide">
+              <label>模型名</label>
+              <div class="model-fetch-row">
+                <div class="model-combo" id="modelCombo">
+                  <input
+                    id="setModel"
+                    type="text"
+                    placeholder="输入或从下拉选择模型"
+                    autocomplete="off"
+                    spellcheck="false"
+                    role="combobox"
+                    aria-expanded="false"
+                    aria-autocomplete="list"
+                    aria-controls="modelComboList"
+                    aria-activedescendant=""
+                  />
+                  <span class="model-combo-caret" aria-hidden="true">
+                    <svg
+                      class="ico"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <use href="#i-chevron-down" />
+                    </svg>
+                  </span>
+                  <ul
+                    id="modelComboList"
+                    class="model-combo-list"
+                    role="listbox"
+                    aria-label="模型列表"
+                    hidden
+                  ></ul>
+                </div>
+                <button id="modelsFetch" type="button" class="btn ghost">获取模型列表</button>
+              </div>
+              <span id="modelsMsg" class="settings-msg" role="alert"></span>
+            </div>
+          </div>
+          <div class="opt-foot">
+            <span id="settingsMsg" class="settings-msg" role="alert"></span>
+            <button id="settingsSave" class="btn ghost">保存配置</button>
+            <button id="settingsTest" class="btn primary">测试连接</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 分组 2：标签体系 ===== -->
+      <section class="opt-section" id="opt-tags">
+        <div class="opt-section-head">
+          <div class="opt-section-icon opt-section-icon-tag">
+            <svg
+              class="ico"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <use href="#i-tag" />
+            </svg>
+          </div>
+          <div class="opt-section-text">
+            <h2>
+              标签体系
+              <button
+                class="help-dot"
+                type="button"
+                data-tip="AI 打标、建议标签和收敛仅使用固定标签池内的标签。"
+                aria-label="AI 打标、建议标签和收敛仅使用固定标签池内的标签。"
+              >
+                ?
+              </button>
+            </h2>
+          </div>
+          <span class="section-status" data-status-for="tags"></span>
+        </div>
+
+        <div class="opt-card opt-card-compact opt-card-tag-tag">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                class="ico"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <use href="#i-tag" />
+                </svg
+            ></span>
+            <div>
+              <div class="opt-card-title">
+                固定标签池（最多 50 个）
+                <button
+                  class="help-dot"
+                  type="button"
+                  data-tip="每行一个标签。更新标签池后，历史书签需执行收敛标签或重新打标才会生效。"
+                  aria-label="每行一个标签。更新标签池后，历史书签需执行收敛标签或重新打标才会生效。"
+                >
+                  ?
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>标签池（每行一个）</label>
+            <textarea
+              id="setFixedTags"
+              rows="10"
+              spellcheck="false"
+              placeholder="AI&#10;代码&#10;前端&#10;后端&#10;设计&#10;论坛&#10;工具"
+            ></textarea>
+          </div>
+          <div class="opt-foot">
+            <span id="fixedTagsMsg" class="settings-msg" role="alert"></span>
+          </div>
+        </div>
+
+        <div class="opt-card opt-card-compact opt-card-tag-tag">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                class="ico"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <use href="#i-gear" />
+                </svg
+            ></span>
+            <div>
+              <div class="opt-card-title">
+                自定义规则
+                <button
+                  class="help-dot"
+                  type="button"
+                  data-tip="每行填写 关键字=标签1,标签2。标签必须先存在于固定标签池；域名规则只匹配主机名，首个标签也会作为概览分类名；标题/路径规则不会读取查询参数或页面锚点。"
+                  aria-label="每行填写关键字等于标签列表。标签必须先存在于固定标签池。"
+                >
+                  ?
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="opt-grid">
+            <div class="form-row form-row-wide">
+              <label>域名关键字 → 标签（首个标签为概览分类）</label>
+              <textarea
+                id="setDomainTagRules"
+                rows="7"
+                spellcheck="false"
+                placeholder="github=代码&#10;corp=工作,代码&#10;# 只匹配 hostname"
+              ></textarea>
+            </div>
+            <div class="form-row form-row-wide">
+              <label>标题 / URL 路径关键字 → 标签</label>
+              <textarea
+                id="setKeywordTagRules"
+                rows="7"
+                spellcheck="false"
+                placeholder="教程=学习,教程&#10;release=资讯&#10;# 不匹配 query 或 fragment"
+              ></textarea>
+            </div>
+          </div>
+          <div class="opt-foot">
+            <span id="tagRulesMsg" class="settings-msg" role="alert"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 分组 3：浏览器集成 ===== -->
+      <section class="opt-section" id="opt-browser">
+        <div class="opt-section-head">
+          <div class="opt-section-icon opt-section-icon-browser">
+            <svg
+              class="ico"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <use href="#i-globe" />
+            </svg>
+          </div>
+          <div class="opt-section-text">
+            <h2>
+              浏览器集成
+              <button
+                class="help-dot"
+                type="button"
+                data-tip="可设置浏览器收藏后的后台默认打标，以及跨设备标签同步。"
+                aria-label="可设置浏览器收藏后的后台默认打标，以及跨设备标签同步。"
+              >
+                ?
+              </button>
+            </h2>
+          </div>
+          <span class="section-status" data-status-for="browser"></span>
+        </div>
+
+        <div class="opt-card opt-card-compact opt-card-tag-browser">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <polygon
+                  points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21 12 17.77 5.82 21 7 14.14 2 9.27 8.91 8.26 12 2"
+                /></svg
+            ></span>
+            <div>
+              <div class="opt-card-title">
+                接管浏览器收藏按钮
+                <button
+                  class="help-dot"
+                  type="button"
+                  data-tip="地址栏收藏后先按本地域名与关键词规则打标。可另行允许 AI 仅补充规则未知项；登录、凭据参数、金融服务和原生批量导入不会发送给 AI。"
+                  aria-label="地址栏收藏后先按本地域名与关键词规则打标。可另行允许 AI 仅补充规则未知项；登录、凭据参数、金融服务和原生批量导入不会发送给 AI。"
+                >
+                  ?
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="form-row">
+            <label class="switch-row">
+              <input type="checkbox" id="setStarHook" />
+              <span>启用收藏按钮后台规则打标</span>
+            </label>
+          </div>
+          <div class="form-row">
+            <label class="switch-row">
+              <input type="checkbox" id="setAutoAiTag" />
+              <span>规则无法确定时，允许后台静默使用 AI 补充标签</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="opt-card opt-card-compact opt-card-tag-browser">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                class="ico"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <use href="#i-repeat" />
+                </svg
+            ></span>
+            <div>
+              <div class="opt-card-title">
+                标签原生同步（跨设备）
+                <button
+                  class="help-dot"
+                  type="button"
+                  data-tip="标签、固定标签池和自定义规则保存在受保护的“书签管家同步数据”目录，并随 Chrome 书签同步。插件不会显示该目录；不要在 Chrome 书签管理器中修改或删除它。"
+                >
+                  ?
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="form-row">
+            <label class="switch-row">
+              <input type="checkbox" id="setTagSync" />
+              <span>启用标签原生同步</span>
+            </label>
+          </div>
+          <div class="opt-foot">
+            <span id="tagSyncMsg" class="settings-msg" role="alert"></span>
+            <span id="tagSyncSummary" class="settings-msg"></span>
+          </div>
+          <div id="tagSyncProgress" class="tag-sync-progress" hidden aria-live="polite">
+            <div
+              class="tag-sync-progress-track"
+              role="progressbar"
+              aria-label="标签同步初始化进度"
+              aria-valuemin="0"
+              aria-valuemax="5"
+              aria-valuenow="0"
+            >
+              <span id="tagSyncProgressBar" class="tag-sync-progress-bar"></span>
+            </div>
+            <span id="tagSyncProgressText" class="tag-sync-progress-text"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 分组 4：新标签页外观 ===== -->
+      <section class="opt-section" id="opt-appearance">
+        <div class="opt-section-head">
+          <div class="opt-section-icon opt-section-icon-ui">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+              <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+              <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+              <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+              <path
+                d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"
+              />
+            </svg>
+          </div>
+          <div class="opt-section-text">
+            <h2>
+              新标签页外观
+              <button
+                class="help-dot"
+                type="button"
+                data-tip="布局宽度与配色仅作用于新标签页，不改变侧边栏；均为本地设置，不上传不同步。"
+                aria-label="布局宽度与配色仅作用于新标签页。"
+              >
+                ?
+              </button>
+            </h2>
+          </div>
+          <span class="section-status" data-status-for="appearance"></span>
+        </div>
+
+        <div class="opt-card opt-card-compact opt-card-tag-ui">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+                <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+                <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+                <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+                <path
+                  d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"
+                /></svg
+            ></span>
+            <div>
+              <div class="opt-card-title">
+                布局宽度与配色
+                <button
+                  class="help-dot"
+                  type="button"
+                  data-tip="宽度影响卡片列数：屏幕越宽列数越多。2K 屏可选手「超宽」或「自动铺满」。选择自定义背景色时，文字与面板会按背景亮度自动匹配明暗，保证可读。"
+                  aria-label="宽度影响卡片列数。"
+                >
+                  ?
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="opt-grid">
+            <div class="form-row">
+              <label>内容区宽度</label>
+              <select id="setNtWidth">
+                <option value="1080">紧凑 · 默认（1080px / 约 3-4 列）</option>
+                <option value="1440">标准（1440px / 约 4-5 列）</option>
+                <option value="1720">宽屏（1720px / 约 5-6 列）</option>
+                <option value="2560">超宽 · 2K（2560px / 约 7-8 列）</option>
+                <option value="auto">自动铺满（列数完全跟随屏幕）</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>页面配色</label>
+              <select id="setNtTheme">
+                <option value="auto">跟随系统（默认）</option>
+                <option value="light">始终浅色</option>
+                <option value="dark">始终深色</option>
+                <option value="custom">自定义背景色…</option>
+              </select>
+            </div>
+            <div class="form-row form-row-wide" id="ntBgRow" hidden>
+              <label
+                >背景颜色
+                <button
+                  class="help-dot"
+                  type="button"
+                  data-tip="点击色块取色，或直接输入十六进制色值（#rrggbb）。"
+                  aria-label="点击色块取色。"
+                >
+                  ?
+                </button></label
+              >
+              <div class="nt-bg-picker">
+                <input type="color" id="setNtBg" value="#0f1117" />
+                <input
+                  type="text"
+                  id="setNtBgHex"
+                  maxlength="7"
+                  placeholder="#0f1117"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <button id="setNtBgReset" type="button" class="btn ghost small">重置默认色</button>
+              </div>
+            </div>
+          </div>
+          <div class="opt-foot">
+            <span id="ntAppearMsg" class="settings-msg" role="alert"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 分组 5：危险操作（P2-3-3：备份恢复与不可逆操作集中收敛）===== -->
+      <section class="opt-section danger-zone" id="opt-danger">
+        <div class="opt-section-head">
+          <div class="opt-section-text">
+            <h2>
+              危险操作
+              <button
+                class="help-dot"
+                type="button"
+                data-tip="备份恢复、清空回收站和删除 AI 配置都可能造成不可逆的数据变化，请先确认操作范围。"
+                aria-label="备份恢复、清空回收站和删除 AI 配置都可能造成不可逆的数据变化。"
+              >
+                ?
+              </button>
+            </h2>
+          </div>
+          <span class="section-status" data-status-for="danger"></span>
+        </div>
+
+        <div class="opt-card opt-card-compact danger-data-card">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                class="ico"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <use href="#i-download" /></svg
+            ></span>
+            <div>
+              <div class="opt-card-title">书签备份 / 恢复</div>
+              <p class="opt-card-desc">
+                导出全部书签为 V4 JSON 文件；恢复时默认合并相同网址的书签与标签，也可以选择保留副本。恢复会写入书签和扩展标签数据，请先确认备份文件来源。
+              </p>
+            </div>
+          </div>
+          <div class="opt-foot danger-actions">
+            <span id="backupMsg" class="settings-msg" role="alert"></span>
+            <button id="backupExport" type="button" class="btn ghost">导出备份</button>
+            <button id="backupImport" type="button" class="btn danger">恢复备份</button>
+          </div>
+        </div>
+
+        <div class="opt-card opt-card-compact danger-data-card">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                class="ico"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <use href="#i-trash" /></svg
+            ></span>
+            <div>
+              <div class="opt-card-title">清空回收站</div>
+              <p class="opt-card-desc">
+                永久删除当前回收站中的所有记录，待恢复书签将无法找回。侧边栏仍可查看和恢复单条记录。
+              </p>
+            </div>
+          </div>
+          <div class="opt-foot danger-actions">
+            <span id="trashMsg" class="settings-msg" role="alert"></span>
+            <button id="trashClear" type="button" class="btn danger">清空回收站</button>
+          </div>
+        </div>
+
+        <div class="opt-card opt-card-compact">
+          <div class="opt-card-head">
+            <span class="opt-card-icon"
+              ><svg
+                class="ico"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <use href="#i-alert" /></svg
+            ></span>
+            <div>
+              <div class="opt-card-title">删除当前选中的 AI 配置</div>
+              <p class="opt-card-desc">
+                删除后该配置的接口地址、API Key 与模型名一并移除且无法恢复（其余配置不受影响）。删除前请先在「AI
+                分类」分组中确认当前选中的配置；标签原生同步只是停止读写、已有数据保留，不属于危险操作。
+              </p>
+            </div>
+          </div>
+          <div class="opt-foot">
+            <span id="dangerMsg" class="settings-msg" role="alert"></span>
+            <button id="profileDelete" type="button" class="btn ghost danger-text" data-danger="1">
+              删除 AI 配置
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="toasts"></div>
+
+    <div
+      id="confirmWrap"
+      class="modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirmTitle"
+      aria-describedby="confirmMsg"
+    >
+      <div class="modal-card">
+        <div class="modal-title" id="confirmTitle">确认操作？</div>
+        <div class="modal-msg" id="confirmMsg"></div>
+        <div class="modal-actions">
+          <button id="confirmThird" class="btn ghost hidden" type="button">保留副本</button>
+          <button id="confirmNo" class="btn ghost" type="button">取消</button>
+          <button id="confirmYes" class="btn danger" type="button">确认</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

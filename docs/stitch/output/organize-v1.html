@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bookmark Manager - Organize</title>
+  <style>
+    /* CSS Custom Properties / Design Tokens */
+    :root {
+      /* Colors - Light Theme */
+      --c-bg: #f3f5f8;
+      --c-panel: #ffffff;
+      --c-sub: #f3f5f8;
+      --c-sub-hover: #e7ebf0;
+      --c-field: #ffffff;
+      --c-fav: #f3f5f8;
+
+      --c-ink: #101828;
+      --c-ink-2: #344054;
+      --c-muted: #667085;
+
+      --c-line: #e7ebf0;
+      --c-line-2: #dce1e8;
+
+      --c-primary: #2563eb;
+      --c-primary-soft: #e9f1fe;
+      --c-action: #2563eb;
+
+      --c-danger: #be123c;
+      --c-warn: #b45309;
+      --c-ok: #059669;
+
+      /* Radii */
+      --radius-xs: 7px;
+      --radius-sm: 10px;
+      --radius-md: 14px;
+      --radius-lg: 18px;
+      --radius-pill: 999px;
+
+      /* Spacing */
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-6: 24px;
+
+      /* Typography */
+      --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, "SF Mono", Consolas, monospace;
+
+      /* Elevations */
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+      --shadow-default: 0 6px 20px rgba(15, 23, 42, 0.09);
+      --shadow-lift: 0 10px 25px -4px rgba(15, 23, 42, 0.16), 0 4px 8px -2px rgba(15, 23, 42, 0.08);
+
+      /* Transition */
+      --dur: 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    [data-theme="dark"] {
+      --c-bg: #0f1117;
+      --c-panel: #171b24;
+      --c-sub: #1b202b;
+      --c-sub-hover: #202633;
+      --c-field: #1e2430;
+      --c-fav: #242a36;
+
+      --c-ink: #f2f4f8;
+      --c-ink-2: #c3c9d4;
+      --c-muted: #8b93a3;
+
+      --c-line: #242a36;
+      --c-line-2: #303845;
+
+      --c-primary: #5da2f5;
+      --c-primary-soft: #1a2436;
+      --c-action: #1d4ed8;
+
+      --c-danger: #fb7185;
+      --c-warn: #fbbf24;
+      --c-ok: #34d399;
+
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+      --shadow-default: 0 6px 20px rgba(0, 0, 0, 0.45);
+      --shadow-lift: 0 12px 30px -4px rgba(0, 0, 0, 0.65);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-body);
+      font-size: 13px;
+      line-height: 1.4;
+      color: var(--c-ink);
+      background-color: var(--c-bg);
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      justify-content: center;
+      padding: var(--space-4) 0;
+      min-height: 100vh;
+    }
+
+    /* Extension container: exactly 360px wide */
+    .extension-panel {
+      width: 360px;
+      height: 640px;
+      max-height: calc(100vh - 32px);
+      background-color: var(--c-bg);
+      border: 1px solid var(--c-line);
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: var(--shadow-default);
+      position: relative;
+    }
+
+    /* Fixed Top Bar */
+    .top-bar {
+      height: 44px;
+      background-color: var(--c-panel);
+      border-bottom: 1px solid var(--c-line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 var(--space-3);
+      flex-shrink: 0;
+      z-index: 20;
+    }
+
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .app-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: var(--radius-xs);
+      background: var(--c-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      flex-shrink: 0;
+    }
+
+    .app-icon svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .app-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--c-ink);
+      letter-spacing: -0.01em;
+    }
+
+    .version-tag {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--c-muted);
+      background: var(--c-sub);
+      padding: 1px var(--space-1);
+      border-radius: var(--radius-xs);
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-sm);
+      color: var(--c-ink-2);
+      cursor: pointer;
+      transition: background-color var(--dur), color var(--dur);
+    }
+
+    .icon-btn:hover {
+      background-color: var(--c-sub-hover);
+      color: var(--c-ink);
+    }
+
+    .icon-btn svg {
+      width: 15px;
+      height: 15px;
+    }
+
+    /* Tab Navigation Strip */
+    .tab-strip {
+      display: flex;
+      background-color: var(--c-panel);
+      border-bottom: 1px solid var(--c-line);
+      padding: 0 var(--space-3);
+      gap: var(--space-4);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .nav-tab {
+      padding: 9px 2px 7px 2px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--c-muted);
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      transition: color var(--dur), border-color var(--dur);
+    }
+
+    .nav-tab:hover {
+      color: var(--c-ink);
+    }
+
+    .nav-tab.active {
+      color: var(--c-primary);
+      font-weight: 600;
+      border-bottom-color: var(--c-primary);
+    }
+
+    /* Sub-header Controls Bar */
+    .control-deck {
+      background-color: var(--c-panel);
+      padding: var(--space-3) var(--space-3) var(--space-2) var(--space-3);
+      border-bottom: 1px solid var(--c-line);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      flex-shrink: 0;
+    }
+
+    .segmented-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    /* Segmented switch */
+    .segment-control {
+      flex: 1;
+      height: 28px;
+      background: var(--c-sub);
+      border-radius: var(--radius-sm);
+      padding: 2px;
+      display: flex;
+      border: 1px solid var(--c-line-2);
+    }
+
+    .segment-btn {
+      flex: 1;
+      border: none;
+      background: transparent;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--c-ink-2);
+      border-radius: var(--radius-xs);
+      cursor: pointer;
+      transition: all var(--dur);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+
+    .segment-btn.active {
+      background-color: var(--c-panel);
+      color: var(--c-ink);
+      font-weight: 600;
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* Toolbar Tree Button */
+    .btn-toolbar {
+      height: 28px;
+      padding: 0 var(--space-2);
+      background-color: var(--c-sub);
+      border: 1px solid var(--c-line-2);
+      border-radius: var(--radius-sm);
+      color: var(--c-ink-2);
+      font-size: 11px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      transition: background-color var(--dur), color var(--dur), border-color var(--dur);
+      white-space: nowrap;
+    }
+
+    .btn-toolbar:hover {
+      background-color: var(--c-sub-hover);
+      color: var(--c-ink);
+      border-color: var(--c-muted);
+    }
+
+    .btn-toolbar svg {
+      width: 13px;
+      height: 13px;
+    }
+
+    /* View Hint */
+    .view-hint {
+      font-size: 11px;
+      color: var(--c-muted);
+      line-height: 1.35;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .view-hint span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Scrollable Content Area */
+    .content-scroll {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: var(--space-2) var(--space-2) var(--space-6) var(--space-2);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+
+    /* Collapsible Group Container */
+    .group-panel {
+      background-color: var(--c-panel);
+      border: 1px solid var(--c-line);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+      transition: border-color var(--dur), box-shadow var(--dur);
+    }
+
+    .group-panel.drop-target-active {
+      border-color: var(--c-primary);
+      box-shadow: 0 0 0 2px var(--c-primary-soft);
+    }
+
+    /* Group Header */
+    .group-header {
+      height: 36px;
+      background-color: var(--c-sub);
+      padding: 0 var(--space-2);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+      border-bottom: 1px solid var(--c-line);
+      transition: background-color var(--dur);
+    }
+
+    .group-panel.collapsed .group-header {
+      border-bottom: none;
+    }
+
+    .group-header:hover {
+      background-color: var(--c-sub-hover);
+    }
+
+    .group-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow: hidden;
+    }
+
+    .collapse-chevron {
+      width: 14px;
+      height: 14px;
+      color: var(--c-muted);
+      transition: transform var(--dur);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .group-panel.collapsed .collapse-chevron svg {
+      transform: rotate(-90deg);
+    }
+
+    .group-icon {
+      width: 16px;
+      height: 16px;
+      color: var(--c-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .group-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--c-ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 160px;
+    }
+
+    .count-badge {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--c-muted);
+      background-color: var(--c-panel);
+      padding: 1px 6px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--c-line);
+    }
+
+    .group-actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--dur);
+    }
+
+    .group-header:hover .group-actions {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .group-action-btn {
+      width: 22px;
+      height: 22px;
+      border-radius: var(--radius-xs);
+      border: none;
+      background: transparent;
+      color: var(--c-ink-2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .group-action-btn:hover {
+      background: var(--c-panel);
+      color: var(--c-ink);
+    }
+
+    .group-action-btn svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    /* Group Body / Bookmark List */
+    .group-body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .group-panel.collapsed .group-body {
+      display: none;
+    }
+
+    /* BOOKMARK ROW: exactly ~40px high, dense utility */
+    .bookmark-row {
+      height: 42px;
+      background-color: var(--c-panel);
+      border-bottom: 1px solid var(--c-line);
+      padding: 0 var(--space-2);
+      display: grid;
+      grid-template-columns: 18px 18px 16px 1fr auto;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      position: relative;
+      transition: background-color var(--dur);
+    }
+
+    .bookmark-row:last-child {
+      border-bottom: none;
+    }
+
+    .bookmark-row:hover {
+      background-color: var(--c-sub);
+    }
+
+    /* Selected Row */
+    .bookmark-row.is-selected {
+      background-color: var(--c-primary-soft);
+    }
+
+    .bookmark-row.is-selected::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background-color: var(--c-primary);
+    }
+
+    /* Drag Lifted State (Visual representation) */
+    .bookmark-row.is-dragging {
+      background-color: var(--c-panel);
+      border: 1px dashed var(--c-primary);
+      box-shadow: var(--shadow-lift);
+      opacity: 0.95;
+      transform: scale(1.01);
+      z-index: 30;
+      border-radius: var(--radius-sm);
+    }
+
+    /* Drag Drop Placeholder line indicator */
+    .drop-indicator {
+      height: 2px;
+      background-color: var(--c-primary);
+      margin: 0 var(--space-2);
+      position: relative;
+    }
+
+    .drop-indicator::before {
+      content: "";
+      position: absolute;
+      left: -2px;
+      top: -3px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--c-primary);
+    }
+
+    /* Drag Handle - reveal on row hover or row focus */
+    .drag-handle {
+      width: 16px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--c-muted);
+      cursor: grab;
+      opacity: 0;
+      transition: opacity var(--dur);
+    }
+
+    .bookmark-row:hover .drag-handle,
+    .bookmark-row:focus-within .drag-handle,
+    .bookmark-row.is-dragging .drag-handle {
+      opacity: 1;
+    }
+
+    .drag-handle svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    /* Custom Checkbox */
+    .row-checkbox {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      border: 1.5px solid var(--c-line-2);
+      background-color: var(--c-field);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: border-color var(--dur), background-color var(--dur);
+    }
+
+    .bookmark-row:hover .row-checkbox {
+      border-color: var(--c-muted);
+    }
+
+    .row-checkbox.checked {
+      background-color: var(--c-primary);
+      border-color: var(--c-primary);
+      color: #ffffff;
+    }
+
+    .row-checkbox svg {
+      width: 10px;
+      height: 10px;
+      stroke-width: 2.5;
+    }
+
+    /* Favicon Container */
+    .fav-box {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      background-color: var(--c-fav);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--c-muted);
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .fav-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Main Info: Title + Meta in 2 tight lines */
+    .row-info {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      justify-content: center;
+      line-height: 1.25;
+    }
+
+    .row-title-line {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .row-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--c-ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .row-meta-line {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 1px;
+      min-width: 0;
+    }
+
+    .meta-host {
+      font-size: 10px;
+      color: var(--c-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 90px;
+    }
+
+    .meta-dot {
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background-color: var(--c-line-2);
+      flex-shrink: 0;
+    }
+
+    .meta-path {
+      font-size: 10px;
+      color: var(--c-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 70px;
+    }
+
+    /* Chips inside Row */
+    .meta-chips {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      margin-left: 2px;
+      flex-shrink: 0;
+    }
+
+    .chip-tag {
+      font-size: 9px;
+      font-weight: 500;
+      height: 15px;
+      padding: 0 4px;
+      border-radius: var(--radius-pill);
+      background-color: var(--c-sub);
+      color: var(--c-ink-2);
+      border: 1px solid var(--c-line);
+      display: inline-flex;
+      align-items: center;
+      line-height: 1;
+    }
+
+    .chip-tag.category {
+      background-color: var(--c-primary-soft);
+      color: var(--c-primary);
+      border-color: transparent;
+      font-weight: 600;
+    }
+
+    .chip-overflow {
+      font-size: 9px;
+      color: var(--c-muted);
+      background-color: var(--c-sub);
+      padding: 0 3px;
+      border-radius: var(--radius-pill);
+    }
+
+    /* Row Actions on Hover */
+    .row-actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      opacity: 0;
+      transition: opacity var(--dur);
+      margin-left: 2px;
+    }
+
+    .bookmark-row:hover .row-actions,
+    .bookmark-row:focus-within .row-actions {
+      opacity: 1;
+    }
+
+    .row-act-btn {
+      width: 22px;
+      height: 22px;
+      border-radius: var(--radius-xs);
+      border: none;
+      background: transparent;
+      color: var(--c-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .row-act-btn:hover {
+      background-color: var(--c-panel);
+      color: var(--c-ink);
+    }
+
+    .row-act-btn.ai:hover {
+      color: var(--c-primary);
+    }
+
+    .row-act-btn svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    /* Floating Multi-Select Bulk Action Bar (fixed bottom of panel) */
+    .bulk-bar {
+      position: absolute;
+      bottom: var(--space-2);
+      left: var(--space-2);
+      right: var(--space-2);
+      height: 38px;
+      background-color: var(--c-ink);
+      color: var(--c-bg);
+      border-radius: var(--radius-pill);
+      padding: 0 var(--space-3);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: var(--shadow-default);
+      z-index: 40;
+      animation: slideUp 180ms ease-out;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(16px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .bulk-count {
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .bulk-count-badge {
+      background: var(--c-primary);
+      color: #ffffff;
+      padding: 1px 6px;
+      border-radius: var(--radius-pill);
+      font-size: 10px;
+    }
+
+    .bulk-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .bulk-btn {
+      height: 24px;
+      padding: 0 var(--space-2);
+      font-size: 11px;
+      font-weight: 500;
+      border-radius: var(--radius-pill);
+      border: none;
+      background: rgba(255, 255, 255, 0.15);
+      color: #ffffff;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .bulk-btn:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    .bulk-btn.danger {
+      background: var(--c-danger);
+    }
+
+    .bulk-btn.danger:hover {
+      opacity: 0.9;
+    }
+
+    .bulk-btn svg {
+      width: 11px;
+      height: 11px;
+    }
+
+    /* REQUIRED STATES SECTION: Demo Switcher & Preview Boxes */
+    .states-showcase {
+      margin-top: var(--space-4);
+      background: var(--c-panel);
+      border: 1px solid var(--c-line);
+      border-radius: var(--radius-md);
+      padding: var(--space-3);
+    }
+
+    .showcase-header {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--c-muted);
+      margin-bottom: var(--space-2);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* State card container */
+    .state-box {
+      border: 1px dashed var(--c-line-2);
+      border-radius: var(--radius-sm);
+      padding: var(--space-4) var(--space-3);
+      text-align: center;
+      background-color: var(--c-sub);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-2);
+      margin-bottom: var(--space-3);
+    }
+
+    .state-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--c-panel);
+      border: 1px solid var(--c-line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--c-muted);
+    }
+
+    .state-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--c-ink);
+    }
+
+    .state-desc {
+      font-size: 11px;
+      color: var(--c-muted);
+      max-width: 240px;
+      line-height: 1.4;
+    }
+
+    .state-btn {
+      margin-top: 4px;
+      height: 26px;
+      padding: 0 var(--space-3);
+      font-size: 11px;
+      font-weight: 500;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--c-line-2);
+      background: var(--c-panel);
+      color: var(--c-ink-2);
+      cursor: pointer;
+    }
+
+    .state-btn:hover {
+      border-color: var(--c-primary);
+      color: var(--c-primary);
+    }
+
+    /* Loading shimmer simulation */
+    .skeleton-row {
+      height: 40px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(90deg, var(--c-sub) 25%, var(--c-sub-hover) 50%, var(--c-sub) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      margin-bottom: var(--space-2);
+      width: 100%;
+    }
+
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* Theme toggle helper pill */
+    .theme-switch-pill {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      background: var(--c-panel);
+      border: 1px solid var(--c-line-2);
+      border-radius: var(--radius-pill);
+      padding: 4px 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: var(--shadow-default);
+      z-index: 999;
+      color: var(--c-ink);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Theme toggle helper for previewing dark/light compliant modes -->
+  <button class="theme-switch-pill" onclick="toggleTheme()">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+    </svg>
+    <span id="theme-label">Switch to Dark</span>
+  </button>
+
+  <!-- 360px Side Panel Container -->
+  <div class="extension-panel">
+
+    <!-- 1. Fixed Top Bar -->
+    <header class="top-bar">
+      <div class="brand-section">
+        <div class="app-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>
+          </svg>
+        </div>
+        <span class="app-title">Bookmark Manager</span>
+        <span class="version-tag">MV3</span>
+      </div>
+      <div class="top-actions">
+        <button class="icon-btn" aria-label="Search" title="Search (/)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="m21 21-4.35-4.35"></path>
+          </svg>
+        </button>
+        <button class="icon-btn" aria-label="Add Bookmark" title="New Bookmark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M12 5v14M5 12h14"></path>
+          </svg>
+        </button>
+        <button class="icon-btn" aria-label="Settings" title="Options">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Tab Strip (Consistent with Overview tab) -->
+    <nav class="tab-strip">
+      <div class="nav-tab">Overview</div>
+      <div class="nav-tab active">Organize</div>
+      <div class="nav-tab">Clean-up</div>
+      <div class="nav-tab">Vault</div>
+    </nav>
+
+    <!-- 2. Segmented Control & Directory Toolbar -->
+    <div class="control-deck">
+      <div class="segmented-row">
+        <div class="segment-control">
+          <button class="segment-btn active" id="seg-tags">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+              <line x1="7" y1="7" x2="7.01" y2="7"></line>
+            </svg>
+            Tags
+          </button>
+          <button class="segment-btn" id="seg-folders">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            Folders
+          </button>
+        </div>
+        <button class="btn-toolbar" title="View directory tree hierarchy">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 18h4v-6h-4M7 6h4v6H7M3 12h4m0 0v6h4m-4-6V6"></path>
+          </svg>
+          Tree view
+        </button>
+      </div>
+
+      <!-- 3. One-line Hint -->
+      <div class="view-hint">
+        <span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 16v-4M12 8h.01"></path>
+          </svg>
+          Drag items to reassign tags or move between folders.
+        </span>
+        <span><b>284</b> items</span>
+      </div>
+    </div>
+
+    <!-- 4. Scrollable Content: Collapsible Groups & Rows -->
+    <main class="content-scroll">
+
+      <!-- GROUP 1: Primary Tag Group (Expanded & Target Demo) -->
+      <section class="group-panel drop-target-active">
+        <div class="group-header">
+          <div class="group-left">
+            <span class="collapse-chevron">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="m6 9 6 6 6-6"/>
+              </svg>
+            </span>
+            <span class="group-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+              </svg>
+            </span>
+            <span class="group-name">#Development / Tools</span>
+            <span class="count-badge">42</span>
+          </div>
+          <div class="group-actions">
+            <button class="group-action-btn" title="Add bookmark to this group">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+            <button class="group-action-btn" title="Batch tag">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="group-action-btn" title="More options">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="group-body">
+          <!-- Row 1: Selected state demo -->
+          <div class="bookmark-row is-selected">
+            <div class="drag-handle" title="Drag to reorder or move">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+              </svg>
+            </div>
+            <div class="row-checkbox checked" aria-checked="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <div class="fav-box">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+            </div>
+            <div class="row-info">
+              <div class="row-title-line">
+                <span class="row-title">GitHub: Where the world builds software</span>
+              </div>
+              <div class="row-meta-line">
+                <span class="meta-host">github.com</span>
+                <span class="meta-dot"></span>
+                <span class="meta-path">Code / Git</span>
+                <div class="meta-chips">
+                  <span class="chip-tag category">Work</span>
+                  <span class="chip-tag">git</span>
+                  <span class="chip-overflow">+1</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="row-act-btn ai" title="AI Auto-tag">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
+              </button>
+              <button class="row-act-btn" title="Hide/Archive">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+              <button class="row-act-btn" title="Edit Bookmark">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Drop Indicator Preview between rows -->
+          <div class="drop-indicator" title="Valid drop target insertion"></div>
+
+          <!-- Row 2: Hover affordances shown directly -->
+          <div class="bookmark-row" style="background-color: var(--c-sub);">
+            <div class="drag-handle" style="opacity: 1;" title="Drag handle visible on hover">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+              </svg>
+            </div>
+            <div class="row-checkbox"></div>
+            <div class="fav-box" style="color: var(--c-primary); background: var(--c-primary-soft);">
+              TS
+            </div>
+            <div class="row-info">
+              <div class="row-title-line">
+                <span class="row-title">TypeScript: JavaScript With Syntax For Types</span>
+              </div>
+              <div class="row-meta-line">
+                <span class="meta-host">typescriptlang.org</span>
+                <span class="meta-dot"></span>
+                <span class="meta-path">Docs / Lang</span>
+                <div class="meta-chips">
+                  <span class="chip-tag category">Docs</span>
+                  <span class="chip-tag">frontend</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions" style="opacity: 1;">
+              <button class="row-act-btn ai" title="AI Auto-tag">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
+              </button>
+              <button class="row-act-btn" title="Hide/Archive">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+              <button class="row-act-btn" title="Edit Bookmark">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Row 3: Standard resting state -->
+          <div class="bookmark-row">
+            <div class="drag-handle">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+              </svg>
+            </div>
+            <div class="row-checkbox"></div>
+            <div class="fav-box">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/></svg>
+            </div>
+            <div class="row-info">
+              <div class="row-title-line">
+                <span class="row-title">MDN Web Docs: Web technology references</span>
+              </div>
+              <div class="row-meta-line">
+                <span class="meta-host">developer.mozilla.org</span>
+                <span class="meta-dot"></span>
+                <span class="meta-path">Standards</span>
+                <div class="meta-chips">
+                  <span class="chip-tag">html</span>
+                  <span class="chip-tag">css</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="row-act-btn ai" title="AI Auto-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg></button>
+              <button class="row-act-btn" title="Hide/Archive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+              <button class="row-act-btn" title="Edit Bookmark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- GROUP 2: Design Systems & UI (Showing Lifted Drag State) -->
+      <section class="group-panel">
+        <div class="group-header">
+          <div class="group-left">
+            <span class="collapse-chevron">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="m6 9 6 6 6-6"/>
+              </svg>
+            </span>
+            <span class="group-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/>
+              </svg>
+            </span>
+            <span class="group-name">#Design / UI Patterns</span>
+            <span class="count-badge">18</span>
+          </div>
+          <div class="group-actions">
+            <button class="group-action-btn" title="Add bookmark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></button>
+            <button class="group-action-btn" title="More"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+          </div>
+        </div>
+
+        <div class="group-body">
+          <!-- Row: Visual illustration of row being dragged / lifted state -->
+          <div class="bookmark-row is-dragging">
+            <div class="drag-handle" style="opacity: 1; cursor: grabbing;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+              </svg>
+            </div>
+            <div class="row-checkbox checked">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <div class="fav-box" style="background-color: #fee2e2; color: #dc2626;">F</div>
+            <div class="row-info">
+              <div class="row-title-line">
+                <span class="row-title">Figma: The Collaborative Interface Tool</span>
+              </div>
+              <div class="row-meta-line">
+                <span class="meta-host">figma.com</span>
+                <span class="meta-dot"></span>
+                <span class="meta-path">Design Apps</span>
+                <div class="meta-chips">
+                  <span class="chip-tag category">Design</span>
+                  <span class="chip-tag">ui</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions" style="opacity: 1;">
+              <button class="row-act-btn" title="Dragging"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l4-4 4 4M9 5v14"/></svg></button>
+            </div>
+          </div>
+
+          <div class="bookmark-row">
+            <div class="drag-handle">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+              </svg>
+            </div>
+            <div class="row-checkbox"></div>
+            <div class="fav-box">D</div>
+            <div class="row-info">
+              <div class="row-title-line">
+                <span class="row-title">Design Systems Repo - Guide & Resources</span>
+              </div>
+              <div class="row-meta-line">
+                <span class="meta-host">designsystemsrepo.com</span>
+                <span class="meta-dot"></span>
+                <span class="meta-path">Inspiration</span>
+                <div class="meta-chips">
+                  <span class="chip-tag">tokens</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="row-act-btn ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg></button>
+              <button class="row-act-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- GROUP 3: Collapsed State Demonstration -->
+      <section class="group-panel collapsed">
+        <div class="group-header">
+          <div class="group-left">
+            <span class="collapse-chevron">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="m6 9 6 6 6-6"/>
+              </svg>
+            </span>
+            <span class="group-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </span>
+            <span class="group-name">#Reading List / Longform</span>
+            <span class="count-badge">56</span>
+          </div>
+          <div class="group-actions">
+            <button class="group-action-btn" title="Add bookmark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></button>
+            <button class="group-action-btn" title="More"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+          </div>
+        </div>
+        <div class="group-body"></div>
+      </section>
+
+      <!-- REQUIRED STATES (Specifications & Visual Verification) -->
+      <div class="states-showcase">
+        <div class="showcase-header">
+          <span>Required Lifecycle States</span>
+          <span style="font-family: var(--font-mono); font-size: 10px;">Specs</span>
+        </div>
+
+        <!-- 1. Loading State -->
+        <div style="margin-bottom: var(--space-3);">
+          <div style="font-size: 11px; font-weight: 600; color: var(--c-muted); margin-bottom: 4px;">Loading State</div>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row" style="opacity: 0.6; height: 32px;"></div>
+        </div>
+
+        <!-- 2. Empty State -->
+        <div class="state-box">
+          <div class="state-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+              <line x1="7" y1="7" x2="7.01" y2="7"></line>
+            </svg>
+          </div>
+          <div class="state-title">No Bookmarks Found in Group</div>
+          <div class="state-desc">Drag items here or apply this tag from the bookmark edit dialog.</div>
+          <button class="state-btn">+ Assign Tag to Selection</button>
+        </div>
+
+        <!-- 3. Error State -->
+        <div class="state-box" style="border-color: var(--c-danger);">
+          <div class="state-icon" style="color: var(--c-danger); background-color: var(--c-panel);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+          </div>
+          <div class="state-title" style="color: var(--c-danger);">Failed to Synchronize Tree</div>
+          <div class="state-desc">Local storage read timed out. Your browser bookmarks remain safe.</div>
+          <button class="state-btn">Retry Sync</button>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Multi-select Bulk Action Bar (Revealed when 2 items selected) -->
+    <div class="bulk-bar">
+      <div class="bulk-count">
+        <span class="bulk-count-badge">2</span>
+        <span>Selected</span>
+      </div>
+      <div class="bulk-actions">
+        <button class="bulk-btn" title="Move selected to folder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          Move
+        </button>
+        <button class="bulk-btn" title="Apply tag">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/></svg>
+          Tag
+        </button>
+        <button class="bulk-btn danger" title="Delete selected">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    function toggleTheme() {
+      const html = document.documentElement;
+      const current = html.getAttribute('data-theme');
+      const next = current === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      document.getElementById('theme-label').textContent = next === 'dark' ? 'Switch to Light' : 'Switch to Dark';
+    }
+
+    // Toggle collapse state on group headers
+    document.querySelectorAll('.group-header').forEach(header => {
+      header.addEventListener('click', (e) => {
+        if (e.target.closest('.group-actions')) return;
+        const panel = header.closest('.group-panel');
+        panel.classList.toggle('collapsed');
+      });
+    });
+
+    // Toggle segmented button active state
+    const segTags = document.getElementById('seg-tags');
+    const segFolders = document.getElementById('seg-folders');
+    if (segTags && segFolders) {
+      segTags.addEventListener('click', () => {
+        segTags.classList.add('active');
+        segFolders.classList.remove('active');
+      });
+      segFolders.addEventListener('click', () => {
+        segFolders.classList.add('active');
+        segTags.classList.remove('active');
+      });
+    }
+
+    // Row selection toggle
+    document.querySelectorAll('.bookmark-row').forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.row-actions') || e.target.closest('.drag-handle')) return;
+        const checkbox = row.querySelector('.row-checkbox');
+        if (checkbox) {
+          const isChecked = checkbox.classList.contains('checked');
+          checkbox.classList.toggle('checked', !isChecked);
+          row.classList.toggle('is-selected', !isChecked);
+        }
+      });
+    });
+  </script>
+</body>
+</html>

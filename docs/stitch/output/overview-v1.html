@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bookmark Manager - Overview</title>
+<style>
+  :root {
+    --bg: #f3f5f8;
+    --panel: #ffffff;
+    --sub: #f3f5f8;
+    --field: #ffffff;
+    --ink: #101828;
+    --ink-2: #344054;
+    --muted: #667085;
+    --line: #e7ebf0;
+    --line-2: #dce1e8;
+    --primary: #2563eb;
+    --primary-soft: #e9f1fe;
+    --danger: #be123c;
+    --warn: #b45309;
+    --ok: #059669;
+
+    --radius-xs: 7px;
+    --radius-sm: 10px;
+    --radius: 14px;
+    --radius-lg: 18px;
+    --radius-pill: 999px;
+
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-6: 24px;
+
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+    --shadow: 0 4px 12px rgba(15, 23, 42, 0.07);
+    --font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1117;
+      --panel: #171b24;
+      --sub: #1b202b;
+      --field: #1e2430;
+      --ink: #f2f4f8;
+      --ink-2: #c3c9d4;
+      --muted: #8b93a3;
+      --line: #242a36;
+      --line-2: #303845;
+      --primary: #5da2f5;
+      --primary-soft: #1a2436;
+      --danger: #fb7185;
+      --warn: #fbbf24;
+      --ok: #34d399;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+      --shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+  }
+
+  /* Manual toggle support if previewed in canvas light/dark wrappers */
+  [data-theme="dark"] {
+    --bg: #0f1117;
+    --panel: #171b24;
+    --sub: #1b202b;
+    --field: #1e2430;
+    --ink: #f2f4f8;
+    --ink-2: #c3c9d4;
+    --muted: #8b93a3;
+    --line: #242a36;
+    --line-2: #303845;
+    --primary: #5da2f5;
+    --primary-soft: #1a2436;
+    --danger: #fb7185;
+    --warn: #fbbf24;
+    --ok: #34d399;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.4;
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  /* 360px Side Panel Container */
+  .panel-frame {
+    width: 360px;
+    max-width: 360px;
+    min-width: 360px;
+    height: 100vh;
+    background-color: var(--bg);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+    overflow: hidden;
+  }
+
+  /* --- Top Bar (Fixed) --- */
+  .top-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    background-color: var(--panel);
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+    z-index: 20;
+  }
+
+  .top-search-wrap {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .top-search-icon {
+    position: absolute;
+    left: 10px;
+    color: var(--muted);
+    pointer-events: none;
+    display: flex;
+  }
+
+  .top-search-input {
+    width: 100%;
+    height: 32px;
+    background-color: var(--field);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-sm);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    padding: 0 var(--space-2) 0 30px;
+    outline: none;
+  }
+
+  .top-search-input:focus {
+    border-color: var(--primary);
+  }
+
+  .version-chip {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    background-color: var(--sub);
+    padding: 2px 6px;
+    border-radius: var(--radius-xs);
+    line-height: 1;
+    user-select: none;
+  }
+
+  .icon-btn-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .icon-btn {
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: transparent;
+    color: var(--ink-2);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .icon-btn:hover {
+    background-color: var(--sub);
+    color: var(--ink);
+  }
+
+  /* --- Tab Strip --- */
+  .tab-strip {
+    display: flex;
+    background-color: var(--panel);
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+    z-index: 10;
+  }
+
+  .tab-item {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 40px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+  }
+
+  .tab-item:hover {
+    color: var(--ink-2);
+  }
+
+  .tab-item.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+    font-weight: 600;
+  }
+
+  /* --- Scrollable Content --- */
+  .content-scroll {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  /* 2x2 KPI Grid */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3);
+  }
+
+  .kpi-card {
+    background-color: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .kpi-card.dominant {
+    background-color: var(--panel);
+    border: 1px solid var(--line);
+    position: relative;
+  }
+
+  .kpi-card.dominant::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: var(--space-3);
+    right: var(--space-3);
+    height: 3px;
+    background-color: var(--primary);
+    border-radius: var(--radius-pill);
+  }
+
+  .kpi-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-1);
+  }
+
+  .kpi-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .kpi-icon {
+    color: var(--muted);
+    display: flex;
+  }
+
+  .kpi-value {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.2;
+  }
+
+  .kpi-value.dominant {
+    font-size: 26px;
+    color: var(--primary);
+  }
+
+  .kpi-subtext {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* Hero Search Field */
+  .hero-search-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .hero-search-icon {
+    position: absolute;
+    left: var(--space-3);
+    color: var(--muted);
+    pointer-events: none;
+    display: flex;
+  }
+
+  .hero-search-input {
+    width: 100%;
+    height: 42px;
+    background-color: var(--field);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    padding: 0 var(--space-4) 0 38px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    color: var(--ink);
+    box-shadow: var(--shadow-sm);
+    outline: none;
+  }
+
+  .hero-search-input:focus {
+    border-color: var(--primary);
+  }
+
+  .hero-search-input::placeholder {
+    color: var(--muted);
+  }
+
+  /* Quick Entry Cards Row */
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: var(--space-2);
+  }
+
+  .quick-entry-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-2);
+  }
+
+  .quick-card {
+    background-color: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: var(--space-3) var(--space-2);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .quick-card:hover:not(.disabled) {
+    border-color: var(--line-2);
+    background-color: var(--panel);
+  }
+
+  .quick-card-icon {
+    color: var(--ink-2);
+    display: flex;
+  }
+
+  .quick-card-name {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ink-2);
+    line-height: 1.2;
+    min-height: 26px;
+    display: flex;
+    align-items: center;
+  }
+
+  /* Uniform neutral count badge */
+  .count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    background-color: var(--sub);
+    color: var(--ink-2);
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    min-width: 20px;
+    line-height: 1.2;
+  }
+
+  /* Status badge for real status only */
+  .count-badge.status-warn {
+    color: var(--warn);
+  }
+
+  /* Inactive / Done Quick Card */
+  .quick-card.disabled {
+    opacity: 0.6;
+    cursor: default;
+    background-color: var(--sub);
+    border-color: var(--line);
+    box-shadow: none;
+  }
+
+  .quick-card.disabled .quick-card-icon {
+    color: var(--muted);
+  }
+
+  .quick-card.disabled .quick-card-name {
+    color: var(--muted);
+  }
+
+  .quick-card.disabled .count-badge {
+    background-color: var(--panel);
+    color: var(--muted);
+  }
+
+  /* Popular Tags Card */
+  .tags-card {
+    background-color: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: var(--space-4);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .tags-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+  }
+
+  .tags-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .tags-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  /* Tag Chip: background sub (#f3f5f8 light / #1b202b dark), text ink-2 */
+  .tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background-color: var(--sub);
+    color: var(--ink-2);
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+
+  .tag-chip:hover {
+    border-color: var(--line-2);
+  }
+
+  .tag-chip-count {
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  /* --- Fixed Footer --- */
+  .footer-bar {
+    padding: var(--space-3) var(--space-4);
+    background-color: var(--panel);
+    border-top: 1px solid var(--line);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .btn-primary {
+    width: 100%;
+    height: 38px;
+    background-color: var(--primary);
+    color: #ffffff;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .btn-primary:hover {
+    opacity: 0.94;
+  }
+
+  /* SVGs: Outline, 1.75px stroke, no fills */
+  svg.icon {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+  }
+
+  svg.icon-lg {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+  }
+
+  /* Four-pointed plump sparkle (concave inward curving sides) */
+  .sparkle-icon {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linejoin: round;
+  }
+</style>
+</head>
+<body>
+
+<div class="panel-frame">
+  <!-- Top Bar (Fixed) -->
+  <header class="top-bar">
+    <div class="top-search-wrap">
+      <span class="top-search-icon">
+        <svg class="icon" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="7"/>
+          <path d="M21 21l-4.35-4.35"/>
+        </svg>
+      </span>
+      <input type="text" class="top-search-input" placeholder="Quick find...">
+    </div>
+    <span class="version-chip">MV3</span>
+    <div class="icon-btn-group">
+      <button class="icon-btn" title="Add Bookmark" aria-label="Add Bookmark">
+        <svg class="icon" viewBox="0 0 24 24">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+      </button>
+      <button class="icon-btn" title="Settings" aria-label="Settings">
+        <svg class="icon" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+      <button class="icon-btn" title="Help" aria-label="Help">
+        <svg class="icon" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Tab Strip -->
+  <nav class="tab-strip">
+    <button class="tab-item active" aria-selected="true">
+      <svg class="icon" viewBox="0 0 24 24">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+        <polyline points="9 22 9 12 15 12 15 22"/>
+      </svg>
+      Overview
+    </button>
+    <button class="tab-item">
+      <svg class="icon" viewBox="0 0 24 24">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      </svg>
+      Organize
+    </button>
+    <button class="tab-item">
+      <svg class="icon" viewBox="0 0 24 24">
+        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+        <line x1="1" y1="1" x2="23" y2="23"/>
+      </svg>
+      Hidden
+    </button>
+  </nav>
+
+  <!-- Scrollable Content Area -->
+  <main class="content-scroll">
+    <!-- Hero Search Field -->
+    <div class="hero-search-box">
+      <span class="hero-search-icon">
+        <svg class="icon-lg" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="7"/>
+          <path d="M21 21l-4.35-4.35"/>
+        </svg>
+      </span>
+      <input type="text" class="hero-search-input" placeholder="Search title, URL, or #tag...">
+    </div>
+
+    <!-- 2x2 KPI Grid -->
+    <div class="kpi-grid">
+      <!-- Total Bookmarks (Dominant) -->
+      <div class="kpi-card dominant">
+        <div class="kpi-header">
+          <span class="kpi-label">Total</span>
+          <span class="kpi-icon">
+            <svg class="icon" viewBox="0 0 24 24">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+            </svg>
+          </span>
+        </div>
+        <div class="kpi-value dominant">284</div>
+        <div class="kpi-subtext">Across 18 folders</div>
+      </div>
+
+      <!-- Active Tags -->
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Tags</span>
+          <span class="kpi-icon">
+            <svg class="icon" viewBox="0 0 24 24">
+              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+              <line x1="7" y1="7" x2="7.01" y2="7"/>
+            </svg>
+          </span>
+        </div>
+        <div class="kpi-value">36</div>
+        <div class="kpi-subtext">212 tagged items</div>
+      </div>
+
+      <!-- Pending Cleanup -->
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Cleanup</span>
+          <span class="kpi-icon">
+            <svg class="icon" viewBox="0 0 24 24">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </span>
+        </div>
+        <div class="kpi-value">9</div>
+        <div class="kpi-subtext">6 duplicates, 3 empty</div>
+      </div>
+
+      <!-- Recycle Bin -->
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Recycle Bin</span>
+          <span class="kpi-icon">
+            <svg class="icon" viewBox="0 0 24 24">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </span>
+        </div>
+        <div class="kpi-value">14</div>
+        <div class="kpi-subtext">Auto-delete in 12d</div>
+      </div>
+    </div>
+
+    <!-- Quick Action / Entry Cards -->
+    <div>
+      <div class="section-label">Quick Maintenance</div>
+      <div class="quick-entry-row">
+        <!-- Duplicate bookmarks -->
+        <div class="quick-card">
+          <div class="quick-card-icon">
+            <svg class="icon-lg" viewBox="0 0 24 24">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </div>
+          <div class="quick-card-name">Duplicates</div>
+          <span class="count-badge status-warn">6</span>
+        </div>
+
+        <!-- Empty folders -->
+        <div class="quick-card">
+          <div class="quick-card-icon">
+            <svg class="icon-lg" viewBox="0 0 24 24">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              <line x1="12" y1="11" x2="12" y2="17"/>
+              <line x1="9" y1="14" x2="15" y2="14"/>
+            </svg>
+          </div>
+          <div class="quick-card-name">Empty Folders</div>
+          <span class="count-badge">3</span>
+        </div>
+
+        <!-- Recycle bin: count is 0 example -> inactive/done/muted -->
+        <div class="quick-card disabled">
+          <div class="quick-card-icon">
+            <svg class="icon-lg" viewBox="0 0 24 24">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </div>
+          <div class="quick-card-name">Trash Bin</div>
+          <span class="count-badge">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Popular Tags Card -->
+    <div class="tags-card">
+      <div class="tags-card-header">
+        <span class="tags-card-title">
+          <svg class="icon" viewBox="0 0 24 24">
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+            <line x1="7" y1="7" x2="7.01" y2="7"/>
+          </svg>
+          Popular Tags
+        </span>
+        <span class="kpi-subtext">Top 8</span>
+      </div>
+      <div class="tags-wrap">
+        <div class="tag-chip">
+          <span>Standards</span>
+          <span class="tag-chip-count">42</span>
+        </div>
+        <div class="tag-chip">
+          <span>Design</span>
+          <span class="tag-chip-count">38</span>
+        </div>
+        <div class="tag-chip">
+          <span>Dev</span>
+          <span class="tag-chip-count">29</span>
+        </div>
+        <div class="tag-chip">
+          <span>Security</span>
+          <span class="tag-chip-count">24</span>
+        </div>
+        <div class="tag-chip">
+          <span>Network</span>
+          <span class="tag-chip-count">19</span>
+        </div>
+        <div class="tag-chip">
+          <span>WebAPI</span>
+          <span class="tag-chip-count">16</span>
+        </div>
+        <div class="tag-chip">
+          <span>Tokens</span>
+          <span class="tag-chip-count">14</span>
+        </div>
+        <div class="tag-chip">
+          <span>Database</span>
+          <span class="tag-chip-count">11</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Fixed Footer -->
+  <footer class="footer-bar">
+    <button class="btn-primary">
+      <svg class="icon" viewBox="0 0 24 24">
+        <polyline points="23 4 23 10 17 10"/>
+        <polyline points="1 20 1 14 7 14"/>
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+      </svg>
+      Rescan Bookmarks
+    </button>
+  </footer>
+</div>
+
+</body>
+</html>

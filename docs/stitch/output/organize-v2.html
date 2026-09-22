@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bookmark Manager - Organize Tab</title>
+<style>
+  :root {
+    /* Color tokens - Light */
+    --bg: #f3f5f8;
+    --panel: #ffffff;
+    --sub: #f3f5f8;
+    --field: #ffffff;
+    --ink: #101828;
+    --ink-2: #344054;
+    --muted: #667085;
+    --line: #e7ebf0;
+    --line-2: #dce1e8;
+    --primary: #2563eb;
+    --primary-soft: #e9f1fe;
+    --danger: #be123c;
+    --warn: #b45309;
+    --ok: #059669;
+
+    /* Radii tokens strictly from spec */
+    --radius-xs: 7px;
+    --radius-sm: 10px;
+    --radius: 14px;
+    --radius-lg: 18px;
+    --radius-pill: 999px;
+
+    /* Spacing tokens strictly 4, 8, 12, 16, 24 */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-6: 24px;
+
+    /* Typography */
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", Consolas, monospace;
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+    --shadow-float: 0 8px 24px rgba(15, 23, 42, 0.12);
+  }
+
+  [data-theme="dark"] {
+    --bg: #0f1117;
+    --panel: #171b24;
+    --sub: #1b202b;
+    --field: #1e2430;
+    --ink: #f2f4f8;
+    --ink-2: #c3c9d4;
+    --muted: #8b93a3;
+    --line: #242a36;
+    --line-2: #303845;
+    --primary: #5da2f5;
+    --primary-soft: #1a2436;
+    --danger: #fb7185;
+    --warn: #fbbf24;
+    --ok: #34d399;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-float: 0 10px 30px rgba(0, 0, 0, 0.55);
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #cbd5e1;
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: var(--sp-4);
+  }
+
+  /* Host window container simulating Chrome/Edge 360px side panel */
+  .panel-frame {
+    width: 360px;
+    max-width: 360px;
+    height: 840px;
+    background-color: var(--bg);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Theme switch utility widget on canvas */
+  .theme-toggle-fixed {
+    position: fixed;
+    top: var(--sp-4);
+    right: var(--sp-4);
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    color: var(--ink-2);
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--radius-pill);
+    font-size: 12px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    z-index: 1000;
+  }
+
+  /* 1. Top Bar */
+  .top-bar {
+    background-color: var(--panel);
+    border-bottom: 1px solid var(--line);
+    padding: var(--sp-3) var(--sp-4) var(--sp-2);
+    flex-shrink: 0;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--sp-2);
+  }
+
+  .brand-left {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+
+  .brand-logo {
+    width: 22px;
+    height: 22px;
+    background: var(--primary);
+    border-radius: var(--radius-xs);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+  }
+
+  .brand-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+
+  .brand-badge {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--muted);
+    background: var(--sub);
+    border: 1px solid var(--line);
+    padding: 1px 4px;
+    border-radius: var(--radius-xs);
+    font-weight: 500;
+  }
+
+  .brand-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+  }
+
+  .btn-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-xs);
+    border: none;
+    background: transparent;
+    color: var(--ink-2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 120ms ease;
+  }
+
+  .btn-icon:hover {
+    background-color: var(--sub);
+    color: var(--ink);
+  }
+
+  /* Tab strip */
+  .tab-strip {
+    display: flex;
+    gap: var(--sp-3);
+    border-bottom: none;
+    padding-top: var(--sp-1);
+  }
+
+  .tab-item {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    text-decoration: none;
+    padding-bottom: var(--sp-2);
+    position: relative;
+    cursor: pointer;
+  }
+
+  .tab-item:hover {
+    color: var(--ink-2);
+  }
+
+  .tab-item.active {
+    color: var(--primary);
+    font-weight: 600;
+  }
+
+  .tab-item.active::after {
+    content: "";
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--primary);
+    border-radius: 2px 2px 0 0;
+  }
+
+  /* 2. Subheader Controls */
+  .control-section {
+    background-color: var(--panel);
+    border-bottom: 1px solid var(--line);
+    padding: var(--sp-2) var(--sp-3);
+    flex-shrink: 0;
+  }
+
+  .control-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+
+  .segmented-control {
+    display: flex;
+    background-color: var(--sub);
+    padding: 2px;
+    border-radius: var(--radius-sm);
+    flex: 1;
+    border: 1px solid var(--line-2);
+  }
+
+  .segment-btn {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: var(--sp-1) var(--sp-2);
+    border-radius: var(--radius-xs);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-1);
+    cursor: pointer;
+  }
+
+  .segment-btn.active {
+    background-color: var(--panel);
+    color: var(--primary);
+    font-weight: 600;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .btn-toolbar {
+    height: 28px;
+    padding: 0 var(--sp-2);
+    background-color: var(--panel);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-sm);
+    color: var(--ink-2);
+    font-size: 11px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .btn-toolbar:hover {
+    background-color: var(--sub);
+    color: var(--ink);
+  }
+
+  .view-hint {
+    margin-top: var(--sp-2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .view-hint-left {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .count-metric {
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+
+  /* 3. Scrollable List of Groups */
+  .list-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--sp-2) var(--sp-3) 72px; /* Bottom pad for bulk action bar */
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+
+  .list-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+  .list-scroll::-webkit-scrollbar-thumb {
+    background-color: var(--line-2);
+    border-radius: var(--radius-pill);
+  }
+
+  /* Collapsible Group */
+  .group-block {
+    background-color: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .group-block.drop-target-active {
+    border-color: var(--primary);
+    background-color: var(--primary-soft);
+  }
+
+  .group-head {
+    background-color: var(--sub);
+    padding: var(--sp-1) var(--sp-2);
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .group-head:hover {
+    filter: brightness(0.98);
+  }
+
+  .group-head-left {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    min-width: 0;
+  }
+
+  .group-chevron {
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    transition: transform 150ms ease;
+  }
+
+  .group-chevron.collapsed {
+    transform: rotate(-90deg);
+  }
+
+  .group-type-icon {
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+  }
+
+  .group-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .group-badge {
+    background-color: var(--panel);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-pill);
+    padding: 0 6px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted);
+    line-height: 16px;
+    height: 16px;
+  }
+
+  .group-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    opacity: 0.6;
+  }
+
+  .group-head:hover .group-actions {
+    opacity: 1;
+  }
+
+  .btn-group-action {
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    border-radius: var(--radius-xs);
+    color: var(--ink-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .btn-group-action:hover {
+    background: var(--panel);
+    color: var(--ink);
+  }
+
+  /* Group Body & Rows */
+  .group-rows {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* BOOKMARK ROW: ~40px high density */
+  .b-row {
+    position: relative;
+    height: 40px;
+    min-height: 40px;
+    padding: 0 var(--sp-2) 0 var(--sp-1);
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--line);
+    background-color: var(--panel);
+    cursor: pointer;
+    transition: background-color 100ms ease;
+  }
+
+  .b-row:last-child {
+    border-bottom: none;
+  }
+
+  .b-row:hover {
+    background-color: var(--sub);
+  }
+
+  .b-row.is-selected {
+    background-color: var(--primary-soft);
+  }
+
+  /* Lifted drag state demonstration */
+  .b-row.is-dragging {
+    background-color: var(--panel);
+    border: 1px dashed var(--primary);
+    box-shadow: var(--shadow-float);
+    transform: translateY(-2px);
+    z-index: 20;
+  }
+
+  /* Left handle zone */
+  .row-handle {
+    width: 14px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    opacity: 0;
+    cursor: grab;
+    flex-shrink: 0;
+    transition: opacity 120ms ease;
+  }
+
+  .b-row:hover .row-handle,
+  .b-row.is-dragging .row-handle {
+    opacity: 0.8;
+  }
+
+  .row-checkbox {
+    margin-right: var(--sp-2);
+    width: 14px;
+    height: 14px;
+    accent-color: var(--primary);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .favicon-box {
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius-xs);
+    background-color: var(--sub);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: var(--sp-2);
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+
+  .favicon-box svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  /* Main text container */
+  .row-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+    padding-right: var(--sp-2);
+  }
+
+  .row-title-line {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+  }
+
+  .row-meta-line {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.2;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .meta-domain {
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 80px;
+  }
+
+  .meta-sep {
+    opacity: 0.5;
+  }
+
+  .meta-folder {
+    color: var(--ink-2);
+    font-weight: 400;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60px;
+  }
+
+  /* Chips area */
+  .row-chips {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  .tag-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 5px;
+    border-radius: var(--radius-pill);
+    font-size: 9px;
+    font-weight: 500;
+    line-height: 14px;
+    background-color: var(--sub);
+    color: var(--ink-2);
+    border: 1px solid var(--line);
+    white-space: nowrap;
+    max-width: 58px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tag-chip.category {
+    background-color: var(--primary-soft);
+    color: var(--primary);
+    border-color: transparent;
+    font-weight: 600;
+  }
+
+  .tag-chip.overflow {
+    padding: 1px 4px;
+    font-family: var(--font-mono);
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  /* Hover revealed row actions */
+  .row-actions {
+    display: none;
+    align-items: center;
+    gap: 1px;
+    background: var(--sub);
+    padding: 1px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--line-2);
+    flex-shrink: 0;
+    margin-left: var(--sp-1);
+  }
+
+  /* Always show actions on hovered row or explicitly pinned demo row */
+  .b-row:hover .row-actions,
+  .b-row.show-actions .row-actions {
+    display: flex;
+  }
+
+  /* Hide chips slightly if actions are visible on tight width */
+  .b-row:hover .row-chips,
+  .b-row.show-actions .row-chips {
+    display: none;
+  }
+
+  .btn-row-tool {
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    color: var(--ink-2);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .btn-row-tool:hover {
+    background: var(--panel);
+    color: var(--primary);
+  }
+
+  .btn-row-tool.danger:hover {
+    color: var(--danger);
+  }
+
+  /* 4. Bulk Action Bar (Floating at bottom when items are selected) */
+  .bulk-bar {
+    position: absolute;
+    bottom: var(--sp-3);
+    left: var(--sp-3);
+    right: var(--sp-3);
+    background-color: #1b202b;
+    color: #ffffff;
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--radius-pill);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+    z-index: 50;
+    animation: slideUp 180ms ease-out;
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(16px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  .bulk-left {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+
+  .bulk-counter {
+    width: 20px;
+    height: 20px;
+    border-radius: var(--radius-pill);
+    background-color: var(--primary);
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .bulk-label {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+
+  .bulk-buttons {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+  }
+
+  .btn-bulk-action {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: #ffffff;
+    height: 26px;
+    padding: 0 var(--sp-2);
+    border-radius: var(--radius-pill);
+    font-size: 11px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    cursor: pointer;
+    transition: background 120ms ease;
+  }
+
+  .btn-bulk-action:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .btn-bulk-action.danger {
+    background: rgba(190, 18, 60, 0.4);
+    color: #fecdd3;
+  }
+
+  .btn-bulk-action.danger:hover {
+    background: var(--danger);
+    color: #ffffff;
+  }
+
+  /* SVG Icons inline helper */
+  .icon-svg {
+    width: 14px;
+    height: 14px;
+    stroke-width: 1.8;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .icon-sm {
+    width: 12px;
+    height: 12px;
+  }
+</style>
+</head>
+<body>
+
+  <!-- Theme toggle helper for canvas review -->
+  <button class="theme-toggle-fixed" onclick="toggleTheme()">
+    <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+    <span>Toggle Theme</span>
+  </button>
+
+  <div class="panel-frame">
+    <!-- 1. Fixed Top Bar and Tab Strip -->
+    <header class="top-bar">
+      <div class="brand-row">
+        <div class="brand-left">
+          <div class="brand-logo">
+            <svg class="icon-svg" viewBox="0 0 24 24" style="stroke: #ffffff;">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </div>
+          <span class="brand-title">Bookmark Manager</span>
+          <span class="brand-badge">MV3</span>
+        </div>
+        <div class="brand-actions">
+          <button class="btn-icon" title="Search" aria-label="Search">
+            <svg class="icon-svg" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          </button>
+          <button class="btn-icon" title="New bookmark" aria-label="Add bookmark">
+            <svg class="icon-svg" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+          <button class="btn-icon" title="Settings" aria-label="Settings">
+            <svg class="icon-svg" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tab Strip -->
+      <nav class="tab-strip">
+        <a class="tab-item">Overview</a>
+        <a class="tab-item active">Organize</a>
+        <a class="tab-item">Clean-up</a>
+        <a class="tab-item">Vault</a>
+      </nav>
+    </header>
+
+    <!-- 2. Subheader Controls: Segmented + Toolbar + One-line Hint -->
+    <section class="control-section">
+      <div class="control-row">
+        <div class="segmented-control">
+          <button class="segment-btn active">
+            <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+            Tags
+          </button>
+          <button class="segment-btn">
+            <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            Folders
+          </button>
+        </div>
+        <button class="btn-toolbar" title="View hierarchy tree">
+          <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline><line x1="4" y1="4" x2="20" y2="4"></line></svg>
+          Tree view
+        </button>
+      </div>
+
+      <div class="view-hint">
+        <span class="view-hint-left">
+          <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          Drag items to reassign tags or move between groups.
+        </span>
+        <span class="count-metric">284 items</span>
+      </div>
+    </section>
+
+    <!-- 3. Scrollable List of Groups and Populated Rows -->
+    <main class="list-scroll">
+
+      <!-- GROUP 1: Dev & Architecture (Expanded, 5 rows) -->
+      <div class="group-block">
+        <div class="group-head">
+          <div class="group-head-left">
+            <span class="group-chevron">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </span>
+            <span class="group-type-icon">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path></svg>
+            </span>
+            <span class="group-title">Dev & Architecture</span>
+            <span class="group-badge">48</span>
+          </div>
+          <div class="group-actions">
+            <button class="btn-group-action" title="Add tag rule"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+            <button class="btn-group-action" title="Group options"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg></button>
+          </div>
+        </div>
+
+        <div class="group-rows">
+          <!-- Row 1: Selected state (part of bulk 2 selection) -->
+          <div class="b-row is-selected">
+            <div class="row-handle" title="Drag to reorder">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+            </div>
+            <input type="checkbox" class="row-checkbox" checked aria-label="Select bookmark">
+            <div class="favicon-box">
+              <svg viewBox="0 0 24 24" fill="#2563eb"><circle cx="12" cy="12" r="10"></circle></svg>
+            </div>
+            <div class="row-content">
+              <div class="row-title-line">RFC 9110: HTTP Semantics & Caching Directives</div>
+              <div class="row-meta-line">
+                <span class="meta-domain">rfc-editor.org</span>
+                <span class="meta-sep">/</span>
+                <span class="meta-folder">Standards</span>
+              </div>
+            </div>
+            <div class="row-chips">
+              <span class="tag-chip category">Dev</span>
+              <span class="tag-chip">network</span>
+              <span class="tag-chip overflow">+2</span>
+            </div>
+            <div class="row-actions">
+              <button class="btn-row-tool" title="Quick edit"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+              <button class="btn-row-tool" title="AI Tag"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="btn-row-tool danger" title="Remove"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 2: Selected state (2nd item in selection) -->
+          <div class="b-row is-selected">
+            <div class="row-handle" title="Drag to reorder">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+            </div>
+            <input type="checkbox" class="row-checkbox" checked aria-label="Select bookmark">
+            <div class="favicon-box">
+              <svg viewBox="0 0 24 24" fill="#10b981"><rect width="18" height="18" x="3" y="3" rx="4"></rect></svg>
+            </div>
+            <div class="row-content">
+              <div class="row-title-line">Patterns for Building Resilient WebSockets</div>
+              <div class="row-meta-line">
+                <span class="meta-domain">martinfowler.com</span>
+                <span class="meta-sep">/</span>
+                <span class="meta-folder">Architecture</span>
+              </div>
+            </div>
+            <div class="row-chips">
+              <span class="tag-chip category">Dev</span>
+              <span class="tag-chip">backend</span>
+              <span class="tag-chip overflow">+1</span>
+            </div>
+            <div class="row-actions">
+              <button class="btn-row-tool" title="Quick edit"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+              <button class="btn-row-tool" title="AI Tag"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="btn-row-tool danger" title="Remove"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 3: SHOW-ACTIONS PINNED (Spec requirement: reveal hover actions on at least one row) -->
+          <div class="b-row show-actions">
+            <div class="row-handle" style="opacity: 0.8;" title="Drag to reorder">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+            </div>
+            <input type="checkbox" class="row-checkbox" aria-label="Select bookmark">
+            <div class="favicon-box">
+              <svg viewBox="0 0 24 24" fill="#6366f1"><circle cx="12" cy="12" r="10"></circle></svg>
+            </div>
+            <div class="row-content">
+              <div class="row-title-line">SQLite in the Browser: Official Wasm Builds</div>
+              <div class="row-meta-line">
+                <span class="meta-domain">sqlite.org</span>
+                <span class="meta-sep">/</span>
+                <span class="meta-folder">Database</span>
+              </div>
+            </div>
+            <div class="row-chips">
+              <span class="tag-chip category">Dev</span>
+              <span class="tag-chip">wasm</span>
+            </div>
+            <!-- Visible action buttons -->
+            <div class="row-actions" style="display: flex;">
+              <button class="btn-row-tool" title="Quick edit"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+              <button class="btn-row-tool" title="AI Auto-tag"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="btn-row-tool danger" title="Hide/Archive"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 4 -->
+          <div class="b-row">
+            <div class="row-handle" title="Drag to reorder">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+            </div>
+            <input type="checkbox" class="row-checkbox" aria-label="Select bookmark">
+            <div class="favicon-box">
+              <svg viewBox="0 0 24 24" fill="#f59e0b"><polygon points="12 2 2 22 22 22"></polygon></svg>
+            </div>
+            <div class="row-content">
+              <div class="row-title-line">Web Workers & SharedArrayBuffer Guide</div>
+              <div class="row-meta-line">
+                <span class="meta-domain">developer.mozilla.org</span>
+                <span class="meta-sep">/</span>
+                <span class="meta-folder">WebAPI</span>
+              </div>
+            </div>
+            <div class="row-chips">
+              <span class="tag-chip category">Dev</span>
+              <span class="tag-chip">threading</span>
+            </div>
+            <div class="row-actions">
+              <button class="btn-row-tool" title="Quick edit"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+              <button class="btn-row-tool" title="AI Tag"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="btn-row-tool danger" title="Remove"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 5 -->
+          <div class="b-row">
+            <div class="row-handle" title="Drag to reorder">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+            </div>
+            <input type="checkbox" class="row-checkbox" aria-label="Select bookmark">
+            <div class="favicon-box">
+              <svg viewBox="0 0 24 24" fill="#0284c7"><rect width="18" height="18" x="3" y="3" rx="2"></rect></svg>
+            </div>
+            <div class="row-content">
+              <div class="row-title-line">TypeScript 5.4 release notes & const type parameters</div>
+              <div class="row-meta-line">
+                <span class="meta-domain">devblogs.microsoft.com</span>
+                <span class="meta-sep">/</span>
+                <span class="meta-folder">Typescript</span>
+              </div>
+            </div>
+            <div class="row-chips">
+              <span class="tag-chip category">Dev</span>
+              <span class="tag-chip">ts</span>
+              <span class="tag-chip overflow">+3</span>
+            </div>
+            <div class="row-actions">
+              <button class="btn-row-tool" title="Quick edit"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+              <button class="btn-row-tool" title="AI Tag"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="btn-row-tool danger" title="Remove"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GROUP 2: Design Systems & Tokens (Demonstrating Drop Target Highlight + 4 rows) -->
+      <div class="group-block drop-target-active">
+        <div class="group-head">
+          <div class="group-head-left">
+            <span class="group-chevron">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </span>
+            <span class="group-type-icon" style="color: var(--ok);">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path></svg>
+            </span>
+            <span class="group-title">Design Systems & Tokens</span>
+            <span class="group-badge" style="color: var(--primary); font-weight: 700;">32</span>
+          </div>
+          <div class="group-actions">
+            <span style="font-size: 10px; color: var(--primary); font-weight: 600; padding-right: 4px;">Drop to add tag</span>
+            <button class="btn-group-action" title="Group options"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg></button>
+          </div>
+        </div>
+
+        <div class="group-rows">
+          <!-- Row 1: Dragging active state -->
+          <div class="b-row is-dragging">
+            <div class="row-handle" style="opacity: 1;" title="Dragging...">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24" style="stroke: var(--primary);"><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+            </div>
+            <input type="checkbox" class="row-checkbox" aria-label="Select bookmark">
+            <div class="favicon-box">
+              <svg viewBox="0 0 24 24" fill="#ec4899"><circle cx="12" cy="12" r="8"></circle></svg>
+            </div>
+            <div class="row-content">
+              <div class="row-title-line" style="color: var(--primary); font-weight: 600;">Design Tokens Community Group (DTCG) Spec</div>
+              <div class="row-meta-line">
+                <span class="meta-domain">w3c.github.io</span>
+                <span class="meta-sep">/</span>
+                <span class="meta-folder">Standards</span>
+              </div>
+            </div>
+            <div class="row-chips">
+              <span class="tag-chip category">Design</span>
+              <span class="tag-chip">tokens</span>
+            </div>
+          </div>
+
+          <!-- Row 2 -->
+          <div class="b-row">
+            <div class="row-handle" title="Drag to reorder">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+            </div>
+            <input type="checkbox" class="row-checkbox" aria-label="Select bookmark">
+            <div class="favicon-box">
+              <svg viewBox="0 0 24 24" fill="#8b5cf6"><rect width="18" height="18" x="3" y="3" rx="3"></rect></svg>
+            </div>
+            <div class="row-content">
+              <div class="row-title-line">Radix Primitives: Accessible Unstyled UI</div>
+              <div class="row-meta-line">
+                <span class="meta-domain">radix-ui.com</span>
+                <span class="meta-sep">/</span>
+                <span class="meta-folder">Components</span>
+              </div>
+            </div>
+            <div class="row-chips">
+              <span class="tag-chip category">Design</span>
+              <span class="tag-chip">a11y</span>
+              <span class="tag-chip overflow">+1</span>
+            </div>
+            <div class="row-actions">
+              <button class="btn-row-tool" title="Quick edit"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+              <button class="btn-row-tool" title="AI Tag"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="btn-row-tool danger" title="Remove"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 3 -->
+          <div class="b-row">
+            <div class="row-handle" title="Drag to reorder">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+            </div>
+            <input type="checkbox" class="row-checkbox" aria-label="Select bookmark">
+            <div class="favicon-box">
+              <svg viewBox="0 0 24 24" fill="#06b6d4"><path d="M12 2L2 7l10 5 10-5-10-5z"></path></svg>
+            </div>
+            <div class="row-content">
+              <div class="row-title-line">Modern CSS Fluid Typography & Spacing Math</div>
+              <div class="row-meta-line">
+                <span class="meta-domain">moderncss.dev</span>
+                <span class="meta-sep">/</span>
+                <span class="meta-folder">CSS</span>
+              </div>
+            </div>
+            <div class="row-chips">
+              <span class="tag-chip category">Design</span>
+              <span class="tag-chip">layout</span>
+            </div>
+            <div class="row-actions">
+              <button class="btn-row-tool" title="Quick edit"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+              <button class="btn-row-tool" title="AI Tag"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="btn-row-tool danger" title="Remove"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 4 -->
+          <div class="b-row">
+            <div class="row-handle" title="Drag to reorder">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+            </div>
+            <input type="checkbox" class="row-checkbox" aria-label="Select bookmark">
+            <div class="favicon-box">
+              <svg viewBox="0 0 24 24" fill="#3b82f6"><circle cx="12" cy="12" r="9"></circle></svg>
+            </div>
+            <div class="row-content">
+              <div class="row-title-line">Color Contrast Matrix & WCAG 2.2 APCA Standards</div>
+              <div class="row-meta-line">
+                <span class="meta-domain">w3.org</span>
+                <span class="meta-sep">/</span>
+                <span class="meta-folder">A11y</span>
+              </div>
+            </div>
+            <div class="row-chips">
+              <span class="tag-chip category">Design</span>
+              <span class="tag-chip">contrast</span>
+              <span class="tag-chip overflow">+2</span>
+            </div>
+            <div class="row-actions">
+              <button class="btn-row-tool" title="Quick edit"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+              <button class="btn-row-tool" title="AI Tag"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="btn-row-tool danger" title="Remove"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GROUP 3: Security & Cryptography (4 rows) -->
+      <div class="group-block">
+        <div class="group-head">
+          <div class="group-head-left">
+            <span class="group-chevron">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </span>
+            <span class="group-type-icon" style="color: var(--warn);">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path></svg>
+            </span>
+            <span class="group-title">Security & Crypto</span>
+            <span class="group-badge">19</span>
+          </div>
+          <div class="group-actions">
+            <button class="btn-group-action" title="Add tag rule"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+            <button class="btn-group-action" title="Group options"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg></button>
+          </div>
+        </div>
+
+        <div class="group-rows">
+          <!-- Row 1 -->
+          <div class="b-row">
+            <div class="row-handle" title="Drag to reorder">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+            </div>
+            <input type="checkbox" class="row-checkbox" aria-label="Select bookmark">
+            <div class="favicon-box">
+              <svg viewBox="0 0 24 24" fill="#e11d48"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            </div>
+            <div class="row-content">
+              <div class="row-title-line">WebCrypto SubtleCrypto AES-GCM Implementation Notes</div>
+              <div class="row-meta-line">
+                <span class="meta-domain">w3.org</span>
+                <span class="meta-sep">/</span>
+                <span class="meta-folder">Cryptography</span>
+              </div>
+            </div>
+            <div class="row-chips">
+              <span class="tag-chip category">Sec</span>
+              <span class="tag-chip">crypto</span>
+            </div>
+            <div class="row-actions">
+              <button class="btn-row-tool" title="Quick edit"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+              <button class="btn-row-tool" title="AI Tag"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="btn-row-tool danger" title="Remove"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 2 -->
+          <div class="b-row">
+            <div class="row-handle" title="Drag to reorder">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+            </div>
+            <input type="checkbox" class="row-checkbox" aria-label="Select bookmark">
+            <div class="favicon-box">
+              <svg viewBox="0 0 24 24" fill="#0d9488"><circle cx="12" cy="12" r="10"></circle></svg>
+            </div>
+            <div class="row-content">
+              <div class="row-title-line">OWASP Top 10 API Security Risks 2024 Edition</div>
+              <div class="row-meta-line">
+                <span class="meta-domain">owasp.org</span>
+                <span class="meta-sep">/</span>
+                <span class="meta-folder">Auditing</span>
+              </div>
+            </div>
+            <div class="row-chips">
+              <span class="tag-chip category">Sec</span>
+              <span class="tag-chip">api</span>
+              <span class="tag-chip overflow">+1</span>
+            </div>
+            <div class="row-actions">
+              <button class="btn-row-tool" title="Quick edit"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+              <button class="btn-row-tool" title="AI Tag"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="btn-row-tool danger" title="Remove"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 3 -->
+          <div class="b-row">
+            <div class="row-handle" title="Drag to reorder">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+            </div>
+            <input type="checkbox" class="row-checkbox" aria-label="Select bookmark">
+            <div class="favicon-box">
+              <svg viewBox="0 0 24 24" fill="#4f46e5"><rect width="18" height="18" x="3" y="3" rx="2"></rect></svg>
+            </div>
+            <div class="row-content">
+              <div class="row-title-line">Content Security Policy (CSP) Level 3 Strict Hashes</div>
+              <div class="row-meta-line">
+                <span class="meta-domain">csp.withgoogle.com</span>
+                <span class="meta-sep">/</span>
+                <span class="meta-folder">Headers</span>
+              </div>
+            </div>
+            <div class="row-chips">
+              <span class="tag-chip category">Sec</span>
+              <span class="tag-chip">browser</span>
+            </div>
+            <div class="row-actions">
+              <button class="btn-row-tool" title="Quick edit"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+              <button class="btn-row-tool" title="AI Tag"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="btn-row-tool danger" title="Remove"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+            </div>
+          </div>
+
+          <!-- Row 4 -->
+          <div class="b-row">
+            <div class="row-handle" title="Drag to reorder">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+            </div>
+            <input type="checkbox" class="row-checkbox" aria-label="Select bookmark">
+            <div class="favicon-box">
+              <svg viewBox="0 0 24 24" fill="#9333ea"><circle cx="12" cy="12" r="10"></circle></svg>
+            </div>
+            <div class="row-content">
+              <div class="row-title-line">Passkeys & WebAuthn: Zero Credentials in Extension MV3</div>
+              <div class="row-meta-line">
+                <span class="meta-domain">fidoalliance.org</span>
+                <span class="meta-sep">/</span>
+                <span class="meta-folder">Auth</span>
+              </div>
+            </div>
+            <div class="row-chips">
+              <span class="tag-chip category">Sec</span>
+              <span class="tag-chip">passkeys</span>
+              <span class="tag-chip overflow">+2</span>
+            </div>
+            <div class="row-actions">
+              <button class="btn-row-tool" title="Quick edit"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+              <button class="btn-row-tool" title="AI Tag"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
+              <button class="btn-row-tool danger" title="Remove"><svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- 4. Floating Sticky Bulk-Action Bar (Active when rows are selected) -->
+    <div class="bulk-bar">
+      <div class="bulk-left">
+        <span class="bulk-counter">2</span>
+        <span class="bulk-label">Selected</span>
+      </div>
+      <div class="bulk-buttons">
+        <button class="btn-bulk-action" title="Move selected to folder">
+          <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          Move
+        </button>
+        <button class="btn-bulk-action" title="Assign tag to selection">
+          <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path></svg>
+          Tag
+        </button>
+        <button class="btn-bulk-action danger" title="Delete selected bookmarks">
+          <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function toggleTheme() {
+      const html = document.documentElement;
+      const current = html.getAttribute('data-theme');
+      const next = current === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+    }
+  </script>
+</body>
+</html>

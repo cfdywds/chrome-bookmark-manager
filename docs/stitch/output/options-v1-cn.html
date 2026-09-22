@@ -1,0 +1,1662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>书签管家 · 设置</title>
+  <style>
+    /* Design Tokens strictly following DESIGN.md */
+    :root {
+      --bg: #f3f5f8;
+      --panel: #ffffff;
+      --sub: #f3f5f8;
+      --field: #ffffff;
+      --ink: #101828;
+      --ink-2: #344054;
+      --muted: #667085;
+      --line: #e7ebf0;
+      --line-2: #dce1e8;
+      --primary: #2563eb;
+      --primary-soft: #e9f1fe;
+      --danger: #be123c;
+      --warn: #b45309;
+      --ok: #059669;
+
+      --radius-xs: 7px;
+      --radius-sm: 10px;
+      --radius: 14px;
+      --radius-lg: 18px;
+      --radius-pill: 999px;
+
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-6: 24px;
+
+      --font-stack: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+      --font-mono: ui-monospace, 'SF Mono', Consolas, monospace, 'PingFang SC', 'Microsoft YaHei';
+
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+      --shadow-subtle: 0 4px 12px rgba(15, 23, 42, 0.04);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1117;
+        --panel: #171b24;
+        --sub: #1b202b;
+        --field: #1e2430;
+        --ink: #f2f4f8;
+        --ink-2: #c3c9d4;
+        --muted: #8b93a3;
+        --line: #242a36;
+        --line-2: #303845;
+        --primary: #5da2f5;
+        --primary-soft: #1a2436;
+        --danger: #fb7185;
+        --warn: #fbbf24;
+        --ok: #34d399;
+
+        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+        --shadow-subtle: 0 4px 14px rgba(0, 0, 0, 0.3);
+      }
+    }
+
+    /* Manual theme toggle support */
+    [data-theme="dark"] {
+      --bg: #0f1117;
+      --panel: #171b24;
+      --sub: #1b202b;
+      --field: #1e2430;
+      --ink: #f2f4f8;
+      --ink-2: #c3c9d4;
+      --muted: #8b93a3;
+      --line: #242a36;
+      --line-2: #303845;
+      --primary: #5da2f5;
+      --primary-soft: #1a2436;
+      --danger: #fb7185;
+      --warn: #fbbf24;
+      --ok: #34d399;
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+      --shadow-subtle: 0 4px 14px rgba(0, 0, 0, 0.3);
+    }
+
+    [data-theme="light"] {
+      --bg: #f3f5f8;
+      --panel: #ffffff;
+      --sub: #f3f5f8;
+      --field: #ffffff;
+      --ink: #101828;
+      --ink-2: #344054;
+      --muted: #667085;
+      --line: #e7ebf0;
+      --line-2: #dce1e8;
+      --primary: #2563eb;
+      --primary-soft: #e9f1fe;
+      --danger: #be123c;
+      --warn: #b45309;
+      --ok: #059669;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+      --shadow-subtle: 0 4px 12px rgba(15, 23, 42, 0.04);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--ink);
+      font-family: var(--font-stack);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* SVG utility icons */
+    .icon {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      stroke-width: 1.75px;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+      display: inline-block;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+
+    .icon-18 {
+      width: 18px;
+      height: 18px;
+    }
+
+    .icon-20 {
+      width: 20px;
+      height: 20px;
+    }
+
+    /* Top global header / navbar */
+    .header-bar {
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      position: sticky;
+      top: 0;
+      z-index: 30;
+    }
+
+    .header-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: var(--space-3) var(--space-6);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand-container {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+
+    .brand-icon-tile {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      background-color: var(--primary-soft);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .brand-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .brand-title-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .brand-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--ink);
+      letter-spacing: -0.01em;
+    }
+
+    .brand-badge {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      padding: 0 var(--space-2);
+      border-radius: var(--radius-pill);
+      background-color: var(--sub);
+      color: var(--ink-2);
+      border: 1px solid var(--line);
+      line-height: 18px;
+    }
+
+    .brand-subtext {
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    /* Buttons */
+    .btn {
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      border: 1px solid transparent;
+      text-decoration: none;
+      transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+    }
+
+    .btn:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      border-color: var(--line);
+      color: var(--ink-2);
+    }
+
+    .btn-ghost:hover {
+      background-color: var(--sub);
+      border-color: var(--line-2);
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      filter: brightness(0.95);
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: #ffffff;
+    }
+
+    .btn-danger:hover {
+      filter: brightness(0.95);
+    }
+
+    .btn-danger-ghost {
+      background: transparent;
+      border-color: var(--line-2);
+      color: var(--danger);
+    }
+
+    .btn-danger-ghost:hover {
+      background-color: var(--sub);
+      border-color: var(--danger);
+    }
+
+    .btn-icon {
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      justify-content: center;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      border: 1px solid var(--line);
+      color: var(--ink-2);
+    }
+
+    .btn-icon:hover {
+      background-color: var(--sub);
+      color: var(--ink);
+    }
+
+    /* Layout Shell */
+    .app-layout {
+      max-width: 1120px;
+      width: 100%;
+      margin: 0 auto;
+      padding: var(--space-6);
+      display: flex;
+      gap: var(--space-6);
+      flex: 1;
+    }
+
+    /* Mobile Dropdown Nav Header (Hidden on >=720px) */
+    .mobile-nav-wrapper {
+      display: none;
+      width: 100%;
+      margin-bottom: var(--space-4);
+    }
+
+    .mobile-nav-select {
+      width: 100%;
+      height: 38px;
+      padding: 0 var(--space-3);
+      border-radius: var(--radius-sm);
+      background-color: var(--field);
+      border: 1px solid var(--line-2);
+      color: var(--ink);
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    /* Left Anchor Nav: 200px sticky */
+    .anchor-sidebar {
+      width: 200px;
+      flex-shrink: 0;
+      position: sticky;
+      top: 76px;
+      height: fit-content;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+
+    .nav-group-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      padding: 0 var(--space-2);
+      margin-bottom: var(--space-1);
+    }
+
+    .nav-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: 8px var(--space-3);
+      border-radius: var(--radius-xs);
+      color: var(--ink-2);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      transition: background-color 120ms ease, color 120ms ease;
+    }
+
+    .nav-item:hover {
+      background-color: var(--sub);
+      color: var(--ink);
+    }
+
+    .nav-item.active {
+      background-color: var(--primary-soft);
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .nav-item.active .icon {
+      stroke: var(--primary);
+    }
+
+    .nav-item.danger-nav:hover {
+      color: var(--danger);
+    }
+
+    .nav-meta-badge {
+      margin-left: auto;
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: var(--radius-pill);
+      background-color: var(--sub);
+      color: var(--muted);
+      font-family: var(--font-mono);
+    }
+
+    .nav-item.active .nav-meta-badge {
+      background-color: var(--panel);
+      color: var(--primary);
+    }
+
+    /* Right Main Content Area */
+    .settings-main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-6);
+    }
+
+    /* Page Intro Card */
+    .intro-banner {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: var(--space-4) var(--space-6);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-4);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .intro-text h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .intro-text p {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .privacy-notice {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: 4px var(--space-2);
+      border-radius: var(--radius-xs);
+      background: var(--sub);
+      color: var(--ok);
+      font-size: 11px;
+      font-weight: 500;
+      border: 1px solid var(--line);
+      white-space: nowrap;
+    }
+
+    /* Section Component */
+    .settings-section {
+      scroll-margin-top: 80px;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    /* Section Header Card: Readable at a glance with tile, title, help dot, and health badge */
+    .section-header-card {
+      background-color: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: var(--space-3) var(--space-4);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .section-header-left {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+
+    .section-tile {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      background-color: var(--sub);
+      color: var(--ink-2);
+      border: 1px solid var(--line);
+    }
+
+    .section-tile.primary {
+      background-color: var(--primary-soft);
+      color: var(--primary);
+      border-color: transparent;
+    }
+
+    .section-tile.danger {
+      background-color: var(--sub);
+      color: var(--danger);
+    }
+
+    .section-headings {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .help-dot {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: var(--radius-pill);
+      background-color: var(--sub);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: help;
+      border: 1px solid var(--line);
+    }
+
+    .help-dot:hover {
+      color: var(--ink);
+      border-color: var(--line-2);
+    }
+
+    /* Health Summary Pill: Status colors only for real status */
+    .health-summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 10px;
+      border-radius: var(--radius-pill);
+      background-color: var(--sub);
+      color: var(--ink-2);
+      border: 1px solid var(--line);
+    }
+
+    .status-indicator {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .status-ok { background-color: var(--ok); }
+    .status-warn { background-color: var(--warn); }
+    .status-danger { background-color: var(--danger); }
+    .status-muted { background-color: var(--muted); }
+
+    /* Cards Stack */
+    .card-stack {
+      background-color: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .danger-stack {
+      border-left: 4px solid var(--danger);
+    }
+
+    .card-row {
+      padding: var(--space-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .card-row:last-child {
+      border-bottom: none;
+    }
+
+    .card-row-split {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-4);
+    }
+
+    .row-meta {
+      flex: 1;
+      max-width: 380px;
+    }
+
+    .row-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .row-desc {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+      line-height: 1.4;
+    }
+
+    .row-control {
+      flex: 1;
+      max-width: 380px;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      align-items: flex-end;
+    }
+
+    .row-control.align-left {
+      align-items: flex-start;
+    }
+
+    .row-control.full-width {
+      max-width: 100%;
+      width: 100%;
+      align-items: stretch;
+    }
+
+    /* Forms & Inputs strictly adhering to tokens */
+    .field {
+      width: 100%;
+      height: 38px;
+      padding: 0 var(--space-3);
+      border-radius: var(--radius-sm);
+      background-color: var(--field);
+      border: 1px solid var(--line-2);
+      color: var(--ink);
+      font-size: 13px;
+      font-family: inherit;
+      transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+
+    .field:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-soft);
+    }
+
+    .field-mono {
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .input-group {
+      position: relative;
+      width: 100%;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-group .field {
+      padding-right: 36px;
+    }
+
+    .input-suffix-btn {
+      position: absolute;
+      right: 4px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-xs);
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .input-suffix-btn:hover {
+      color: var(--ink);
+      background-color: var(--sub);
+    }
+
+    .textarea-field {
+      width: 100%;
+      min-height: 96px;
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-sm);
+      background-color: var(--field);
+      border: 1px solid var(--line-2);
+      color: var(--ink);
+      font-size: 12px;
+      font-family: var(--font-mono);
+      line-height: 1.5;
+      resize: vertical;
+    }
+
+    .textarea-field:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-soft);
+    }
+
+    /* Switch Toggle */
+    .switch-wrapper {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .switch-track {
+      width: 40px;
+      height: 22px;
+      background-color: var(--line-2);
+      border-radius: var(--radius-pill);
+      position: relative;
+      transition: background-color 150ms ease;
+      flex-shrink: 0;
+    }
+
+    .switch-thumb {
+      width: 16px;
+      height: 16px;
+      background-color: #ffffff;
+      border-radius: 50%;
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      transition: transform 150ms ease;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+    }
+
+    .switch-wrapper.checked .switch-track {
+      background-color: var(--primary);
+    }
+
+    .switch-wrapper.checked .switch-thumb {
+      transform: translateX(18px);
+    }
+
+    /* Segmented Control / Choice Pills */
+    .segmented-control {
+      display: inline-flex;
+      background-color: var(--sub);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 2px;
+      gap: 2px;
+    }
+
+    .seg-item {
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 12px;
+      border-radius: var(--radius-xs);
+      background: transparent;
+      border: none;
+      color: var(--ink-2);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      transition: background-color 120ms ease, color 120ms ease;
+    }
+
+    .seg-item.active {
+      background-color: var(--panel);
+      color: var(--ink);
+      font-weight: 600;
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* Tag Pool / Chips - Strictly neutral token treatment */
+    .tag-pool-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      padding: var(--space-2) 0;
+    }
+
+    .tag-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 24px;
+      padding: 0 var(--space-2);
+      background-color: var(--sub);
+      color: var(--ink-2);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-pill);
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .tag-chip-remove {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      padding: 1px;
+    }
+
+    .tag-chip-remove:hover {
+      color: var(--danger);
+    }
+
+    .tag-chip-add {
+      background: transparent;
+      border: 1px dashed var(--line-2);
+      color: var(--muted);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 24px;
+      padding: 0 var(--space-2);
+      border-radius: var(--radius-pill);
+      font-size: 11px;
+    }
+
+    .tag-chip-add:hover {
+      border-color: var(--ink-2);
+      color: var(--ink);
+    }
+
+    /* Combobox / Input Row Group */
+    .field-action-row {
+      display: flex;
+      gap: var(--space-2);
+      width: 100%;
+    }
+
+    .field-action-row .field {
+      flex: 1;
+    }
+
+    /* Inline Status Notice */
+    .inline-notice {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: 6px var(--space-3);
+      border-radius: var(--radius-xs);
+      font-size: 12px;
+      border: 1px solid var(--line);
+      background-color: var(--sub);
+      color: var(--ink-2);
+      width: 100%;
+    }
+
+    .inline-notice.ok {
+      border-color: var(--line);
+      color: var(--ok);
+    }
+
+    .inline-notice .icon {
+      stroke: var(--ok);
+    }
+
+    /* Danger items */
+    .danger-action-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-4);
+    }
+
+    /* Responsive Design */
+    @media (max-width: 720px) {
+      .app-layout {
+        flex-direction: column;
+        padding: var(--space-3);
+      }
+
+      .anchor-sidebar {
+        display: none;
+      }
+
+      .mobile-nav-wrapper {
+        display: block;
+      }
+
+      .card-row-split {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .row-meta, .row-control {
+        max-width: 100%;
+      }
+
+      .row-control {
+        align-items: stretch;
+      }
+
+      .danger-action-row {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+<style>/* ==== DESIGN FIX : 评审反馈修正 ==== */
+    /* ==== 修正 4：复选框统一为 16px 方形 ==== */
+    input[type="checkbox"], .checkbox, .item-checkbox,
+    .custom-checkbox, .row-checkbox {
+      width: 16px; height: 16px; border-radius: 2px;
+      accent-color: var(--primary); flex-shrink: 0;
+    }
+    .custom-checkbox { border-width: 1px; }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header Navigation -->
+  <header class="header-bar">
+    <div class="header-inner">
+      <div class="brand-container">
+        <div class="brand-icon-tile">
+          <!-- Plump rounded 4-pointed sparkle in Gemini spirit -->
+          <svg class="icon icon-18" viewBox="0 0 24 24" stroke="currentColor">
+            <path d="M12 3C12 7.97 7.97 12 3 12C7.97 12 12 16.03 12 21C12 16.03 16.03 12 21 12C16.03 12 12 7.97 12 3Z" fill="currentColor" fill-opacity="0.18"/>
+          </svg>
+        </div>
+        <div class="brand-info">
+          <div class="brand-title-row">
+            <span class="brand-name">书签管家</span>
+            <span class="brand-badge">v2.4 MV3</span>
+          </div>
+          <span class="brand-subtext">
+            <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            All data stored locally on your device
+          </span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Quick Switch Theme for Preview -->
+        <button class="btn btn-ghost" id="themeToggleBtn" title="Toggle Light / Dark mode" aria-label="切换主题">
+          <svg class="icon" viewBox="0 0 24 24">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+          <span>主题</span>
+        </button>
+        <button class="btn btn-ghost" title="Help and Documentation">
+          <svg class="icon" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <span>帮助</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main 2-Column Layout -->
+  <div class="app-layout">
+
+    <!-- Mobile Dropdown Selector (< 720px) -->
+    <div class="mobile-nav-wrapper">
+      <select class="mobile-nav-select" onchange="location.hash=this.value;">
+        <option value="#ai-tagging">AI 分类（已配置 DeepSeek）</option>
+        <option value="#tags-rules">Tags &amp; Rules (12 tags, 4 rules)</option>
+        <option value="#browser-sync">Browser &amp; Sync (Chrome Bookmarks OK)</option>
+        <option value="#appearance">新标签页外观（卡片视图、自动）</option>
+        <option value="#danger-zone">危险操作（回收站、备份）</option>
+      </select>
+    </div>
+
+    <!-- 200px Sticky Left Anchor Navigation -->
+    <aside class="anchor-sidebar" aria-label="Settings Navigation">
+      <div>
+        <div class="nav-group-title">导航</div>
+        <ul class="nav-list">
+          <li>
+            <a href="#ai-tagging" class="nav-item active">
+              <!-- Four-pointed rounded sparkle icon -->
+              <svg class="icon" viewBox="0 0 24 24">
+                <path d="M12 3C12 7.97 7.97 12 3 12C7.97 12 12 16.03 12 21C12 16.03 16.03 12 21 12C16.03 12 12 7.97 12 3Z"/>
+              </svg>
+              <span>AI 分类</span>
+              <span class="nav-meta-badge">已启用</span>
+            </a>
+          </li>
+          <li>
+            <a href="#tags-rules" class="nav-item">
+              <svg class="icon" viewBox="0 0 24 24">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                <line x1="7" y1="7" x2="7.01" y2="7"/>
+              </svg>
+              <span>Tags &amp; Rules</span>
+              <span class="nav-meta-badge">12</span>
+            </a>
+          </li>
+          <li>
+            <a href="#browser-sync" class="nav-item">
+              <svg class="icon" viewBox="0 0 24 24">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+              <span>Browser &amp; Sync</span>
+              <span class="nav-meta-badge">同步</span>
+            </a>
+          </li>
+          <li>
+            <a href="#appearance" class="nav-item">
+              <svg class="icon" viewBox="0 0 24 24">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <line x1="3" y1="9" x2="21" y2="9"/>
+                <line x1="9" y1="21" x2="9" y2="9"/>
+              </svg>
+              <span>新标签页外观</span>
+            </a>
+          </li>
+          <li>
+            <a href="#danger-zone" class="nav-item danger-nav">
+              <svg class="icon" viewBox="0 0 24 24">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <span>危险操作</span>
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <div style="margin-top: var(--space-4); padding: var(--space-3); border-radius: var(--radius-sm); background: var(--panel); border: 1px solid var(--line);">
+        <div style="font-size: 11px; font-weight: 600; color: var(--ink);">即时保存</div>
+        <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">Preferences update instantly without reloading the browser extension.</div>
+      </div>
+    </aside>
+
+    <!-- Right Side Content -->
+    <main class="settings-main">
+
+      <!-- Intro / Orientation Banner -->
+      <section class="intro-banner">
+        <div class="intro-text">
+          <h1>
+            <svg class="icon icon-20" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            扩展设置
+          </h1>
+          <p>Configure automated tagging, bookmark organization rules, synchronization, and display views.</p>
+        </div>
+        <div class="privacy-notice">
+          <svg class="icon" viewBox="0 0 24 24">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          <span>零外部遥测</span>
+        </div>
+      </section>
+
+      <!-- 1. AI Tagging Section -->
+      <section class="settings-section" id="ai-tagging">
+        <div class="section-header-card">
+          <div class="section-header-left">
+            <div class="section-tile primary">
+              <svg class="icon" viewBox="0 0 24 24">
+                <path d="M12 3C12 7.97 7.97 12 3 12C7.97 12 12 16.03 12 21C12 16.03 16.03 12 21 12C16.03 12 12 7.97 12 3Z"/>
+              </svg>
+            </div>
+            <div class="section-headings">
+              <h2 class="section-title">AI 分类</h2>
+              <span class="help-dot" title="Configure LLM credentials for one-click bookmark classification and auto-tagging.">?</span>
+            </div>
+          </div>
+          <div class="health-summary">
+            <span class="status-indicator status-ok"></span>
+            <span>AI 分类 · 已配置 DeepSeek</span>
+          </div>
+        </div>
+
+        <div class="card-stack">
+          <!-- Provider -->
+          <div class="card-row card-row-split">
+            <div class="row-meta">
+              <div class="row-label">LLM 服务商</div>
+              <div class="row-desc">Select an OpenAI-compatible completion API or local server endpoint.</div>
+            </div>
+            <div class="row-control">
+              <select class="field">
+                <option value="deepseek" selected>DeepSeek (api.deepseek.com)</option>
+                <option value="openai">OpenAI (api.openai.com)</option>
+                <option value="anthropic">Anthropic（Claude 兼容）</option>
+                <option value="ollama">Ollama（本地 localhost:11434）</option>
+                <option value="custom">自定义端点（OpenAI 兼容）</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Base URL -->
+          <div class="card-row card-row-split">
+            <div class="row-meta">
+              <div class="row-label">Base URL</div>
+              <div class="row-desc">The root URL endpoint for chat completions. Must end without trailing slash.</div>
+            </div>
+            <div class="row-control">
+              <input type="text" class="field field-mono" value="https://api.deepseek.com/v1" placeholder="https://api.example.com/v1">
+            </div>
+          </div>
+
+          <!-- API Key -->
+          <div class="card-row card-row-split">
+            <div class="row-meta">
+              <div class="row-label">API Key</div>
+              <div class="row-desc">Stored only in extension local storage (chrome.storage.local). Never synchronized.</div>
+            </div>
+            <div class="row-control">
+              <div class="input-group">
+                <input type="password" id="apiKeyField" class="field field-mono" value="sk-d9842a0f83e291b8d7426194cb0201">
+                <button type="button" class="input-suffix-btn" id="toggleApiKeyBtn" title="Show/Hide API Key">
+                  <svg class="icon" viewBox="0 0 24 24" id="eyeIcon">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Model combobox & Fetch -->
+          <div class="card-row card-row-split">
+            <div class="row-meta">
+              <div class="row-label">目标模型</div>
+              <div class="row-desc">Query provider endpoint for available models or enter identifier manually.</div>
+            </div>
+            <div class="row-control">
+              <div class="field-action-row">
+                <select class="field field-mono" style="flex: 2;">
+                  <option value="deepseek-chat" selected>deepseek-chat (V3)</option>
+                  <option value="deepseek-reasoner">deepseek-reasoner (R1)</option>
+                  <option value="custom">自定义模型名…</option>
+                </select>
+                <button type="button" class="btn btn-ghost" title="Fetch models from API">
+                  <svg class="icon" viewBox="0 0 24 24">
+                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                  </svg>
+                  <span>获取模型列表</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Connection Verification Row -->
+          <div class="card-row card-row-split" style="background-color: var(--sub);">
+            <div class="row-meta">
+              <div class="row-label">连接诊断</div>
+              <div class="row-desc">Ping the API endpoint with a minimal dummy prompt to verify credentials.</div>
+            </div>
+            <div class="row-control">
+              <div style="display: flex; gap: var(--space-2); align-items: center; width: 100%;">
+                <button type="button" class="btn btn-primary" style="white-space: nowrap;">
+                  <svg class="icon" viewBox="0 0 24 24">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  <span>测试连接</span>
+                </button>
+                <div class="inline-notice ok" style="margin: 0; padding: 4px 8px;">
+                  <svg class="icon" viewBox="0 0 24 24">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                  </svg>
+                  <span>连接正常（200 OK，延迟 182ms）</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Tags & Rules Section -->
+      <section class="settings-section" id="tags-rules">
+        <div class="section-header-card">
+          <div class="section-header-left">
+            <div class="section-tile">
+              <svg class="icon" viewBox="0 0 24 24">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                <line x1="7" y1="7" x2="7.01" y2="7"/>
+              </svg>
+            </div>
+            <div class="section-headings">
+              <h2 class="section-title">Tags &amp; Rules</h2>
+              <span class="help-dot" title="Manage the canonical pool of tags and automated assignment heuristics.">?</span>
+            </div>
+          </div>
+          <div class="health-summary">
+            <span class="status-indicator status-ok"></span>
+            <span>Tags &amp; rules · 12 tags, 4 rules active</span>
+          </div>
+        </div>
+
+        <div class="card-stack">
+          <!-- Fixed Tag Pool -->
+          <div class="card-row">
+            <div class="row-meta" style="max-width: 100%;">
+              <div class="row-label">固定标签池</div>
+              <div class="row-desc">Constrains automated AI tagging to this curated set to prevent tag inflation. Chips use unified neutral styling.</div>
+            </div>
+            <div class="tag-pool-list">
+              <span class="tag-chip">
+                <span>规范</span>
+                <button class="tag-chip-remove" title="Remove Standards tag">&times;</button>
+              </span>
+              <span class="tag-chip">
+                <span>网络</span>
+                <button class="tag-chip-remove" title="Remove Network tag">&times;</button>
+              </span>
+              <span class="tag-chip">
+                <span>数据库</span>
+                <button class="tag-chip-remove" title="Remove Database tag">&times;</button>
+              </span>
+              <span class="tag-chip">
+                <span>WASM</span>
+                <button class="tag-chip-remove" title="Remove WASM tag">&times;</button>
+              </span>
+              <span class="tag-chip">
+                <span>无障碍</span>
+                <button class="tag-chip-remove" title="Remove A11y tag">&times;</button>
+              </span>
+              <span class="tag-chip">
+                <span>排版</span>
+                <button class="tag-chip-remove" title="Remove Typography tag">&times;</button>
+              </span>
+              <span class="tag-chip">
+                <span>架构</span>
+                <button class="tag-chip-remove" title="Remove Architecture tag">&times;</button>
+              </span>
+              <span class="tag-chip">
+                <span>Web API</span>
+                <button class="tag-chip-remove" title="Remove WebAPI tag">&times;</button>
+              </span>
+              <span class="tag-chip">
+                <span>安全</span>
+                <button class="tag-chip-remove" title="Remove Security tag">&times;</button>
+              </span>
+              <span class="tag-chip">
+                <span>审计</span>
+                <button class="tag-chip-remove" title="Remove Audit tag">&times;</button>
+              </span>
+              <span class="tag-chip">
+                <span>加密</span>
+                <button class="tag-chip-remove" title="Remove Crypto tag">&times;</button>
+              </span>
+              <span class="tag-chip">
+                <span>通行密钥</span>
+                <button class="tag-chip-remove" title="Remove Passkeys tag">&times;</button>
+              </span>
+              <button class="tag-chip-add">
+                <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                <span>打标签</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Multi-line Rules Textarea -->
+          <div class="card-row">
+            <div class="row-meta" style="max-width: 100%;">
+              <div class="row-label">自动分类规则</div>
+              <div class="row-desc">Plaintext regex or host matchers mapped to tag names. One rule per line in format: <code>domain/pattern -> 标签1, 标签2</code>.</div>
+            </div>
+            <div class="row-control full-width" style="margin-top: var(--space-2);">
+              <textarea class="textarea-field" spellcheck="false"># Domain pattern to tag mappings
+w3c.github.io/* -> Standards, WebAPI
+rfc-editor.org/* -> Standards, Network
+developer.mozilla.org/* -> WebAPI, Documentation
+github.com/*/* -> 开发, 开源</textarea>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Browser & Sync Section -->
+      <section class="settings-section" id="browser-sync">
+        <div class="section-header-card">
+          <div class="section-header-left">
+            <div class="section-tile">
+              <svg class="icon" viewBox="0 0 24 24">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+            </div>
+            <div class="section-headings">
+              <h2 class="section-title">Browser &amp; Sync</h2>
+              <span class="help-dot" title="Settings for synchronizing metadata with the native browser bookmark tree.">?</span>
+            </div>
+          </div>
+          <div class="health-summary">
+            <span class="status-indicator status-ok"></span>
+            <span>Browser &amp; sync · Native tree synced</span>
+          </div>
+        </div>
+
+        <div class="card-stack">
+          <!-- Native Tree Synchronization -->
+          <div class="card-row card-row-split">
+            <div class="row-meta">
+              <div class="row-label">浏览器双向同步</div>
+              <div class="row-desc">Reflect folder creations and bookmark moves back into native Chrome / Edge bookmarks toolbar and other devices via browser account sync.</div>
+            </div>
+            <div class="row-control">
+              <div class="switch-wrapper checked" id="syncSwitch" onclick="this.classList.toggle('checked');">
+                <div class="switch-track">
+                  <div class="switch-thumb"></div>
+                </div>
+                <span style="font-size: 13px; font-weight: 500; color: var(--ink);">已启用</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sync Metadata Storage -->
+          <div class="card-row card-row-split">
+            <div class="row-meta">
+              <div class="row-label">元数据存储方式</div>
+              <div class="row-desc">Where tags, custom titles, and visit counts are stored without altering native URLs.</div>
+            </div>
+            <div class="row-control">
+              <select class="field">
+                <option value="extension-storage" selected>扩展存储（chrome.storage.local）</option>
+                <option value="browser-sync">浏览器云同步（chrome.storage.sync，上限 100KB）</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Status Summary Box -->
+          <div class="card-row card-row-split" style="background-color: var(--sub);">
+            <div class="row-meta">
+              <div class="row-label">同步状态摘要</div>
+              <div class="row-desc">284 bookmarks monitored across 18 folders. Last full scan completed 6 minutes ago.</div>
+            </div>
+            <div class="row-control">
+              <button type="button" class="btn btn-ghost">
+                <svg class="icon" viewBox="0 0 24 24">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                </svg>
+                <span>立即重新扫描</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. New-Tab Appearance Section -->
+      <section class="settings-section" id="appearance">
+        <div class="section-header-card">
+          <div class="section-header-left">
+            <div class="section-tile">
+              <svg class="icon" viewBox="0 0 24 24">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <line x1="3" y1="9" x2="21" y2="9"/>
+                <line x1="9" y1="21" x2="9" y2="9"/>
+              </svg>
+            </div>
+            <div class="section-headings">
+              <h2 class="section-title">新标签页外观</h2>
+              <span class="help-dot" title="Configure default view mode, color scheme, and content width for newtab.html.">?</span>
+            </div>
+          </div>
+          <div class="health-summary">
+            <span class="status-indicator status-ok"></span>
+            <span>新标签页外观 · 卡片视图、自动宽度</span>
+          </div>
+        </div>
+
+        <div class="card-stack">
+          <!-- View Mode -->
+          <div class="card-row card-row-split">
+            <div class="row-meta">
+              <div class="row-label">默认视图模式</div>
+              <div class="row-desc">Layout format displayed when opening a fresh browser new tab page.</div>
+            </div>
+            <div class="row-control">
+              <div class="segmented-control" id="viewModeSeg">
+                <button type="button" class="seg-item active" onclick="setSegActive(this)">
+                  <svg class="icon" viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="7" height="7"/>
+                    <rect x="14" y="3" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/>
+                  </svg>
+                  <span>卡片视图</span>
+                </button>
+                <button type="button" class="seg-item" onclick="setSegActive(this)">
+                  <svg class="icon" viewBox="0 0 24 24">
+                    <line x1="8" y1="6" x2="21" y2="6"/>
+                    <line x1="8" y1="12" x2="21" y2="12"/>
+                    <line x1="8" y1="18" x2="21" y2="18"/>
+                    <line x1="3" y1="6" x2="3.01" y2="6"/>
+                    <line x1="3" y1="12" x2="3.01" y2="12"/>
+                    <line x1="3" y1="18" x2="3.01" y2="18"/>
+                  </svg>
+                  <span>紧凑列表</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Theme Choice -->
+          <div class="card-row card-row-split">
+            <div class="row-meta">
+              <div class="row-label">页面配色</div>
+              <div class="row-desc">Auto follows OS prefers-color-scheme. Or lock explicitly to light or dark.</div>
+            </div>
+            <div class="row-control">
+              <div class="segmented-control" id="themeModeSeg">
+                <button type="button" class="seg-item active" onclick="setSegActive(this); setTheme('auto');">
+                  <svg class="icon" viewBox="0 0 24 24">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                    <line x1="8" y1="21" x2="16" y2="21"/>
+                    <line x1="12" y1="17" x2="12" y2="21"/>
+                  </svg>
+                  <span>跟随系统</span>
+                </button>
+                <button type="button" class="seg-item" onclick="setSegActive(this); setTheme('light');">
+                  <svg class="icon" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="5"/>
+                    <line x1="12" y1="1" x2="12" y2="3"/>
+                    <line x1="12" y1="21" x2="12" y2="23"/>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                    <line x1="1" y1="12" x2="3" y2="12"/>
+                    <line x1="21" y1="12" x2="23" y2="12"/>
+                  </svg>
+                  <span>始终浅色</span>
+                </button>
+                <button type="button" class="seg-item" onclick="setSegActive(this); setTheme('dark');">
+                  <svg class="icon" viewBox="0 0 24 24">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                  </svg>
+                  <span>始终深色</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Background Tone -->
+          <div class="card-row card-row-split">
+            <div class="row-meta">
+              <div class="row-label">表面背景色调</div>
+              <div class="row-desc">Strictly adheres to standard tokens (bg #f3f5f8 / #0f1117). No gradient effects.</div>
+            </div>
+            <div class="row-control">
+              <select class="field">
+                <option value="standard" selected>标准中性（var(--bg)）</option>
+                <option value="pure-white">高对比度清朗（var(--panel)）</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Content Width -->
+          <div class="card-row card-row-split">
+            <div class="row-meta">
+              <div class="row-label">最大内容宽度</div>
+              <div class="row-desc">Horizontal container constraint for ultra-wide displays (5 preset sizes).</div>
+            </div>
+            <div class="row-control">
+              <select class="field">
+                <option value="1080">1080px（紧凑）</option>
+                <option value="1440" selected>1440px（默认）</option>
+                <option value="1720">1720px（宽屏）</option>
+                <option value="2560">2560px（超宽 2K）</option>
+                <option value="auto">自动铺满（跟随屏幕）</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. Danger Zone Section -->
+      <section class="settings-section" id="danger-zone">
+        <div class="section-header-card" style="border-left: 4px solid var(--danger);">
+          <div class="section-header-left">
+            <div class="section-tile danger">
+              <svg class="icon" viewBox="0 0 24 24">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <div class="section-headings">
+              <h2 class="section-title" style="color: var(--danger);">危险操作</h2>
+              <span class="help-dot" title="Data export, backup restoration, and irreversible bookmark purges.">?</span>
+            </div>
+          </div>
+          <div class="health-summary">
+            <span class="status-indicator status-warn"></span>
+            <span>危险操作 · 回收站 14 项</span>
+          </div>
+        </div>
+
+        <div class="card-stack danger-stack">
+          <!-- Backup Export & Import -->
+          <div class="card-row danger-action-row">
+            <div class="row-meta">
+              <div class="row-label">导出完整书签备份</div>
+              <div class="row-desc">Download a complete JSON snapshot containing all 284 bookmarks, custom tags, folder trees, and usage timestamps.</div>
+            </div>
+            <div class="row-control">
+              <div style="display: flex; gap: var(--space-2);">
+                <button type="button" class="btn btn-ghost">
+                  <svg class="icon" viewBox="0 0 24 24">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  <span>导出 JSON</span>
+                </button>
+                <button type="button" class="btn btn-ghost">
+                  <svg class="icon" viewBox="0 0 24 24">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  <span>导入 JSON</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Empty Recycle Bin -->
+          <div class="card-row danger-action-row">
+            <div class="row-meta">
+              <div class="row-label">清空回收站</div>
+              <div class="row-desc">Permanently purge all 14 deleted items. Items older than 30 days are automatically deleted. This action cannot be undone.</div>
+            </div>
+            <div class="row-control">
+              <button type="button" class="btn btn-danger-ghost">
+                <svg class="icon" viewBox="0 0 24 24">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  <line x1="10" y1="11" x2="10" y2="17"/>
+                  <line x1="14" y1="11" x2="14" y2="17"/>
+                </svg>
+                <span>清空回收站（14 项）</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Reset Extension State -->
+          <div class="card-row danger-action-row" style="background-color: var(--sub);">
+            <div class="row-meta">
+              <div class="row-label" style="color: var(--danger);">重置全部自定义元数据</div>
+              <div class="row-desc">Erases all tags and AI assignments while leaving native browser bookmarks completely untouched.</div>
+            </div>
+            <div class="row-control">
+              <button type="button" class="btn btn-danger">
+                <svg class="icon" viewBox="0 0 24 24">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <span>重置标签数据</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script>
+    // In-page smooth scroll & active anchor nav update
+    const navItems = document.querySelectorAll('.nav-item');
+    const sections = document.querySelectorAll('.settings-section');
+
+    window.addEventListener('scroll', () => {
+      let current = '';
+      sections.forEach(section => {
+        const sectionTop = section.offsetTop - 120;
+        if (window.scrollY >= sectionTop) {
+          current = section.getAttribute('id');
+        }
+      });
+
+      navItems.forEach(item => {
+        item.classList.remove('active');
+        if (item.getAttribute('href') === '#' + current) {
+          item.classList.add('active');
+        }
+      });
+    });
+
+    // Segmented control helper
+    function setSegActive(btn) {
+      const parent = btn.closest('.segmented-control');
+      parent.querySelectorAll('.seg-item').forEach(el => el.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    // Toggle password visibility
+    const toggleBtn = document.getElementById('toggleApiKeyBtn');
+    const apiKeyField = document.getElementById('apiKeyField');
+    if (toggleBtn && apiKeyField) {
+      toggleBtn.addEventListener('click', () => {
+        const isPw = apiKeyField.type === 'password';
+        apiKeyField.type = isPw ? 'text' : 'password';
+      });
+    }
+
+    // Theme switcher for previewing light & dark modes
+    function setTheme(mode) {
+      if (mode === 'auto') {
+        document.documentElement.removeAttribute('data-theme');
+      } else {
+        document.documentElement.setAttribute('data-theme', mode);
+      }
+    }
+
+    const themeToggleBtn = document.getElementById('themeToggleBtn');
+    if (themeToggleBtn) {
+      themeToggleBtn.addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        if (!currentTheme) {
+          // Check system preference
+          const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          setTheme(isDark ? 'light' : 'dark');
+        } else if (currentTheme === 'dark') {
+          setTheme('light');
+        } else {
+          setTheme('dark');
+        }
+      });
+    }
+  </script>
+</body>
+</html>
+
+
+
+
+
