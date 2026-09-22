@@ -1490,7 +1490,7 @@
   }
 }
 @media (max-width: 760px) {
-  /* 两行：标题独占一行，站点与标签落到第二行；实际约 52px，仍远低于卡片的 112px */
+  /* 两行：标题独占一行，站点与标签落到第二行；实测约 57px，仍远低于卡片的 112px */
   .nt-grid.is-list .nt-row-link {
     grid-template-columns: 16px minmax(0, 1fr);
     grid-template-rows: auto auto;
@@ -1502,8 +1502,8 @@
     min-height: 46px;
   }
   .nt-grid.is-virt.is-list .nt-card-wrap {
-    /* 两行布局的实际行高约 52px，避免大列表滚动条在进入视口时跳变。 */
-    contain-intrinsic-size: auto 52px;
+    /* 两行布局（标题 14px + meta 12px）实测约 57px，避免大列表滚动条在进入视口时跳变。 */
+    contain-intrinsic-size: auto 57px;
   }
   .nt-row-meta {
     display: flex;

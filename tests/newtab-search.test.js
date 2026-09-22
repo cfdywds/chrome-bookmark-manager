@@ -261,7 +261,7 @@ describe('新标签页搜索', () => {
     expect(newtabCss).toContain('.nt-row-meta {\n    display: flex;');
     // 虚拟化占位高度必须跟着行高走，否则滚动条长度会跳
     expect(newtabCss).toContain('contain-intrinsic-size: auto 28px;');
-    expect(newtabCss).toContain('contain-intrinsic-size: auto 52px;');
+    expect(newtabCss).toContain('contain-intrinsic-size: auto 57px;');
     // 空结果不留下一条空框线
     expect(newtabCss).toContain('.nt-grid.is-list:empty');
   });
