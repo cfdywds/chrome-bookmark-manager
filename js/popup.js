@@ -4880,7 +4880,7 @@ async function migrateTags() {
         .slice(0, 5)
         .map(id => {
           const item = getItemById(id);
-          return `· ${escapeHtml(item ? item.title : '(已删除书签)')}<span style="color:var(--muted);font-size:11px;"> — ${escapeHtml(item ? item.host : '')}</span>`;
+          return `· ${escapeHtml(item ? item.title : '(已删除书签)')}<span style="color:var(--muted);font-size:var(--fs-meta);"> — ${escapeHtml(item ? item.host : '')}</span>`;
         })
         .join('<br>') + (otherIds.length > 5 ? `<br>… 等 ${otherIds.length} 个` : '');
     message += `<br>⚠️ <b>${otherIds.length}</b> 个书签被归到「#${escapeHtml(BM.FALLBACK_TAG)}」（池外兜底），将用本地规则重新打标（消耗 API 即可考虑 AI 重打）：<br>${otherPreview}<br>`;

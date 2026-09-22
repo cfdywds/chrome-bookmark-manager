@@ -73,7 +73,7 @@ body.panel-body {
   background: var(--grad-action);
   color: var(--on-grad);
   border-radius: 9px;
-  font-size: 15px;
+  font-size: var(--fs-glyph-brand);
   box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
 }
 .brand-actions {
@@ -110,7 +110,7 @@ body.panel-body {
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   padding: 3px 10px;
-  font-size: 12.5px;
+  font-size: var(--fs-meta);
   color: var(--ink-2);
 }
 .stat b {
@@ -144,7 +144,7 @@ body.panel-body {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 12px;
+  font-size: var(--fs-title);
   color: var(--primary);
   font-weight: 600;
   margin-right: 5px;
@@ -171,7 +171,7 @@ body.panel-body {
   border-radius: 9px;
   cursor: pointer;
   white-space: nowrap;
-  font-size: 12.5px;
+  font-size: var(--fs-title);
   font-weight: 500;
   transition: all 0.16s;
 }
@@ -213,7 +213,7 @@ body.panel-body {
   margin-bottom: 10px;
 }
 .sec-title {
-  font-size: 12px;
+  font-size: var(--fs-title);
   color: var(--muted);
 }
 .toolbar-actions {
@@ -254,7 +254,7 @@ body.panel-body {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 12px;
+  font-size: var(--fs-title);
   font-weight: 600;
   padding: 6px 12px;
   border-radius: var(--radius-pill);
@@ -379,6 +379,10 @@ body.panel-body {
 }
 .search-box input::placeholder {
   color: var(--muted);
+  /* 顶栏搜索框在 340–380px 的 side panel 下只有约 162px 可用宽，
+     title 档下 15 字提示（实测自然宽 182px）会被截尾，降一档到 meta；
+     大搜索框 .lg 宽度充裕，在下面单独还原成 title 档。 */
+  font-size: var(--fs-meta);
 }
 /* 大号变体：新标签页复用同一搜索组件（P2-4 跨页面一致性；P1 收敛到 44px 单线高） */
 .search-box.lg {
@@ -392,9 +396,12 @@ body.panel-body {
 .search-box.lg .search-ico {
   width: 18px;
   height: 18px;
-  font-size: 17px;
+  font-size: var(--fs-glyph-search);
 }
 .search-box.lg input {
+  font-size: var(--fs-title);
+}
+.search-box.lg input::placeholder {
   font-size: var(--fs-title);
 }
 .search-clear {
@@ -698,7 +705,7 @@ mark {
 }
 .search-query-copy span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--fs-meta);
   font-weight: 600;
 }
 .search-query-copy b {
@@ -716,7 +723,7 @@ mark {
 }
 .search-result-count {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--fs-meta);
   white-space: nowrap;
 }
 .search-result-count b {
@@ -1002,7 +1009,7 @@ mark {
   min-height: 30px;
 }
 .trash-toolbar .sec-title {
-  font-size: 12.5px;
+  font-size: var(--fs-meta);
   line-height: 1.6;
 }
 .trash-toolbar .btn.primary {
@@ -1091,7 +1098,7 @@ mark {
 .bulk-bar #bulkCount {
   flex: 1;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: var(--fs-meta);
   font-weight: 500;
 }
 .bulk-bar #bulkCount b {
@@ -1121,7 +1128,7 @@ mark {
 }
 .form-row label {
   display: block;
-  font-size: 12px;
+  font-size: var(--fs-title);
   font-weight: 600;
   color: var(--ink-2);
   margin-bottom: 5px;
@@ -1131,7 +1138,7 @@ mark {
 .form-row textarea {
   width: 100%;
   padding: 9px 11px;
-  font-size: 12.5px;
+  font-size: var(--fs-body);
   border: 1px solid var(--line-2);
   border-radius: var(--radius-sm);
   background: var(--field-bg);
@@ -1157,7 +1164,7 @@ mark {
 /* 错误信息允许换行（避免长 URL/错误被省略号截断） */
 .settings-msg {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--fs-meta);
   color: var(--muted);
   min-width: 0;
   white-space: pre-wrap;
@@ -1336,7 +1343,7 @@ mark {
   color: var(--ink);
 }
 .tag-mgr-count {
-  font-size: 12px;
+  font-size: var(--fs-meta);
   color: var(--muted);
 }
 .tag-mgr-btns {
@@ -1351,7 +1358,7 @@ mark {
   padding: 20px;
   text-align: center;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--fs-meta);
 }
 
 /* ===== 底部任务状态（常驻错误条：条状 + 软底 + 顶边色，与浮层 toast 明显区别） ===== */
@@ -1422,7 +1429,7 @@ mark {
   transition: width 0.2s ease;
 }
 #progressLabel {
-  font-size: 12.5px;
+  font-size: var(--fs-meta);
   color: var(--ink-2);
   white-space: nowrap;
   overflow: hidden;
@@ -1502,12 +1509,12 @@ mark {
 }
 .help-group-title {
   font-weight: 600;
-  font-size: 12.5px;
+  font-size: var(--fs-title);
   margin-bottom: 8px;
   color: var(--ink);
 }
 .help-item {
-  font-size: 12px;
+  font-size: var(--fs-meta);
   color: var(--ink-2);
   line-height: 1.7;
   margin-bottom: 7px;
@@ -1524,7 +1531,7 @@ mark {
 }
 .row.clickable .title::after {
   content: ' ↗';
-  font-size: 10px;
+  font-size: var(--fs-meta);
   color: var(--muted);
   opacity: 0;
   transition: opacity 0.12s;
@@ -1554,7 +1561,7 @@ mark {
   border-radius: var(--radius-sm);
   background: var(--panel);
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: var(--fs-title);
   font-weight: 600;
   padding: 0 12px;
   cursor: pointer;
@@ -1591,7 +1598,7 @@ mark {
 }
 .rec-hint {
   margin-top: 8px;
-  font-size: 12px;
+  font-size: var(--fs-meta);
   min-height: 18px;
   line-height: 1.5;
 }
@@ -1612,7 +1619,7 @@ mark {
 }
 .bulk-extra .btn {
   padding: 5px 10px;
-  font-size: 12.5px;
+  font-size: var(--fs-title);
 }
 
 /* ===== 危险操作确认条（50+ 项二次确认） ===== */
@@ -1622,7 +1629,7 @@ mark {
   border: 1px solid rgba(245, 158, 11, 0.35);
   border-radius: var(--radius-sm);
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: var(--fs-meta);
   line-height: 1.6;
   margin: 10px 0 2px;
 }
@@ -1737,7 +1744,7 @@ mark {
   padding: 50px 20px;
 }
 .empty-state .emoji {
-  font-size: 42px;
+  font-size: var(--fs-glyph-empty);
   margin-bottom: var(--space-2);
   display: block;
   filter: saturate(var(--emoji-saturate, 1));
@@ -1783,7 +1790,7 @@ mark {
   box-shadow: var(--shadow-sm);
 }
 .error-card .err-icon {
-  font-size: 32px;
+  font-size: var(--fs-glyph-err);
   display: block;
   text-align: center;
   margin-bottom: var(--space-2);
@@ -1903,7 +1910,7 @@ mark {
 }
 .kpi .card.big b {
   color: var(--primary);
-  font-size: 26px;
+  font-size: var(--fs-display);
 }
 .kpi .card.big span {
   color: var(--muted);
@@ -2142,12 +2149,16 @@ mark {
 
 /* ===== KPI 卡片（总览） ===== */
 .kpi .card.big b {
-  font-size: 26px;
+  font-size: var(--fs-display);
 }
 /* ===== 概览页快捷入口卡片（P2-1：重复书签 / 空文件夹 / 回收站改为卡片入口） ===== */
 .overview-entries {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  /* 210px 是「入口卡片不折行」的下限：卡片里图标 32 + 两个 gap 16 + 最宽徽章
+     「无空文件夹」76 + 左右 padding 24，留给标题的空间要够放 4 个中文字
+     （title 档 14px × 4 = 56px）。低于该宽度就退成单列，卡片占满整行；
+     150px 时 340–430px 的 side panel 会把「空文件夹」压成每行一个字。 */
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: var(--space-2);
   /* 与 .search-hero / .tag-cloud-card 保持同一节奏，避免与下方标签模块粘连 */
   margin-bottom: var(--space-3);
@@ -2255,11 +2266,11 @@ mark {
 }
 .plan-bar .plan-tag {
   font-weight: 700;
-  font-size: 12.5px;
+  font-size: var(--fs-meta);
   color: var(--primary);
 }
 .plan-count {
-  font-size: 12px;
+  font-size: var(--fs-meta);
   color: var(--muted);
   margin-left: auto;
 }
@@ -2270,7 +2281,7 @@ mark {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--fs-title);
   color: var(--ink-2);
   cursor: pointer;
 }
@@ -2282,7 +2293,7 @@ mark {
   flex-shrink: 0;
   max-width: 150px;
   padding: 3px 6px;
-  font-size: 12px;
+  font-size: var(--fs-meta);
   font-family: inherit;
   border: 1px solid var(--line-2);
   border-radius: 8px;
@@ -2305,7 +2316,7 @@ mark {
   margin: 6px 6px 2px;
 }
 .plan-keep .k-label {
-  font-size: 12px;
+  font-size: var(--fs-meta);
   font-weight: 700;
   color: var(--ok);
   background: var(--panel);
@@ -2314,7 +2325,7 @@ mark {
   flex-shrink: 0;
 }
 .plan-keep .k-title {
-  font-size: 12px;
+  font-size: var(--fs-title);
   font-weight: 600;
   color: var(--ink);
   white-space: nowrap;
@@ -2327,7 +2338,7 @@ mark {
   border-left: 3px solid var(--danger-soft);
 }
 .plan-del .d-label {
-  font-size: 12px;
+  font-size: var(--fs-meta);
   font-weight: 700;
   color: var(--danger);
   flex-shrink: 0;
@@ -2346,7 +2357,7 @@ mark {
   gap: 2px;
   flex-wrap: wrap;
   padding: 7px 12px;
-  font-size: 12.5px;
+  font-size: var(--fs-meta);
   color: var(--muted);
   background: linear-gradient(180deg, var(--panel) 0%, var(--bg) 100%);
   border-bottom: 1px solid var(--line);
@@ -2361,7 +2372,7 @@ mark {
   padding: 3px 7px;
   border-radius: var(--radius-xs);
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--fs-meta);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -2515,7 +2526,7 @@ mark {
 }
 .folder-list-sep-label {
   text-align: center;
-  font-size: 10.5px;
+  font-size: var(--fs-meta);
   color: var(--line-2);
   letter-spacing: 1.5px;
   margin: 10px 0 4px;
@@ -2545,7 +2556,7 @@ mark {
   padding: 7px 10px;
   border-radius: var(--radius-xs);
   cursor: pointer;
-  font-size: 12.5px;
+  font-size: var(--fs-title);
   text-align: left;
   font-weight: 500;
 }
@@ -2585,7 +2596,7 @@ mark {
   border-radius: 8px;
   cursor: pointer;
   white-space: nowrap;
-  font-size: 12.5px;
+  font-size: var(--fs-title);
   font-weight: 500;
   transition: all 0.16s;
 }
@@ -2622,7 +2633,7 @@ mark {
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
 }
 .row.folder-row.editing .f-edit-hint {
-  font-size: 10.5px;
+  font-size: var(--fs-meta);
   color: var(--muted);
   flex-shrink: 0;
   white-space: nowrap;
@@ -2686,7 +2697,7 @@ mark {
   border: 1px solid var(--line-2);
   border-radius: 8px;
   padding: 6px 11px;
-  font-size: 12.5px;
+  font-size: var(--fs-body);
   background: var(--panel);
   color: var(--ink);
   outline: none;
@@ -2697,7 +2708,7 @@ mark {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
 }
 .tree-mode {
-  font-size: 11.5px;
+  font-size: var(--fs-meta);
   color: var(--muted);
   white-space: nowrap;
   font-weight: 500;
@@ -2714,7 +2725,7 @@ mark {
   padding: 5px 8px 5px 4px;
   border-radius: var(--radius-xs);
   cursor: pointer;
-  font-size: 12.5px;
+  font-size: var(--fs-title);
   color: var(--ink-2);
   border-left: 3px solid transparent;
   transition: background 0.12s, border-color 0.12s;
@@ -2794,7 +2805,7 @@ mark {
   border: none;
   padding: 2px 5px;
   cursor: pointer;
-  font-size: 12.5px;
+  font-size: var(--fs-meta);
 }
 .breadcrumb .crumb-more:hover { background: var(--primary-soft); color: var(--primary); }
 
@@ -2957,7 +2968,7 @@ mark {
 }
 .opt-hero h1 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--fs-section);
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -3026,7 +3037,7 @@ mark {
 }
 .opt-foot .settings-msg {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--fs-meta);
 }
 .opt-foot .btn {
   padding: 9px 20px;
@@ -3055,7 +3066,7 @@ mark {
   transition: width 0.2s ease;
 }
 .tag-sync-progress-text {
-  font-size: 12px;
+  font-size: var(--fs-meta);
   color: var(--muted);
   line-height: 1.45;
 }
@@ -3186,14 +3197,14 @@ mark {
 }
 .model-combo-empty {
   padding: 10px 12px;
-  font-size: 12px;
+  font-size: var(--fs-meta);
   color: var(--muted);
   line-height: 1.5;
 }
 .form-row > .settings-msg {
   display: block;
   margin-top: 5px;
-  font-size: 12px;
+  font-size: var(--fs-meta);
 }
 /* ===== 分组（section）===== */
 .opt-section {
@@ -3248,7 +3259,7 @@ mark {
   min-width: 0;
 }
 .opt-section-text h2 {
-  font-size: 15px;
+  font-size: var(--fs-section);
   font-weight: 600;
   color: var(--ink);
   margin: 0;
@@ -3442,7 +3453,7 @@ mark {
   width: 100%;
   max-width: 340px;
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: var(--fs-title);
   color: var(--ink);
   background: var(--field-bg);
   border: 1px solid var(--line-2);
@@ -3607,10 +3618,10 @@ mark {
     padding: 18px 16px 14px;
   }
   .opt-hero h1 {
-    font-size: 18px;
+    font-size: var(--fs-section);
   }
   .opt-section-head h2 {
-    font-size: 15px;
+    font-size: var(--fs-section);
   }
 }
 @keyframes fade-in {

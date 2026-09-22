@@ -367,12 +367,45 @@ describe('字体 / 字号 token 与主题映射同步（UI 移植 P0）', () => 
     );
     expect(tokensCss).toContain('--font-mono:');
     [
-      '--fs-meta: 11px;',
-      '--fs-title: 13px;',
-      '--fs-body: 14px;',
-      '--fs-section: 16px;',
-      '--fs-display: 22px;'
+      '--fs-meta: 12px;',
+      '--fs-title: 14px;',
+      '--fs-body: 15px;',
+      '--fs-section: 18px;',
+      '--fs-display: 24px;'
     ].forEach(decl => expect(flat(tokensCss)).toContain(decl));
+
+    // 字形字号（emoji 插画 / favicon 兜底字母 / 图标字形）与文本阶梯分离：
+    // 它们与容器尺寸成对出现，不随文本整体缩放，但同样只在 tokens.css 定义一次
+    [
+      '--fs-glyph-fav-xs',
+      '--fs-glyph-badge',
+      '--fs-glyph-brand',
+      '--fs-glyph-search',
+      '--fs-glyph-fav',
+      '--fs-glyph-brand-lg',
+      '--fs-glyph-err',
+      '--fs-glyph-empty',
+      '--fs-glyph-empty-lg'
+    ].forEach(name => expect(flat(tokensCss)).toContain(name + ':'));
+
+    // 回归防线：组件样式表不得再出现裸 px 字号。历史上有 69 处散落硬编码，
+    // 导致只改 token 时界面一部分变大、一部分不变，阶梯形同虚设。
+    [popupCss, newtabCss].forEach(css => {
+      expect(css.match(/font-size:\s*[\d.]+px/g) || []).toEqual([]);
+    });
+
+    // 窄 side panel（340–380px）下顶栏搜索框只有约 162px 可用宽，
+    // placeholder 必须留在 meta 档，否则「搜索标题、网址、域名、标签」会被截尾；
+    // 大搜索框 .lg 宽度充裕，显式还原成 title 档保持与输入文字同档。
+    expect(flat(popupCss)).toMatch(
+      /\.search-box input::placeholder \{[^}]*font-size: var\(--fs-meta\)/
+    );
+    expect(flat(popupCss)).toMatch(
+      /\.search-box\.lg input::placeholder \{[^}]*font-size: var\(--fs-title\)/
+    );
+    // 概览入口卡片低于 210px 时，「空文件夹」会被压成每行一个字（竖排），
+    // 因此窄宽度必须退成单列而不是继续挤两列。
+    expect(flat(popupCss)).toContain('repeat(auto-fit, minmax(210px, 1fr))');
     // 页面样式表不再各写一份字体栈（历史分叉：newtab 用 BlinkMacSystemFont）
     [popupCss, newtabCss].forEach(css => {
       expect(css).not.toContain('BlinkMacSystemFont');

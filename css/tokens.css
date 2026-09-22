@@ -337,12 +337,28 @@
   /* 等宽栈带中文回退：路径 / 错误详情混排中文时不会掉到非等宽字体 */
   --font-mono: ui-monospace, 'SF Mono', Consolas, 'PingFang SC', 'Microsoft YaHei', monospace;
 
-  /* 字号阶梯（DESIGN.md Typography：meta / title / body / section / display） */
-  --fs-meta: 11px;
-  --fs-title: 13px;
-  --fs-body: 14px;
-  --fs-section: 16px;
-  --fs-display: 22px;
+  /* 字号阶梯（DESIGN.md Typography：meta / title / body / section / display）
+     全站文本字号只允许取自这五档，组件里不得再写裸 px。
+     2024 可读性调整：中文笔画密，11–13px 下笔画开始粘连，
+     五档整体上调 1–2px（meta/title/body +1，section/display +2）。 */
+  --fs-meta: 12px;
+  --fs-title: 14px;
+  --fs-body: 15px;
+  --fs-section: 18px;
+  --fs-display: 24px;
+
+  /* 字形字号（glyph）：emoji 插画、favicon 兜底首字母、图标字形。
+     与所在容器尺寸成对出现（如 9px 字母配 16px favicon），
+     不参与上面的文本阶梯，也不随文本整体缩放。 */
+  --fs-glyph-fav-xs: 9px;
+  --fs-glyph-badge: 12px;
+  --fs-glyph-brand: 15px;
+  --fs-glyph-search: 17px;
+  --fs-glyph-fav: 18px;
+  --fs-glyph-brand-lg: 20px;
+  --fs-glyph-err: 32px;
+  --fs-glyph-empty: 42px;
+  --fs-glyph-empty-lg: 44px;
 
   --radius-xs: 7px;
   --radius-sm: 10px;
