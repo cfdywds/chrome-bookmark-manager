@@ -950,43 +950,15 @@ mark {
   height: 15px;
 }
 
-/* 显式拖拽手柄：避免整行可拖拽与点击打开/文本选择冲突 */
-.row-drag {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  padding: 3px 5px;
-  border-radius: var(--radius-xs);
-  cursor: grab;
-  flex-shrink: 0;
-  opacity: 0;
-  transition: all 0.12s;
-}
-.row:hover .row-drag,
-.row-drag:focus-visible {
-  opacity: 1;
-}
-.row-drag:hover {
-  background: var(--line);
-  color: var(--primary);
-}
-.row-drag:active {
-  cursor: grabbing;
-}
-.row-drag:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
-/* 触屏没有 hover：行尾操作按钮与拖拽把手必须常驻。
+/* 触屏没有 hover：行尾操作按钮必须常驻。
    否则 opacity: 0 叠加 pointer-events: none 后，触屏既无 hover 可触发、
    按钮自身又收不到点击（无法进入 :focus-within），行内操作彻底不可达。
-   与 newtab.css 的 .nt-actions 触屏策略保持一致。 */
+   与 newtab.css 的 .nt-actions 触屏策略保持一致。
+   拖拽把手（书签行 / 文件夹行统一为 .drag-handle）另见文末同名规则。 */
 @media (hover: none) {
   .row > .row-eye,
   .row > .row-ai,
-  .row > .row-edit,
-  .row-drag {
+  .row > .row-edit {
     opacity: 1;
     pointer-events: auto;
   }
@@ -2512,9 +2484,15 @@ mark {
   color: var(--ink-2);
 }
 
-/* folder-row 的拖拽手柄始终可见（文件夹拖拽是该页核心操作） */
-.row.folder-row .row-drag {
+/* 组织页：文件夹行与书签行把手统一常驻（拖拽排序 / 跨层移动是该页核心操作）；
+   其它页（概览 / 隐藏 / 搜索）仍悬浮显示，避免整页都是把手造成噪音。 */
+#orgBody .row .drag-handle {
   opacity: 1;
+}
+/* 文件夹就地编辑行没有把手，用等宽占位保持 f-icon / 输入框与其它行对齐 */
+.row.folder-row .drag-slot {
+  width: 20px;
+  flex-shrink: 0;
 }
 
 /* 拖入文件夹内部的高亮（移入），区别于前后排序的 drop-before/after */
@@ -3703,7 +3681,7 @@ mark {
   box-shadow: inset 0 -2px 0 0 var(--primary);
 }
 
-/* ===== 拖拽把手（P1-3：默认隐藏，悬浮 / 焦点 / 键盘高亮行时显示） ===== */
+/* ===== 拖拽把手（书签行 / 文件夹行统一：行首，默认隐藏，悬浮 / 焦点 / 键盘高亮行时显示） ===== */
 .drag-handle {
   width: 20px;
   height: 20px;
@@ -3733,10 +3711,11 @@ mark {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
+.drag-handle:active,
 .row.dragging .drag-handle {
   cursor: grabbing;
 }
-/* 触屏没有 hover：拖拽把手常驻（与 .row-drag 同一策略） */
+/* 触屏没有 hover：拖拽把手常驻（与行内操作按钮同一策略） */
 @media (hover: none) {
   .drag-handle {
     opacity: 1;

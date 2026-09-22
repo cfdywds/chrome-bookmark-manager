@@ -277,6 +277,19 @@ describe('P2 结构与信息架构', () => {
     expect(popupJs).toContain('class="drag-handle" type="button" draggable="true"');
   });
 
+  it('拖拽把手统一样式：行首同一类名，组织页常驻', () => {
+    // 文件夹行与书签行共用 .drag-handle，旧的 .row-drag 双轨样式已移除
+    expect(flat(popupCss)).not.toContain('.row-drag');
+    expect(flat(popupJs)).not.toContain('row-drag');
+    // 组织页（#orgBody）两类行把手常驻；其它页仍靠 :hover / 键盘高亮显示
+    expect(flat(popupCss)).toContain('#orgBody .row .drag-handle');
+    expect(flat(popupCss)).toContain('.row:hover .drag-handle');
+    // 文件夹行把手必须在行首：紧跟在复选框区之后、文件夹图标之前
+    const row = popupJs.slice(popupJs.indexOf('function folderRow(f)'), popupJs.indexOf('function folderRowEdit'));
+    expect(row.indexOf('class="drag-handle"')).toBeGreaterThan(-1);
+    expect(row.indexOf('class="drag-handle"')).toBeLessThan(row.indexOf('FOLDER_ICON_SM'));
+  });
+
   it('提示气泡单轨：help-dot 不再用 CSS ::after 复制一套', () => {
     expect(flat(popupCss)).not.toContain('.help-dot[data-tip]::after');
     expect(flat(popupCss)).not.toContain('.help-dot[data-tip]:hover::after');
@@ -458,9 +471,8 @@ describe('触屏（无 hover）下行内操作必须仍然可达', () => {
       expect(touch).toContain(selector);
     });
     expect(touch).toContain('pointer-events: auto');
-    // 两个拖拽把手（书签行 .drag-handle / 文件夹行 .row-drag）同样默认隐藏
+    // 拖拽把手（书签行 / 文件夹行已统一为 .drag-handle）同样默认隐藏
     expect(touch).toContain('.drag-handle');
-    expect(touch).toContain('.row-drag');
   });
 
   it('默认态确实是隐藏的，触屏兜底才有意义（反向断言）', () => {

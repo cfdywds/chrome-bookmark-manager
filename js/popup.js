@@ -960,13 +960,14 @@ function folderRow(f) {
   }
   const empty = f.directCount === 0;
   const cls = `row folder-row clickable draggable${empty ? ' f-empty' : ''}`;
+  // 把手与书签行统一：类名 .drag-handle、位置在行首（复选框区之后）
   return `<div class="${cls}" data-id="${f.id}" data-type="folder" id="row-${f.id}" tabindex="0" role="option" aria-selected="false" aria-label="文件夹 ${escapeHtml(f.title)}">
     <label class="checkbox-slot"><input type="checkbox" class="checkbox sel" data-id="${f.id}" data-type="folder" aria-label="选择 ${escapeHtml(f.title)}"></label>
+    <button class="drag-handle" type="button" draggable="true" data-action="drag-handle" data-id="${f.id}" data-type="folder" data-tip="拖动排序 / 移动" aria-label="拖动 ${escapeHtml(f.title)}">${ICON_SM('drag')}</button>
     ${FOLDER_ICON_SM}
     <span class="f-name">${escapeHtml(f.title)}</span>
     <span class="f-count">${f.directCount} 项</span>
     <button class="f-menu" data-action="folder-menu" data-id="${f.id}" data-tip="文件夹操作" aria-label="操作 ${escapeHtml(f.title)}">⋮</button>
-    <button class="row-drag" draggable="true" data-action="drag-handle" data-id="${f.id}" data-type="folder" data-tip="拖动排序 / 移动" aria-label="拖动 ${escapeHtml(f.title)}">${ICON_SM('drag')}</button>
   </div>`;
 }
 
@@ -978,8 +979,10 @@ function folderRowEdit(f, mode) {
   const empty = isNew || (f && f.directCount === 0);
   const cls = `row folder-row editing${empty ? ' f-empty' : ''}`;
   const count = isNew ? '新建' : (f ? f.directCount + ' 项' : '');
+  // drag-slot：编辑态没有把手，用等宽占位让 f-icon / 输入框与其它行对齐
   return `<div class="${cls}" data-edit-mode="${mode}" data-edit-id="${id}">
     <label class="checkbox-slot"></label>
+    <span class="drag-slot" aria-hidden="true"></span>
     ${FOLDER_ICON_SM}
     <input class="f-name-input" id="fEditInput" type="text" data-edit-mode="${mode}" data-edit-id="${id}" value="${escapeHtml(name)}" placeholder="${mode === 'new' ? '文件夹名称' : '输入新名称'}" autocomplete="off" spellcheck="false">
     <span class="f-count">${count}</span>
@@ -2750,8 +2753,8 @@ function playFlip(before) {
 function bindDrag() {
   const contentEl = content();
   contentEl.addEventListener('dragstart', e => {
-    // 拖拽把手：书签行为 .drag-handle（行首），文件夹行为 .row-drag
-    const handle = e.target.closest('.row-drag, .drag-handle');
+    // 拖拽把手：书签行与文件夹行统一为 .drag-handle（行首）
+    const handle = e.target.closest('.drag-handle');
     const row = handle ? handle.closest('.row.clickable.draggable') : null;
     if (!row || !row.dataset.id) return;
     const id = row.dataset.id;
