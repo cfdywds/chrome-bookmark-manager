@@ -359,3 +359,87 @@ describe('P2 结构与信息架构', () => {
     );
   });
 });
+
+describe('字体 / 字号 token 与主题映射同步（UI 移植 P0）', () => {
+  it('tokens.css 提供唯一的字体族与五档字号阶梯', () => {
+    expect(flat(tokensCss)).toContain(
+      "--font-sans: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;"
+    );
+    expect(tokensCss).toContain('--font-mono:');
+    [
+      '--fs-meta: 11px;',
+      '--fs-title: 13px;',
+      '--fs-body: 14px;',
+      '--fs-section: 16px;',
+      '--fs-display: 22px;'
+    ].forEach(decl => expect(flat(tokensCss)).toContain(decl));
+    // 页面样式表不再各写一份字体栈（历史分叉：newtab 用 BlinkMacSystemFont）
+    [popupCss, newtabCss].forEach(css => {
+      expect(css).not.toContain('BlinkMacSystemFont');
+      expect(css).not.toContain('-apple-system');
+      expect(css).not.toContain('ui-monospace');
+    });
+  });
+
+  it('toast 文字色在四个主题映射块中同步定义', () => {
+    const flatTokens = flat(tokensCss);
+    // 默认亮色块 + data-nt-theme=light 各一次，系统深色块 + data-nt-theme=dark 各一次
+    expect(flatTokens.match(/--toast-ink: var\(--c-toast-ink-l\);/g)).toHaveLength(2);
+    expect(flatTokens.match(/--toast-ink: var\(--c-toast-ink-d\);/g)).toHaveLength(2);
+    expect(flatTokens.match(/--toast-muted: var\(--c-toast-muted-l\);/g)).toHaveLength(2);
+    expect(flatTokens.match(/--toast-muted: var\(--c-toast-muted-d\);/g)).toHaveLength(2);
+  });
+
+  it('实底前景色（on-solid / on-grad）在四个主题映射块中同步定义', () => {
+    const flatTokens = flat(tokensCss);
+    [
+      ['--on-solid', '--c-on-solid-l'],
+      ['--on-solid', '--c-on-solid-d'],
+      ['--on-grad', '--c-on-grad-l'],
+      ['--on-grad', '--c-on-grad-d']
+    ].forEach(([semantic, scale]) => {
+      const pattern = new RegExp(`${semantic}: var\\(${scale}\\);`, 'g');
+      expect(flatTokens.match(pattern)).toHaveLength(2);
+    });
+    // 深色语义色偏浅，其上的前景必须是深墨字，白字只有 2.6:1
+    expect(tokensCss).toContain('--c-on-solid-d: #0f1117;');
+    expect(flat(tokensCss)).not.toContain('--c-on-solid-d: #ffffff;');
+  });
+
+  it('警告色与深色品牌渐变满足 WCAG AA', () => {
+    // warn on warn-soft 由 4.48:1 提升到 6.3:1
+    expect(tokensCss).toContain('--c-warn-l: #92400e;');
+    expect(tokensCss).not.toContain('--c-warn-l: #b45309;');
+    // 深色渐变起点不得浅于 #2563eb，否则白字对比跌破 4.5:1
+    expect(flat(tokensCss)).not.toContain('linear-gradient(135deg, #3b82f6');
+  });
+});
+
+describe('触屏（无 hover）下行内操作必须仍然可达', () => {
+  it('popup 的行操作按钮与拖拽把手在 hover: none 下常驻且可点', () => {
+    // 这三颗按钮默认 opacity: 0 + pointer-events: none；触屏既没有 hover 可触发，
+    // 又因为 pointer-events: none 收不到点击（进不了 :focus-within），必须有兜底。
+    const touch = mediaBlocks(popupCss, '@media (hover: none)').join('\n');
+    expect(touch).not.toBe('');
+    ['.row > .row-eye', '.row > .row-ai', '.row > .row-edit'].forEach(selector => {
+      expect(touch).toContain(selector);
+    });
+    expect(touch).toContain('pointer-events: auto');
+    // 两个拖拽把手（书签行 .drag-handle / 文件夹行 .row-drag）同样默认隐藏
+    expect(touch).toContain('.drag-handle');
+    expect(touch).toContain('.row-drag');
+  });
+
+  it('默认态确实是隐藏的，触屏兜底才有意义（反向断言）', () => {
+    const flatPopup = flat(popupCss);
+    const combined = String.raw`\.row > \.row-eye, \.row > \.row-ai, \.row > \.row-edit \{`;
+    expect(flatPopup).toMatch(new RegExp(`${combined}[^}]*opacity: 0;`));
+    expect(flatPopup).toMatch(new RegExp(`${combined}[^}]*pointer-events: none;`));
+  });
+
+  it('newtab 的操作条有同样的触屏兜底（两页策略一致）', () => {
+    const touch = mediaBlocks(newtabCss, '@media (hover: none)').join('\n');
+    expect(touch).toContain('.nt-actions');
+    expect(touch).toContain('pointer-events: auto');
+  });
+});

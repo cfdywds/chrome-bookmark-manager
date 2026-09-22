@@ -322,6 +322,9 @@
   }
 
   function render() {
+    // DATA 就绪前（首次 analyze 进行中）直接返回：打开新标签页后用户可以立刻在搜索框打字，
+    // 输入会触发 render（input 事件防抖 150ms），此时 DATA 仍为 null；analyze 完成后 init() 会再渲染一次
+    if (!DATA) return;
     renderTags();
     renderFolders();
     const list = filtered(activeFolder);
@@ -622,6 +625,41 @@
 
   // 事件绑定
   const searchInput = $('#ntSearch');
+
+  // 打开新标签页即把光标放进搜索框，不等书签分析（analyze）完成。
+  // Chrome 会把新标签页首次加载时的焦点留给地址栏（omnibox），此时页面的 focus() 会被忽略，
+  // 所以在这里按时间窗反复尝试，直到页面「真的」拿到焦点为止；
+  // 注意不能拿 document.activeElement 当成功判据：autofocus 被浏览器忽略时它一样会指向输入框。
+  // 用户一旦开始操作页面（点击 / 按键）就立即停止，之后不再抢焦点。
+  // 框内已有内容时全选，便于直接覆盖输入（为将来「恢复上次搜索词」预留行为）。
+  let searchAutofocusStopped = false;
+  function focusSearch() {
+    if (searchAutofocusStopped) return;
+    try {
+      searchInput.focus({ preventScroll: true });
+    } catch (e) {
+      searchInput.focus();
+    }
+    // 页面持有焦点 + 焦点落在搜索框，才算真正成功
+    if (!document.hasFocus() || document.activeElement !== searchInput) return;
+    searchAutofocusStopped = true;
+    if (searchInput.value) {
+      try {
+        searchInput.select();
+      } catch (e) {
+        /* 部分环境不支持 select，忽略 */
+      }
+    }
+  }
+  // 用户已经开始操作页面（点击 / 按键）时就别再抢焦点
+  const stopSearchAutofocus = () => {
+    searchAutofocusStopped = true;
+  };
+  document.addEventListener('pointerdown', stopSearchAutofocus, { once: true, capture: true });
+  document.addEventListener('keydown', stopSearchAutofocus, { once: true, capture: true });
+  // 时间窗覆盖到书签分析完成：地址栏焦点可能在首次加载期间被锁，越靠后的尝试越有机会成功
+  [0, 80, 200, 400, 700, 1100, 1600, 2200, 3000, 4000].forEach(ms => setTimeout(focusSearch, ms));
+
   let timer = null;
   searchInput.addEventListener('input', () => {
     search = searchInput.value.trim().toLowerCase();
@@ -1433,7 +1471,9 @@
       DATA = await window.BMAnalyzer.analyze();
       applyPendingDeletes();
       render();
-      searchInput.focus();
+      // 兜底：早期尝试全部失败时（例如窗口尚未激活），数据就绪后再聚焦一次；
+      // 若已聚焦成功或用户已开始操作，focusSearch 内部会直接返回，不会抢焦点
+      focusSearch();
     } catch (e) {
       const loading = $('#ntLoading');
       if (loading) loading.classList.add('hidden');

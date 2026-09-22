@@ -224,13 +224,19 @@ describe('新标签页搜索', () => {
   });
 
   it('浅色抽屉保持可辨识的复制成功态和键盘焦点环', () => {
-    expect(newtabCss).toContain('color: #047857;');
+    // 复制成功态全部走语义变量，组件里不再留 hex 回退（暗色由 token 覆盖）
+    expect(newtabCss).toContain('color: var(--ok-strong);');
+    expect(newtabCss).not.toContain('#047857');
     expect(newtabCss).toContain('outline: 2px solid var(--primary);');
   });
 
-  it('卡片悬浮操作使用向面板色渐隐的纱罩，无描边盖板', () => {
-    expect(newtabCss).toContain('background: linear-gradient(90deg, transparent, var(--panel) 42%);');
-    expect(newtabCss).not.toMatch(/\.nt-actions[^}]*border-left/);
+  it('卡片悬浮操作是右上角浮条：自带底衬、不再铺整块渐变纱罩', () => {
+    expect(newtabCss).toMatch(
+      /\.nt-actions \{\n  position: absolute;\n  top: var\(--space-2\);\n  right: var\(--space-2\);/
+    );
+    expect(newtabCss).toContain('.nt-card-wrap:hover .nt-actions');
+    expect(newtabCss).toContain('.nt-card-wrap:focus-within .nt-actions');
+    expect(newtabCss).not.toContain('linear-gradient(90deg, transparent, var(--panel) 42%)');
     expect(newtabCss).not.toMatch(/\.nt-actions[^}]*backdrop-filter/);
   });
 
@@ -245,9 +251,9 @@ describe('新标签页搜索', () => {
     // 行高 28px（卡片 112px）：整块只有一条外框线 + 行分隔线，不再逐行叠卡片
     expect(newtabCss).toContain('.nt-grid.is-list .nt-card-wrap + .nt-card-wrap');
     expect(newtabCss).toMatch(/\.nt-grid\.is-list \.nt-card-wrap \{[^}]*min-height: 28px;/);
-    // 列宽固定，跨行对齐才成立
+    // 列宽固定，跨行对齐才成立；目录列定宽，中文路径取末两段后不会被压缩截断
     expect(newtabCss).toContain(
-      'grid-template-columns: 16px minmax(0, 1fr) minmax(0, 190px) minmax(0, 158px) 150px;'
+      'grid-template-columns: 16px minmax(0, 1fr) minmax(0, 190px) 158px 150px;'
     );
     // 窄屏逐级收敛列，最后退成两行
     expect(newtabCss).toContain('@media (max-width: 1040px)');
@@ -325,5 +331,23 @@ describe('新标签页搜索', () => {
     expect(folderGuideHtml([true, true], true)).toBe(
       '<i class="nt-folder-guide has-line"></i><i class="nt-folder-guide is-branch"></i>'
     );
+  });
+
+  it('打开新标签页即聚焦搜索框，且数据就绪前输入不再报错', () => {
+    // 打开即把光标放进搜索框：HTML autofocus + JS 早期重试，不等书签分析完成
+    expect(newtabHtml).toContain('autofocus');
+    expect(newtabSource).toContain('function focusSearch()');
+    expect(newtabSource).toContain('setTimeout(focusSearch, ms)');
+    // 框内已有内容时全选，便于直接覆盖输入
+    expect(newtabSource).toContain('searchInput.select()');
+    // 用户开始操作后不再抢焦点
+    expect(newtabSource).toContain("document.addEventListener('pointerdown', stopSearchAutofocus");
+    expect(newtabSource).toContain("document.addEventListener('keydown', stopSearchAutofocus");
+    // 成功判据必须带上 document.hasFocus()：autofocus 被 Chrome 忽略时 activeElement 也会指向输入框
+    expect(newtabSource).toContain(
+      'if (!document.hasFocus() || document.activeElement !== searchInput) return;'
+    );
+    // analyze 完成前打字会触发 render：DATA 为空时必须直接返回
+    expect(newtabSource).toContain('if (!DATA) return;');
   });
 });
