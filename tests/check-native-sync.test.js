@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import zlib from 'node:zlib';
+import { readFileSync } from 'node:fs';
 import {
   NATIVE_SYNC_ROOT_TITLE,
   syncUrlKey,
@@ -92,6 +93,14 @@ function buildFixture() {
 }
 
 describe('scripts/check-native-sync.js', () => {
+  it('入口脚本不带 shebang：vitest 的 SSR 转译会把注入语句排在 shebang 之前，导致解析失败', () => {
+    const source = readFileSync(
+      new URL('../scripts/check-native-sync.js', import.meta.url),
+      'utf-8'
+    );
+    expect(source.startsWith('#!')).toBe(false);
+  });
+
   it('syncUrlKey 规范化与 js/background.js 一致', () => {
     expect(syncUrlKey('https://www.Example.com/Path/')).toBe('example.com/path');
     expect(syncUrlKey('https://example.com/a?x=1#!b')).toBe('example.com/a?x=1');
