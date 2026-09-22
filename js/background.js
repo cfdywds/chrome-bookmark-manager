@@ -1484,11 +1484,33 @@ async function runPendingNativeConfigWrite(api, expectedId = '') {
   return true;
 }
 
-async function recordNativeBookmarkRemoval(api, node) {
-  if (!node || nativeSyncApplying) return;
+// 删除事件可能成批到达（删除文件夹会连带整棵子树）。逐条处理意味着每条都做一次
+// 全树扫描 + 三个大对象全量写 + 一次 publishNativeSync，批量删除时放大成 O(N×n)；
+// 这里把同一窗口内到达的删除合并成一次处理。
+const pendingNativeRemovalNodes = [];
+let nativeRemovalBatchTimer = null;
+
+function scheduleNativeRemovalBatch(node) {
+  if (!node) return;
+  pendingNativeRemovalNodes.push(node);
+  if (nativeRemovalBatchTimer) return;
+  nativeRemovalBatchTimer = setTimeout(() => {
+    nativeRemovalBatchTimer = null;
+    const nodes = pendingNativeRemovalNodes.splice(0, pendingNativeRemovalNodes.length);
+    if (!nodes.length) return;
+    nativeQueue(() => recordNativeBookmarkRemovals(chrome, nodes)).catch(async error => {
+      await setBackgroundTagSyncStatus(chrome, (error && error.message) || error);
+      console.warn('[书签管家] 原生标签删除同步失败', error);
+    });
+  }, NATIVE_SYNC_DELAY_MS);
+}
+
+async function recordNativeBookmarkRemovals(api, nodes) {
+  const removedNodes = Array.isArray(nodes) ? nodes.filter(Boolean) : [];
+  if (!removedNodes.length || nativeSyncApplying) return;
   const state = await loadNativeSyncState(api);
   if (!state.enabled) return;
-  const removedBookmarks = collectNativeUserBookmarks([node], []);
+  const removedBookmarks = collectNativeUserBookmarks(removedNodes, []);
   if (!removedBookmarks.length) return;
   const tree = await api.bookmarks.getTree();
   const bookmarks = collectNativeUserBookmarks(tree, []);
@@ -2485,11 +2507,8 @@ chrome.bookmarks.onChanged.addListener(() => {
 chrome.bookmarks.onRemoved.addListener((_id, removeInfo) => {
   discardDeferredNativeSyncAutoTags(removeInfo && removeInfo.node);
   scheduleNativeHydration();
-  nativeQueue(() => recordNativeBookmarkRemoval(chrome, removeInfo && removeInfo.node))
-    .catch(async error => {
-      await setBackgroundTagSyncStatus(chrome, error && error.message || error);
-      console.warn('[书签管家] 原生标签删除同步失败', error);
-    });
+  // 同一窗口内的多条删除合并成一次全树扫描（批量删除 / 删除文件夹时最明显）
+  scheduleNativeRemovalBatch(removeInfo && removeInfo.node);
 });
 chrome.bookmarks.onMoved.addListener(() => { scheduleNativeHydration(); });
 

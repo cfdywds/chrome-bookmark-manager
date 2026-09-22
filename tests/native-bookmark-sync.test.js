@@ -2563,6 +2563,37 @@ describe('原生书签标签同步', () => {
     }
   });
 
+  it('同一窗口内的多条删除合并成一次全树扫描', async () => {
+    vi.useFakeTimers();
+    const source = createHarness(createTree([
+      { id: 'a', parentId: '1', title: 'A', url: 'https://a.example/' },
+      { id: 'b', parentId: '1', title: 'B', url: 'https://b.example/' },
+      { id: 'c', parentId: '1', title: 'C', url: 'https://c.example/' }
+    ]), { bmTags: { a: ['AI'], b: ['AI'], c: ['AI'] }, bmFixedTags: [], bmTagRules: { domain: {}, keyword: {} } });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+
+    try {
+      await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+      source.chrome.bookmarks.getTree.mockClear();
+
+      for (const id of ['a', 'b', 'c']) {
+        const removed = clone(findNode(source.tree, id));
+        await source.chrome.bookmarks.remove(id);
+        source.emitBookmarkRemoved(id, removed);
+      }
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // 逐条处理时每条删除都会全树扫描一次（加上发布墓碑共 2 次/条）；合并后同一窗口只处理一次
+      expect(source.chrome.bookmarks.getTree.mock.calls.length).toBeGreaterThan(0);
+      expect(source.chrome.bookmarks.getTree.mock.calls.length).toBeLessThanOrEqual(3);
+    } finally {
+      vi.useRealTimers();
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
   it('配置变更只写配置分桶，不重写标签分桶', async () => {
     const source = createHarness(createTree([
       { id: 'source', parentId: '1', title: 'OpenAI', url: 'https://openai.com/research' }
