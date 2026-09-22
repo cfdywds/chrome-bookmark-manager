@@ -71,11 +71,15 @@
   font-size: var(--fs-title);
   color: var(--muted);
 }
+/* 顶栏「开源仓库」文本链接：规格对齐设计稿 .text-link（13px / padding 4px 8px /
+   radius-xs / ink-2 → ink + line 底 hover）。
+   min-width / min-height: 32px 是设计稿没有的：≤420px 时文字被隐藏只留图标，
+   此时靠它保证图标仍够点（见下方窄屏规则）。 */
 .nt-source-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: var(--space-1);
   min-width: 32px; min-height: 32px;
   padding: 4px var(--space-2);
   color: var(--ink-2);
@@ -345,9 +349,11 @@
 .nt-result-count {
   flex-shrink: 0;
   font-size: var(--fs-meta);
-  font-weight: 400;
-  color: var(--muted);
-  padding: 0 var(--space-1);
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--primary-soft);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
   white-space: nowrap;
   line-height: 1.4;
 }
@@ -1087,28 +1093,29 @@
   height: 16px;
 }
 
-/* ===== 搜索框：一键清除全部筛选条件（搜索词 + 标签 + 文件夹）===== */
+/* ===== 搜索框：一键清除全部筛选条件（搜索词 + 标签 + 文件夹）=====
+   按设计稿 .clear-filter-btn 做成低调的文本按钮：默认 muted 无底无边框，
+   悬浮才转 danger 色并浮出 sub 底衬。此前做成 danger 实底 pill 在搜索框里过于抢眼，
+   且与相邻的「清空搜索」× 形成并排两个叉的重复感（显示时机已由 JS 改为互斥）。 */
 .nt-filter-clear {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   flex-shrink: 0;
-  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
-  border-radius: var(--radius-pill);
-  background: var(--danger-soft);
-  color: var(--danger);
+  padding: 2px 6px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--muted);
   font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 4px 11px 4px 8px;
+  font-size: var(--fs-meta);
+  font-weight: 500;
   line-height: 1.4;
   white-space: nowrap;
   cursor: pointer;
   transition:
-    border-color 0.15s,
-    color 0.15s,
-    background 0.15s,
-    box-shadow 0.15s;
+    color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
 }
 .nt-filter-clear .ico {
   width: 13px;
@@ -1116,13 +1123,11 @@
   flex: 0 0 auto;
 }
 .nt-filter-clear:hover {
-  border-color: var(--danger);
-  background: var(--danger);
-  color: var(--on-solid);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--danger) 30%, transparent);
+  color: var(--danger);
+  background: var(--surface-sub);
 }
 .nt-filter-clear:focus-visible {
-  outline: 2px solid var(--danger);
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 .nt-filter-clear[hidden] {

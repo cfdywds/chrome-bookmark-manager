@@ -281,6 +281,30 @@ describe('新标签页搜索', () => {
     expect(newtabCss).toContain('min-width: 32px; min-height: 32px;');
   });
 
+  it('「清除筛选」与「清空搜索」互斥显示，不在搜索框右侧并排两个叉', () => {
+    // clearAllFilters 已经把搜索词一并清掉，两个入口同时出现是重复的；
+    // 有标签/文件夹筛选时交给「清除筛选」，只有搜索词时才单独给「清空搜索」。
+    expect(newtabSource).toContain('const scopedFiltering = Boolean(activeTag || activeFolder);');
+    expect(newtabSource).toContain(
+      "if (filterClear) filterClear.classList.toggle('hidden', !scopedFiltering);"
+    );
+    expect(newtabSource).toContain(
+      "if (searchClear) searchClear.classList.toggle('hidden', !search || scopedFiltering);"
+    );
+  });
+
+  it('搜索框右侧的清除入口与结果数按设计稿规格落地', () => {
+    // 设计稿 .clear-filter-btn：默认 muted 裸文本，悬浮才转 danger —— 不是 danger 实底 pill
+    expect(newtabCss).toMatch(/\.nt-filter-clear \{[^}]*background: transparent;/);
+    expect(newtabCss).toMatch(/\.nt-filter-clear \{[^}]*color: var\(--muted\);/);
+    expect(newtabCss).toMatch(/\.nt-filter-clear:hover \{[^}]*color: var\(--danger\);/);
+    expect(newtabCss).not.toMatch(/\.nt-filter-clear \{[^}]*background: var\(--danger-soft\);/);
+    // 设计稿 .match-count-chip：结果数是 primary-soft 底的 pill，不是裸文字
+    expect(newtabCss).toMatch(/\.nt-result-count \{[^}]*background: var\(--primary-soft\);/);
+    expect(newtabCss).toMatch(/\.nt-result-count \{[^}]*border-radius: var\(--radius-pill\);/);
+    expect(newtabCss).toMatch(/\.nt-result-count \{[^}]*color: var\(--primary\);/);
+  });
+
   it('打开书签后隐藏悬浮操作，直到鼠标移出卡片', () => {
     const activeClasses = new Set();
     let blurred = false;

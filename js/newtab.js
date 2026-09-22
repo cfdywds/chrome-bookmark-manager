@@ -344,10 +344,14 @@
       resultCount.classList.toggle('hidden', !filtering);
       resultCount.textContent = filtering ? list.length + ' 个结果' : '';
     }
+    // 「清除筛选」与「清空搜索」互斥显示：clearAllFilters 已经把搜索词一并清掉，
+    // 两者同时出现会在搜索框右侧并排两个叉，看着重复。
+    // 有标签/文件夹筛选时统一交给「清除筛选」（它清得更全），只有搜索词时才单独给「清空搜索」。
+    const scopedFiltering = Boolean(activeTag || activeFolder);
     const filterClear = $('#ntFilterClear');
-    if (filterClear) filterClear.classList.toggle('hidden', !filtering);
+    if (filterClear) filterClear.classList.toggle('hidden', !scopedFiltering);
     const searchClear = $('#ntClear');
-    if (searchClear) searchClear.classList.toggle('hidden', !search);
+    if (searchClear) searchClear.classList.toggle('hidden', !search || scopedFiltering);
     const tagged = DATA.items.filter(i => (i.tags || []).length).length;
     $('#ntCount').textContent = DATA.total + ' 个书签 · ' + tagged + ' 已打标';
     if (!list.length) {
