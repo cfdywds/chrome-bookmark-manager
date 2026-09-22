@@ -9,6 +9,12 @@
   </head>
   <body class="opt-body">
     <div class="opt-wrap">
+      <!-- ===== 设置分组导航（P2-3-1：桌面左侧 sticky 锚点导航，窄屏横向滚动）===== -->
+      <nav id="optNav" class="opt-nav" aria-label="设置分组导航"></nav>
+
+      <!-- 右侧主内容列：整列收敛为一个网格单元。若让导航与简介卡同处一行，
+           导航自身高度会把该行撑高，在简介卡与首个分组之间留下大片空白。 -->
+      <div class="opt-main">
       <div class="opt-hero">
         <h1>
           <span class="brand-icon"
@@ -29,9 +35,6 @@
         </h1>
         <p><b id="optVersion"></b> · 所有数据仅保存在你的浏览器本地 · 修改即时生效，无需手动保存</p>
       </div>
-
-      <!-- ===== 设置分组导航（P2-3-1：桌面左侧 sticky 锚点导航，窄屏横向滚动）===== -->
-      <nav id="optNav" class="opt-nav" aria-label="设置分组导航"></nav>
 
       <!-- ===== 分组 1：AI 分类 ===== -->
       <section class="opt-section" id="opt-ai">
@@ -697,6 +700,7 @@
           </div>
         </div>
       </section>
+      </div>
     </div>
 
     <div id="toasts"></div>

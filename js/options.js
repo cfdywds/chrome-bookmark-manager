@@ -1641,6 +1641,14 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#setAutoAiTag').addEventListener('change', persistAutoAiTag);
   $('#setTagSync').addEventListener('change', persistTagSync);
   // 新标签页外观：改动即存，新标签页通过 onChanged 实时生效
+  // 取色或输入色值即代表「要用这个背景色」：若配色还没切到「自定义」，
+  // 保存下来的 bg 会被 theme='auto'/'light'/'dark' 忽略，表现为「设置背景色无效」。
+  const useCustomThemeForBg = () => {
+    const themeEl = $('#setNtTheme');
+    if (!themeEl || themeEl.value === 'custom') return;
+    themeEl.value = 'custom';
+    ntBgRowVisible(true);
+  };
   $('#setNtWidth').addEventListener('change', () =>
     persistNtAppearance('新标签页宽度已保存')
   );
@@ -1649,17 +1657,20 @@ document.addEventListener('DOMContentLoaded', () => {
     persistNtAppearance('新标签页配色已保存');
   });
   $('#setNtBg').addEventListener('input', () => {
+    useCustomThemeForBg();
     $('#setNtBgHex').value = $('#setNtBg').value;
     persistNtAppearance(null);
   });
   $('#setNtBgHex').addEventListener('input', () => {
     const v = $('#setNtBgHex').value.trim();
     if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+      useCustomThemeForBg();
       $('#setNtBg').value = v.toLowerCase();
       persistNtAppearance(null);
     }
   });
   $('#setNtBgReset').addEventListener('click', async () => {
+    useCustomThemeForBg();
     $('#setNtBg').value = NT_DEFAULT_BG;
     $('#setNtBgHex').value = NT_DEFAULT_BG;
     await persistNtAppearance('已重置为默认背景色');

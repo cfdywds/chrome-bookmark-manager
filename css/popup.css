@@ -1844,6 +1844,12 @@ mark {
 .hidden {
   display: none !important;
 }
+/* hidden 属性必须真正隐藏：组件里的 display:flex/grid 会盖掉 UA 的 [hidden]{display:none}。
+   例如设置页「背景颜色」行（.opt-card .form-row）在「跟随系统/浅色/深色」下仍然显示，
+   用户改完颜色却因 theme!=='custom' 被忽略，表现为「背景色设置无效」。 */
+[hidden] {
+  display: none !important;
+}
 .empty-state .emoji svg {
   width: 42px;
   height: 42px;
@@ -3267,6 +3273,11 @@ mark {
   align-items: center;
   gap: var(--space-2);
 }
+/* 标题里的问号按钮：间距只由上面的 gap 决定。
+   .help-dot 自带的 margin-left 会与 gap 叠加（8+4=12px），在标题与问号之间留下多余空隙。 */
+.opt-section-text h2 > .help-dot {
+  margin-left: 0;
+}
 .opt-section-text p {
   font-size: var(--fs-meta);
   color: var(--muted);
@@ -3470,23 +3481,37 @@ mark {
     gap: 28px;
     align-items: start;
   }
+  /* 右侧内容整列收敛为单个网格单元：导航因此独占网格的一行，
+     不会把自己的高度摊到简介卡所在行上，简介卡与首个分组之间只剩正常间距。 */
+  .opt-main {
+    grid-column: 2;
+    min-width: 0;
+  }
   .opt-nav {
+    grid-column: 1;
     position: sticky;
     top: var(--space-6);
-    /* 跨满整列：sticky 才能随页面滚动保持可见 */
+    /* 单行网格里跨满整列：sticky 才能随页面滚动保持可见 */
     grid-row: 1 / -1;
     /* 锚点导航直接落在画布上，不再额外包一层卡片 */
     padding: 0;
     max-height: calc(100vh - 48px);
     overflow-y: auto;
   }
-  .opt-hero,
-  .opt-section,
-  .opt-foot {
-    grid-column: 2;
-  }
 }
 @media (max-width: 719px) {
+  /* 窄屏（原为块级流）改为单列流：让简介卡保持在最上，导航下拉紧随其后，
+     与宽屏的阅读顺序一致；.opt-main 用 display:contents 让内部卡片直接参与单列布局。 */
+  .opt-wrap {
+    display: flex;
+    flex-direction: column;
+  }
+  .opt-main {
+    display: contents;
+  }
+  .opt-hero {
+    order: -1;
+  }
   /* 窄屏折叠为顶部下拉：避免横向滚动链接与下拉重复出现 */
   .opt-nav .opt-nav-title,
   .opt-nav .opt-nav-link {
