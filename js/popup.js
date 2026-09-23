@@ -3014,6 +3014,70 @@ function maybeShowOrganizeTip() {
   }
 }
 
+// ---------- 打开面板即聚焦搜索框 ----------
+// 管理面板的宿主是侧边栏与独立标签页，两者打开后都会把键盘焦点交给文档；但 Chrome 在面板刚
+// 加载的一瞬间可能仍把焦点留在浏览器 UI（地址栏 / 工具栏），此时页面的 focus() 会被忽略，
+// 所以要按时间窗重试。判据不能只看 activeElement：焦点被浏览器忽略时它一样会指向输入框。
+// 用户一旦开始操作页面（点击 / 按键）就立即停止，之后不再抢焦点。
+let searchAutofocusStopped = false;
+let searchAutofocusTimers = [];
+
+function isEditableElement(el) {
+  if (!el) return false;
+  const tag = (el.tagName || '').toLowerCase();
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable === true;
+}
+
+function focusSearchOnOpen() {
+  if (searchAutofocusStopped) return;
+  const input = $('#searchInput');
+  if (!input) return;
+  try {
+    input.focus({ preventScroll: true });
+  } catch (e) {
+    input.focus();
+  }
+  // 页面持有焦点 + 焦点落在搜索框，才算真正成功
+  if (!document.hasFocus() || document.activeElement !== input) return;
+  searchAutofocusStopped = true;
+  searchAutofocusTimers.forEach(clearTimeout);
+  searchAutofocusTimers = [];
+  // 框内已有内容时全选，便于直接覆盖输入（与 newtab 的搜索框行为一致）
+  if (input.value) {
+    try {
+      input.select();
+    } catch (e) {
+      /* 部分环境不支持 select，忽略 */
+    }
+  }
+}
+
+function armSearchAutofocus() {
+  searchAutofocusTimers.forEach(clearTimeout);
+  searchAutofocusTimers = [0, 60, 150, 300, 600, 1200].map(ms => setTimeout(focusSearchOnOpen, ms));
+}
+
+function stopSearchAutofocus() {
+  searchAutofocusStopped = true;
+  searchAutofocusTimers.forEach(clearTimeout);
+  searchAutofocusTimers = [];
+}
+
+function setupSearchAutofocus() {
+  // 常驻而非 once：重新武装后仍要能被同一次交互立即叫停
+  document.addEventListener('pointerdown', stopSearchAutofocus, { capture: true });
+  document.addEventListener('keydown', stopSearchAutofocus, { capture: true });
+  // 侧边栏关闭后文档可能被复用（不重跑 init），再次可见时重新武装一次；
+  // 但焦点已经落在面板内的输入控件上时（用户正在别处编辑）不抢。
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (isEditableElement(document.activeElement)) return;
+    searchAutofocusStopped = false;
+    armSearchAutofocus();
+  });
+  armSearchAutofocus();
+}
+
 // ---------- 初始化 ----------
 async function init() {
   // 面板结构被改动导致关键节点缺失时立刻报错：否则事件注册会在中途静默中断，
@@ -3023,6 +3087,8 @@ async function init() {
   if (missingNodes.length) {
     throw new Error('面板结构缺少必要元素：' + missingNodes.join('、') + '，请重新加载扩展');
   }
+  // 打开面板即把光标放进搜索框：不等首轮书签分析，用户可以先打字
+  setupSearchAutofocus();
   // 设置只影响 AI 操作；与首轮书签分析并行读取，避免首屏多等待一次 storage。
   tagConfigurationReady = BM.initializeSyncedTagConfiguration
     ? BM.initializeSyncedTagConfiguration().catch(() => {

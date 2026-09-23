@@ -26,12 +26,14 @@
             >
               <use href="icons/sprite.svg#i-search" />
             </svg>
+            <!-- autofocus：面板打开即把光标放进搜索框（JS 侧 setupSearchAutofocus 再做兜底） -->
             <input
               id="searchInput"
               type="text"
               placeholder="搜索标题、网址、域名、标签"
               autocomplete="off"
               spellcheck="false"
+              autofocus
             />
             <div id="searchScope" class="search-scope hidden" role="group" aria-label="搜索范围">
               <button type="button" class="scope-chip active" data-scope="all" aria-pressed="true">
