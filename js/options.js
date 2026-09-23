@@ -1499,7 +1499,19 @@ function initOptionsNav() {
     );
     sections.forEach(section => observer.observe(section));
   }
-  setActiveNav((window.location.hash || '').slice(1) || sections[0].id);
+  // 带 hash 打开（例如从面板点「自定义规则」跳过来）时显式滚到目标分组：分组内容渲染后位置会变，
+  // 不能只靠浏览器原生锚点；设置页已打开时面板只改 hash、不重载文档，所以还要跟着 hashchange 滚。
+  const initialId = (window.location.hash || '').slice(1);
+  if (initialId && document.getElementById(initialId)) {
+    setActiveNav(initialId);
+    requestAnimationFrame(() => jumpToSection(initialId, false));
+  } else {
+    setActiveNav(sections[0].id);
+  }
+  window.addEventListener('hashchange', () => {
+    const id = (window.location.hash || '').slice(1);
+    if (id && document.getElementById(id)) jumpToSection(id, true);
+  });
 }
 
 // ---------- P2-3：分组状态摘要（不展开即可看到配置健康度） ----------

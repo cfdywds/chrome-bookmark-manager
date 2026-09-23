@@ -2119,6 +2119,13 @@ mark {
   justify-self: end;
   white-space: nowrap;
 }
+/* 摘要行右侧可能有两个入口（自定义规则 / 应用规则）：包一层，避免挤占两列 grid 的列定义 */
+.tag-summary-tip .tag-tip-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-self: end;
+}
 .tag-cloud.active {
   background: var(--primary);
   color: var(--on-solid);

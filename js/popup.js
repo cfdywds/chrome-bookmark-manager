@@ -303,6 +303,35 @@ async function applyCustomRules(trigger) {
   }
 }
 
+// 跳到设置页的自定义规则界面（设置页「标签体系」分组，锚点 #opt-tags）。
+// 扩展没申请 tabs 权限，所以用 runtime.getContexts 找已打开的设置页：找到就激活它并只改 hash
+// （fragment 变化不重载文档，设置页里没保存的编辑不会丢），没找到才新开一个标签页。
+async function openCustomRuleSettings() {
+  const base = chrome.runtime.getURL('options.html');
+  const target = base + '#opt-tags';
+  try {
+    if (chrome.runtime && typeof chrome.runtime.getContexts === 'function') {
+      const contexts = await chrome.runtime.getContexts({ contextTypes: ['TAB'] });
+      const opened = contexts.find(ctx => (ctx.documentUrl || '').split('#')[0] === base);
+      if (opened && opened.tabId != null) {
+        await chrome.tabs.update(opened.tabId, { active: true, url: target });
+        return;
+      }
+    }
+  } catch (e) {
+    /* 查询失败就退回新开标签页 */
+  }
+  try {
+    await chrome.tabs.create({ url: target, active: true });
+  } catch (e) {
+    try {
+      chrome.runtime.openOptionsPage();
+    } catch (e2) {
+      toast('打开设置页失败，请从扩展菜单进入选项页', 'danger');
+    }
+  }
+}
+
 // 自定义确认弹层（替代原生 confirm，视觉统一、可定制文案）
 function confirmDialog(opts) {
   opts = opts || {};
@@ -1455,6 +1484,7 @@ function renderTags(container) {
         <span class="sec-title">${untaggedCount} 个书签未打标 ${helpDot('可在新增或编辑书签时填写标签，或使用 AI 批量打标。')}</span>
         ${hiddenCount ? `<button class="btn small ghost" data-jump="hidden">${ICON_SM('eye-off')} 隐藏（${hiddenCount}）</button>` : ''}
         ${customRuleCount ? `<button class="btn small ghost" data-action="apply-custom-rules">${ICON_SM('sparkles')} 应用规则</button>` : ''}
+        <button class="btn small ghost" data-action="edit-custom-rules" data-tip="到设置页「标签体系 → 自定义规则」编辑规则" aria-label="打开设置页编辑自定义规则">${ICON_SM('gear')} 自定义规则</button>
         <button class="btn small primary" data-action="ai-tag-all">${ICON_SM('sparkles')} AI 批量打标</button>
       </div>`;
     return;
@@ -1479,7 +1509,10 @@ function renderTags(container) {
       customRuleCount
         ? `<div class="tag-summary-tip">
       <span>已配置 <b>${customRuleCount}</b> 条自定义规则，可批量应用到已有书签，不调用 AI。</span>
-      <button class="btn small primary" data-action="apply-custom-rules">${ICON_SM('sparkles')} 应用规则</button>
+      <span class="tag-tip-actions">
+        <button class="btn small ghost" data-action="edit-custom-rules" data-tip="到设置页「标签体系 → 自定义规则」编辑规则" aria-label="打开设置页编辑自定义规则">${ICON_SM('gear')} 自定义规则</button>
+        <button class="btn small primary" data-action="apply-custom-rules">${ICON_SM('sparkles')} 应用规则</button>
+      </span>
     </div>`
         : ''
     }
@@ -3229,6 +3262,8 @@ async function init() {
         else aiTagAll(true);
       } else if (action === 'apply-custom-rules') {
         applyCustomRules(btn);
+      } else if (action === 'edit-custom-rules') {
+        openCustomRuleSettings();
       } else if (action === 'migrate-tags') {
         migrateTags();
       } else if (action === 'toggle-hidden') {

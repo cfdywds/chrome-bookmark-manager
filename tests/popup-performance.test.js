@@ -16,6 +16,7 @@ const popupHtml = readFileSync(join(__dirname, '..', 'popup.html'), 'utf-8');
 const popupCss = readFileSync(join(__dirname, '..', 'css', 'popup.css'), 'utf-8');
 const tokensCss = readFileSync(join(__dirname, '..', 'css', 'tokens.css'), 'utf-8');
 const libSource = readFileSync(join(__dirname, '..', 'js', 'lib.js'), 'utf-8');
+const optionsSource = readFileSync(join(__dirname, '..', 'js', 'options.js'), 'utf-8');
 const manifest = JSON.parse(readFileSync(join(__dirname, '..', 'manifest.json'), 'utf-8'));
 // 归一化空白：断言只关心声明/调用本身，不关心 prettier 的换行与缩进
 const flat = source => source.replace(/\s+/g, ' ');
@@ -554,6 +555,28 @@ describe('自定义规则批量应用', () => {
     expect(source).toContain("thirdText: '覆盖'");
     expect(source).toContain("confirmText: '追加'");
     expect(source).not.toContain('BM.aiTag');
+  });
+
+  it('自定义规则摘要行与空态都提供跳到设置页规则界面的入口', () => {
+    // 有规则（摘要行）与无规则（空态）两处都要有入口
+    const entries = popupSource.match(/data-action="edit-custom-rules"/g) || [];
+    expect(entries.length).toBeGreaterThanOrEqual(2);
+    expect(popupSource).toContain("} else if (action === 'edit-custom-rules') {");
+    // 摘要行是两个 grid 列（文案 + 操作），右侧两个入口要包一层容器，否则第二个按钮会掉到下一行
+    expect(popupSource).toContain('class="tag-tip-actions"');
+    expect(popupCss).toContain('.tag-summary-tip .tag-tip-actions');
+    const source = getFunctionSource('openCustomRuleSettings');
+    // 目标是设置页「标签体系」分组里的自定义规则卡片
+    expect(source).toContain("chrome.runtime.getURL('options.html')");
+    expect(source).toContain("'#opt-tags'");
+    // 不申请 tabs 权限：用 getContexts 找已打开的设置页，找到只改 hash（不重载），否则新开
+    expect(source).toContain('chrome.runtime.getContexts');
+    expect(source).toContain('chrome.tabs.update(');
+    expect(source).toContain('chrome.tabs.create');
+    expect(source).toContain('chrome.runtime.openOptionsPage()');
+    // 设置页侧跟随 hash 滚动到分组
+    expect(optionsSource).toContain("window.addEventListener('hashchange'");
+    expect(optionsSource).toContain('jumpToSection(id, true)');
   });
 
   it('规则应用的预览异常会显示失败提示，而非静默中断', async () => {
