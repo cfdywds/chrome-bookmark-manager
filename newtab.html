@@ -42,7 +42,7 @@
               </svg>
               <span>开源仓库</span>
             </a>
-            <button id="ntOpenPanel" class="btn small ghost">
+            <button id="ntOpenPanel" class="btn small ghost nt-panel-btn">
               <svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -54,7 +54,27 @@
               >
                 <use href="icons/sprite.svg#i-gear" />
               </svg>
-              打开管理面板
+              <span class="nt-panel-label">打开管理面板</span>
+            </button>
+            <!-- 兜底入口：侧边栏在扩展重载后可能只剩一个空白面板，这条路径直接开标签页 -->
+            <button
+              id="ntOpenInTab"
+              class="nt-tab-open"
+              type="button"
+              data-tip="在独立标签页中打开管理界面（侧边栏空白时用这个）"
+              aria-label="在独立标签页中打开管理界面"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <use href="icons/sprite.svg#i-external" />
+              </svg>
             </button>
             <div class="nt-view-toggle" role="group" aria-label="视图切换">
               <button

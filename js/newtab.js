@@ -613,17 +613,48 @@
   }
 
   // 打开侧边栏管理面板（需要用户手势）
+  //
+  // 侧边栏页面的路径只由 manifest 的 side_panel.default_path 声明：扩展在 chrome://extensions
+  // 重新加载（或更新）之后，Chrome 会丢掉这份注册并销毁面板已有的 web contents，此时
+  // sidePanel.open() 只会露出一个空白面板——页面根本没有被加载，面板内部的看门狗与错误卡
+  // 也没有机会运行（用户看到的就是「白屏」，连顶栏都不存在）。所以打开前把路径显式写回去。
+  const PANEL_PATH = 'popup.html';
+  function ensurePanelRegistration() {
+    // 必须留在用户手势的同步调用栈里，且不能 await：await 会断开手势链，
+    // 随后的 sidePanel.open() 会被拒绝（只能由用户操作触发）。
+    try {
+      const task = chrome.sidePanel.setOptions({ path: PANEL_PATH, enabled: true });
+      if (task && typeof task.catch === 'function') task.catch(() => {});
+    } catch (e) {
+      /* Chrome 114 以下没有 sidePanel：忽略，打开失败时走标签页兜底 */
+    }
+  }
+
+  // 兜底入口：不经过 side panel，直接以标签页打开管理界面。
+  // 侧边栏空白属于 Chromium 的平台行为，任何面板内部的兜底都救不了，这条路径保证进得去。
+  function openManagerTab() {
+    const url = chrome.runtime.getURL(PANEL_PATH);
+    const fallback = () => window.open(url, '_blank', 'noopener');
+    try {
+      const task = chrome.tabs.create({ url });
+      if (task && typeof task.catch === 'function') task.catch(fallback);
+    } catch (e) {
+      fallback();
+    }
+  }
+
   async function openPanel() {
+    ensurePanelRegistration();
     try {
       const win = await chrome.windows.getCurrent();
       await chrome.sidePanel.open({ windowId: win.id });
+      // 面板若已停在空白状态（重载后 Chrome 留下的空壳），再指认一次路径促使它重新加载。
+      // 配置未变化时 Chrome 不会重新加载已就绪的面板，因此对正常打开无副作用。
+      ensurePanelRegistration();
     } catch (e) {
-      // 降级：打开设置页
-      try {
-        chrome.runtime.openOptionsPage();
-      } catch (e2) {
-        /* noop */
-      }
+      // 降级：面板 API 不可用 / 版本过低 / 手势被拒 → 以标签页打开管理界面
+      openManagerTab();
+      showToast('侧边栏未能打开，已在标签页中打开管理界面');
     }
   }
 
@@ -779,6 +810,8 @@
     render();
   });
   $('#ntOpenPanel').addEventListener('click', openPanel);
+  // 兜底入口：不经过侧边栏，直接以标签页打开管理界面
+  $('#ntOpenInTab')?.addEventListener('click', openManagerTab);
   // 视图切换：卡片网格 / 紧凑列表
   const viewGridBtn = $('#ntViewGrid');
   const viewListBtn = $('#ntViewList');

@@ -2,6 +2,21 @@
 // ① 点击工具栏图标 → Chrome 原生自动打开右侧 Side Panel（openPanelOnActionClick:true）。
 // ② 监听 chrome.bookmarks.onCreated：浏览器地址栏 ⭐ 收藏后，在后台写入默认标签。
 
+// 侧边栏页面路径与 manifest 的 side_panel.default_path 必须一致（回归测试锁定）。
+const SIDE_PANEL_PATH = 'popup.html';
+
+// 侧边栏路径原本只由 manifest 的 side_panel.default_path 声明：扩展在 chrome://extensions
+// 重新加载（或更新）后 Chrome 会丢掉这份注册并销毁面板已有的 web contents，此后
+// chrome.sidePanel.open() 只露出一个空白面板——面板页面从未被加载，面板内部的看门狗
+// 与错误卡都没有机会运行（用户看到的就是「白屏」）。所以 SW 每次启动都显式写回路径。
+function registerSidePanel() {
+  if (!chrome.sidePanel || typeof chrome.sidePanel.setOptions !== 'function') return;
+  chrome.sidePanel
+    .setOptions({ path: SIDE_PANEL_PATH, enabled: true })
+    .catch(err => console.warn('[书签管家] 无法注册侧边栏路径', err));
+}
+registerSidePanel();
+
 // 点击图标自动打开侧边栏（Chrome 原生行为，100% 可靠）
 if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
@@ -2513,7 +2528,11 @@ chrome.bookmarks.onRemoved.addListener((_id, removeInfo) => {
 chrome.bookmarks.onMoved.addListener(() => { scheduleNativeHydration(); });
 
 if (chrome.runtime && chrome.runtime.onInstalled) {
-  chrome.runtime.onInstalled.addListener(() => { scheduleNativeHydration(); });
+  chrome.runtime.onInstalled.addListener(() => {
+    // 重新加载 / 更新扩展后 Chrome 侧的面板注册会丢失，这里补写回来
+    registerSidePanel();
+    scheduleNativeHydration();
+  });
 }
 if (chrome.runtime && chrome.runtime.onStartup) {
   chrome.runtime.onStartup.addListener(() => { scheduleNativeHydration(); });

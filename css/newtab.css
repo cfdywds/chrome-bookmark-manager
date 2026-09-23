@@ -105,6 +105,41 @@
   border-radius: 4px;
 }
 
+/* 顶栏「在标签页中打开管理界面」兜底入口：与相邻的 .nt-source-link 同规格。
+   侧边栏在扩展重载后可能只剩一个空白面板（Chromium 平台行为），这条入口不经过
+   side panel，保证任何情况下都能进管理界面。 */
+.nt-tab-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 4px var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--fs-title);
+  white-space: nowrap;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  transition:
+    color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+.nt-tab-open svg {
+  width: 15px;
+  height: 15px;
+}
+.nt-tab-open:hover {
+  color: var(--ink);
+  background: var(--line);
+}
+.nt-tab-open:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
 /* ---- 大搜索框（位于吸顶头部内，随头部一起固定）----
    尺寸/底色/圆角由 popup.css 的共享 .search-box.lg 提供（P2-4 跨页面一致），
    本文件只保留 newtab 特有的图标细节，避免两份尺寸定义 */
@@ -1028,6 +1063,16 @@
     width: 100%;
   }
   .nt-source-link span { display: none; }
+  /* 「打开管理面板」同窄屏一起收成纯图标：与相邻的 32px 图标按钮对齐命中区，
+     文字折行会把整条顶栏撑高（420px 下实测 65px → 32px） */
+  .nt-panel-btn {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 3px 7px;
+  }
+  .nt-panel-btn .nt-panel-label {
+    display: none;
+  }
   .nt-filter-toggle {
     width: 30px;
     min-height: 30px;
