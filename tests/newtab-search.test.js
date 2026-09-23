@@ -357,19 +357,25 @@ describe('新标签页搜索', () => {
     );
   });
 
-  it('打开新标签页即聚焦搜索框，且数据就绪前输入不再报错', () => {
-    // 打开即把光标放进搜索框：HTML autofocus + JS 早期重试，不等书签分析完成
+  it('打开新标签页后按一次 Tab 即聚焦搜索框，且数据就绪前输入不再报错', () => {
+    // 平台限制：Chrome 会把新标签页加载时的键盘焦点留给地址栏，并忽略页面的 focus() / autofocus，
+    // 所以落点靠「搜索框是页面首个 Tab 目标」+「页面拿到键盘焦点时补一次聚焦」来安排
+    expect(newtabHtml).toContain('tabindex="1"');
     expect(newtabHtml).toContain('autofocus');
-    expect(newtabSource).toContain('function focusSearch()');
-    expect(newtabSource).toContain('setTimeout(focusSearch, ms)');
+    expect(newtabSource).toContain('function focusSearch(force)');
+    expect(newtabSource).toContain('function focusSearchOnPageEnter()');
+    expect(newtabSource).toContain("window.addEventListener('focus', focusSearchOnPageEnter)");
+    // 时间窗重试仍在（覆盖页面在加载时就已持有焦点的情况），但成功一次即可收工
+    expect(newtabSource).toContain('setTimeout(() => focusSearch(false), ms)');
     // 框内已有内容时全选，便于直接覆盖输入
     expect(newtabSource).toContain('searchInput.select()');
     // 用户开始操作后不再抢焦点
-    expect(newtabSource).toContain("document.addEventListener('pointerdown', stopSearchAutofocus");
-    expect(newtabSource).toContain("document.addEventListener('keydown', stopSearchAutofocus");
+    expect(newtabSource).toContain('function stopSearchAutofocus()');
+    expect(newtabSource).toContain("'pointerdown'");
+    expect(newtabSource).toContain("'keydown'");
     // 成功判据必须带上 document.hasFocus()：autofocus 被 Chrome 忽略时 activeElement 也会指向输入框
     expect(newtabSource).toContain(
-      'if (!document.hasFocus() || document.activeElement !== searchInput) return;'
+      'if (!document.hasFocus() || document.activeElement !== searchInput) return false;'
     );
     // analyze 完成前打字会触发 render：DATA 为空时必须直接返回
     expect(newtabSource).toContain('if (!DATA) return;');

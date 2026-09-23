@@ -661,23 +661,31 @@
   // 事件绑定
   const searchInput = $('#ntSearch');
 
-  // 打开新标签页即把光标放进搜索框，不等书签分析（analyze）完成。
-  // Chrome 会把新标签页首次加载时的焦点留给地址栏（omnibox），此时页面的 focus() 会被忽略，
-  // 所以在这里按时间窗反复尝试，直到页面「真的」拿到焦点为止；
+  // 光标落点：Chrome 会把新标签页加载时的键盘焦点强制留给地址栏（omnibox），并忽略页面发出的
+  // focus() 与 autofocus——这是浏览器进程层的策略，扩展无法绕过，所以「打开新标签页即可打字」做不到。
+  // 能做的是安排好「用户进入页面」这一步的落点：
+  //   1) 搜索框在 HTML 里声明 tabindex="1"，按一次 Tab 离开地址栏，光标直接落在搜索框；
+  //   2) 页面拿到键盘焦点（按 Tab / 点空白处）时再补一次聚焦，兜住 Tab 默认的焦点移动；
+  //   3) 首屏加载期间按时间窗重试，覆盖页面在加载时就已持有焦点的情况。
   // 注意不能拿 document.activeElement 当成功判据：autofocus 被浏览器忽略时它一样会指向输入框。
-  // 用户一旦开始操作页面（点击 / 按键）就立即停止，之后不再抢焦点。
+  // 用户一旦开始操作页面（点中卡片 / 按钮 / 链接，或已在别处按键）就停止，之后不再抢焦点。
   // 框内已有内容时全选，便于直接覆盖输入（为将来「恢复上次搜索词」预留行为）。
-  let searchAutofocusStopped = false;
-  function focusSearch() {
-    if (searchAutofocusStopped) return;
+  let searchAutofocusDone = false; // 已成功聚焦过一次，时间窗重试可以收工
+  let searchAutofocusStopped = false; // 用户已接管页面，不再抢焦点
+  let searchAutofocusTimers = [];
+  function focusSearch(force) {
+    if (searchAutofocusStopped) return false;
+    if (searchAutofocusDone && !force) return true;
     try {
       searchInput.focus({ preventScroll: true });
     } catch (e) {
       searchInput.focus();
     }
     // 页面持有焦点 + 焦点落在搜索框，才算真正成功
-    if (!document.hasFocus() || document.activeElement !== searchInput) return;
-    searchAutofocusStopped = true;
+    if (!document.hasFocus() || document.activeElement !== searchInput) return false;
+    searchAutofocusDone = true;
+    searchAutofocusTimers.forEach(clearTimeout);
+    searchAutofocusTimers = [];
     if (searchInput.value) {
       try {
         searchInput.select();
@@ -685,15 +693,52 @@
         /* 部分环境不支持 select，忽略 */
       }
     }
+    return true;
   }
-  // 用户已经开始操作页面（点击 / 按键）时就别再抢焦点
-  const stopSearchAutofocus = () => {
+  // 页面刚拿到键盘焦点：这一刻代表「用户想进入页面」，把光标放进搜索框。
+  // 按 Tab 时浏览器的默认焦点移动晚于 focus 事件，所以同步、宏任务、下一帧各补一次。
+  function focusSearchOnPageEnter() {
+    if (searchAutofocusStopped) return;
+    focusSearch(true);
+    setTimeout(() => focusSearch(true), 0);
+    requestAnimationFrame(() => focusSearch(true));
+  }
+  function stopSearchAutofocus() {
     searchAutofocusStopped = true;
-  };
-  document.addEventListener('pointerdown', stopSearchAutofocus, { once: true, capture: true });
-  document.addEventListener('keydown', stopSearchAutofocus, { once: true, capture: true });
+    searchAutofocusTimers.forEach(clearTimeout);
+    searchAutofocusTimers = [];
+  }
+  // 点中可操作控件就交给控件自己；点到空白处视为「进入页面」，光标给搜索框
+  const PAGE_CONTROL_SELECTOR =
+    'a, button, input, select, textarea, [role="button"], [role="option"], [contenteditable="true"], .nt-card';
+  document.addEventListener(
+    'pointerdown',
+    e => {
+      if (e.target && e.target.closest && e.target.closest(PAGE_CONTROL_SELECTOR)) {
+        stopSearchAutofocus();
+        return;
+      }
+      focusSearchOnPageEnter();
+    },
+    { capture: true }
+  );
+  document.addEventListener(
+    'keydown',
+    e => {
+      // Tab 是「进入页面」的动作，不算接管；焦点已在搜索框、或按的是别的键，都说明用户已在别处操作
+      if (e.target !== searchInput && e.key === 'Tab') return;
+      stopSearchAutofocus();
+    },
+    { capture: true }
+  );
+  window.addEventListener('focus', focusSearchOnPageEnter);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') focusSearchOnPageEnter();
+  });
   // 时间窗覆盖到书签分析完成：地址栏焦点可能在首次加载期间被锁，越靠后的尝试越有机会成功
-  [0, 80, 200, 400, 700, 1100, 1600, 2200, 3000, 4000].forEach(ms => setTimeout(focusSearch, ms));
+  [0, 80, 200, 400, 700, 1100, 1600, 2200, 3000, 4000].forEach(ms =>
+    searchAutofocusTimers.push(setTimeout(() => focusSearch(false), ms))
+  );
 
   let timer = null;
   searchInput.addEventListener('input', () => {

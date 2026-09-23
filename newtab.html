@@ -151,13 +151,19 @@
           >
             <use href="icons/sprite.svg#i-search" />
           </svg>
-          <!-- autofocus：打开新标签页即把光标放进搜索框（JS 侧 js/newtab.js 的 focusSearch 再做兜底） -->
+          <!--
+            光标落点：Chrome 会把新标签页加载时的键盘焦点强制留给地址栏，忽略页面发出的 focus() 与
+            autofocus（浏览器进程层策略，扩展无法绕过），所以「打开即可打字」做不到。让搜索框成为
+            页面首个 Tab 目标，用户按一次 Tab 离开地址栏，光标就直接落在搜索框。
+            autofocus 与 JS 重试用于页面在加载时就已持有焦点的情况（例如扩展自己创建的标签页）。
+          -->
           <input
             id="ntSearch"
             type="text"
             placeholder="搜索书签，回车搜索网页"
             autocomplete="off"
             spellcheck="false"
+            tabindex="1"
             autofocus
           />
           <button
