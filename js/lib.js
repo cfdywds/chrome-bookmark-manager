@@ -433,6 +433,10 @@
   const TAG_MUTATION_MESSAGE = 'bmTagMutation';
   const MAX_TAGS_PER_BOOKMARK = 6;   // 单书签标签数上限
   const MAX_TAG_LEN = 20;            // 单个标签长度上限
+  // AI 初始化标签池：标签是分类名词，比普通标签更短；数量与默认池（24 个）同量级
+  const SUGGEST_TAG_MAX_LEN = 12;
+  const SUGGEST_TAGS_MAX = 25;
+  const SUGGEST_SITES_MAX = 80;
 
   let tagsCache = null;              // null = 未加载
 
@@ -1527,6 +1531,137 @@
     return true;
   }
 
+  // ---- AI 初始化标签池：按站点聚合出样本，让 LLM 归纳一套分类标签 ----
+  // 只发送「域名 + 标题样本」，不发全量书签；高敏书签沿用 isAiEligibleItem 判定，连域名一起跳过。
+  async function collectAiTagSamples(opts) {
+    opts = opts || {};
+    const maxSites = opts.maxSites || SUGGEST_SITES_MAX;
+    const tree = await chrome.bookmarks.getTree();
+    const byDomain = new Map();
+    let total = 0;
+    let skippedSensitive = 0;
+    const walk = nodes => {
+      (nodes || []).forEach(node => {
+        if (node.children) {
+          // 内部同步目录不是用户书签，整棵跳过
+          if (node.title === NATIVE_SYNC_ROOT_TITLE) return;
+          walk(node.children);
+          return;
+        }
+        if (!node.url) return;
+        // 只统计普通网页：chrome://、javascript: 等既不是书签主题，也不该算进「高敏已排除」
+        if (!isHttpUrl(node.url)) return;
+        total++;
+        const item = { id: node.id, title: node.title || '', url: node.url };
+        if (!isAiEligibleItem(item)) {
+          skippedSensitive++;
+          return;
+        }
+        let host = '';
+        try {
+          host = new URL(node.url).hostname.replace(/^www\./, '');
+        } catch (e) {
+          return;
+        }
+        if (!host) return;
+        let entry = byDomain.get(host);
+        if (!entry) {
+          entry = { domain: host, count: 0, titles: [] };
+          byDomain.set(host, entry);
+        }
+        entry.count++;
+        if (entry.titles.length < 2 && item.title) entry.titles.push(item.title.slice(0, 60));
+      });
+    };
+    walk(tree);
+    const samples = [...byDomain.values()]
+      .sort((a, b) => b.count - a.count || a.domain.localeCompare(b.domain))
+      .slice(0, maxSites);
+    return { samples, total, skippedSensitive, sites: byDomain.size };
+  }
+
+  // 解析 AI 返回的标签池：容忍 {tags:[]} / {results:[]} / 纯数组，过滤兜底词、重复与过长项
+  function parseSuggestedTags(content) {
+    const text = String(content || '').trim();
+    let parsed = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch (e) {
+      const matched = text.match(/[{[][\s\S]*[}\]]/);
+      if (matched) {
+        try {
+          parsed = JSON.parse(matched[0]);
+        } catch (e2) {
+          parsed = null;
+        }
+      }
+    }
+    let list = [];
+    if (Array.isArray(parsed)) list = parsed;
+    else if (parsed && typeof parsed === 'object') {
+      const key = ['tags', 'results', 'labels', 'categories', 'pool'].find(k => Array.isArray(parsed[k]));
+      if (key) list = parsed[key];
+    }
+    const out = [];
+    list.forEach(item => {
+      const raw = typeof item === 'string' ? item : (item && (item.tag || item.name || item.label)) || '';
+      // 标签既入库也会渲染到设置页：去掉 HTML 元字符，避免 AI 返回的怪内容被当成标记
+      const tag = normalizeTag(raw).replace(/[<>&"'`\\]/g, '').trim();
+      if (!tag || tag === FALLBACK_TAG) return;
+      if (tag.length > SUGGEST_TAG_MAX_LEN) return;
+      if (!out.includes(tag)) out.push(tag);
+    });
+    return out.slice(0, SUGGEST_TAGS_MAX);
+  }
+
+  // 让 AI 根据站点样本给出 15-25 个分类标签；返回 string[]
+  async function suggestFixedTags(samples, cfg) {
+    if (!cfg || !cfg.apiKey || !cfg.baseUrl || !cfg.model) {
+      throw new Error('未配置 API：请在「⚙️ 设置」中填写 Base URL、API Key 与模型名');
+    }
+    const list = (samples || []).filter(s => s && s.domain && s.count > 0);
+    if (!list.length) throw new Error('没有可用于归纳的书签样本');
+    const pool = (await loadFixedTags()).filter(t => t !== FALLBACK_TAG);
+    const system = [
+      '你是一个浏览器书签分类助手。我会给你一批书签站点的域名、书签数量和标题样本。',
+      '请归纳出 15-25 个中文分类标签，覆盖这些站点的主要主题与使用场景。',
+      '每个标签用 2-4 个汉字的通用名词（如「代码」「设计」「资讯」），不要用站点名，不要出现“其他 / 杂项 / 未分类”这类兜底词，不要重复。',
+      pool.length ? '现有标签：' + pool.join('、') + '。仍然适用的请沿用原词，不足的再补充。' : '',
+      '只返回 JSON，不要任何额外说明，格式：',
+      '{"tags":["标签1","标签2"]}'
+    ].filter(Boolean).join('\n');
+    const user =
+      '站点样本（域名｜书签数｜标题样本）：\n' +
+      list
+        .map((s, i) => `${i + 1}. ${s.domain} | ${s.count} | ${(s.titles || []).join(' / ').slice(0, 120)}`)
+        .join('\n');
+    const body = {
+      model: cfg.model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user }
+      ],
+      temperature: 0.3
+    };
+    try {
+      body.response_format = { type: 'json_object' };
+    } catch (e) {
+      /* noop */
+    }
+    const base = normalizeLlmBaseUrl(cfg.baseUrl);
+    const resp = await chatWithFallback(body, cfg);
+    const data = await parseJsonResp(resp, 'LLM', base);
+    let content = '';
+    try {
+      content = data.choices[0].message.content || '';
+    } catch (e) {
+      throw new Error('LLM 响应格式异常（缺少 choices[0].message.content）');
+    }
+    const tags = parseSuggestedTags(content);
+    if (!tags.length) throw new Error('AI 没有返回可用的标签，请重试或换一个模型');
+    return tags;
+  }
+
   // ---- AI 多标签：LLM 为书签生成 1-3 个标签（强制从固定池选择）----
   // 返回: Promise<{ "<id>": ["标签1", "标签2"] }>
   async function aiTag(items, cfg) {
@@ -2264,6 +2399,9 @@
     aiTag,
     aiTagBatched,
     parseAiTags,
+    collectAiTagSamples,
+    parseSuggestedTags,
+    suggestFixedTags,
     PROVIDERS,
     aiClassify,
     aiClassifyBatched,

@@ -639,6 +639,87 @@ async function persistTagRules() {
   }
 }
 
+// 转义后放进 confirmDialog 的 innerHTML（AI 返回的标签内容不可信）
+function escapeText(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// 用 AI 根据当前所有书签初始化标签池：本地先按站点聚合样本（不发全量书签，高敏书签跳过），
+// 再让 AI 归纳分类，结果先预览，由用户决定覆盖标签池还是并入现有池。
+async function aiInitFixedTags() {
+  const btn = $('#aiInitFixedTags');
+  if (!btn || btn.disabled) return;
+  const cfg = {
+    provider: $('#setProvider') ? $('#setProvider').value : 'deepseek',
+    baseUrl: $('#setBase').value.trim(),
+    apiKey: $('#setKey').value.trim(),
+    model: $('#setModel').value.trim()
+  };
+  if (!cfg.baseUrl || !cfg.apiKey || !cfg.model) {
+    setFtMsg('先在上面填好 AI 服务的接口地址、API Key 和模型名，再回来初始化标签池', 'err');
+    jumpToSection('opt-ai', true);
+    return;
+  }
+  const label = btn.textContent;
+  btn.disabled = true;
+  try {
+    btn.textContent = '读取书签…';
+    setFtMsg('', '');
+    const { samples, total, skippedSensitive, sites } = await BM.collectAiTagSamples();
+    if (!samples.length) {
+      setFtMsg('没有可用于归纳的书签样本', 'err');
+      return;
+    }
+    const ok = await confirmDialog({
+      title: '用 AI 初始化标签池',
+      message:
+        `已读取 <b>${total}</b> 个书签，聚合为 <b>${sites}</b> 个站点，将把书签最多的 <b>${samples.length}</b> 个站点的域名与标题样本发送给 AI` +
+        (skippedSensitive
+          ? `；另有 <b>${skippedSensitive}</b> 个高敏书签（登录 / 金融等）已排除，不会发送`
+          : '') +
+        '。',
+      confirmText: '开始生成',
+      danger: false
+    });
+    if (!ok) return;
+    btn.textContent = 'AI 归纳中…';
+    await BM.requestLlmHostPermission(cfg.baseUrl);
+    const suggested = await BM.suggestFixedTags(samples, cfg);
+    if (!suggested.length) {
+      setFtMsg('AI 没有返回可用的标签，请重试或换一个模型', 'err');
+      return;
+    }
+    const existing = parseFixedTags($('#setFixedTags').value);
+    const merged = [...new Set([...existing, ...suggested])];
+    const cap = (typeof BM !== 'undefined' && BM.MAX_FIXED_TAGS) || 50;
+    const choice = await confirmDialog({
+      title: 'AI 生成的标签池',
+      message:
+        `AI 归纳出 <b>${suggested.length}</b> 个标签：<br>${escapeText(suggested.join('、'))}<br><br>` +
+        `现有标签池 <b>${existing.length}</b> 个；覆盖后 <b>${suggested.length}</b> 个，并入后 <b>${merged.length}</b> 个（上限 ${cap}）。<br>` +
+        '标签池变化不会自动改写历史书签的标签，之后可在面板点「立即收敛」或重新打标。',
+      confirmText: '覆盖标签池',
+      thirdText: '并入现有池',
+      danger: false
+    });
+    if (!choice) return;
+    const next = choice === 'third' ? merged : suggested;
+    $('#setFixedTags').value = next.join('\n');
+    await persistFixedTags();
+    setFtMsg(`已写入 ${next.length} 个标签（${choice === 'third' ? '并入现有池' : '覆盖标签池'}）`, 'ok');
+  } catch (e) {
+    setFtMsg('AI 初始化失败：' + (e.message || e), 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
 // 用活动配置填充表单（provider 缺失时回退 DeepSeek 预设）
 function fillForm(profile) {
   modelFetchIntent++;
@@ -1646,6 +1727,7 @@ document.addEventListener('DOMContentLoaded', () => {
     closeModelList();
   });
   $('#setFixedTags').addEventListener('input', debounce(persistFixedTags, 600));
+  $('#aiInitFixedTags')?.addEventListener('click', aiInitFixedTags);
   // 规则编辑完成并失焦后再保存，避免每次敲键都让已打开的侧边栏全量刷新。
   $('#setDomainTagRules').addEventListener('change', persistTagRules);
   $('#setKeywordTagRules').addEventListener('change', persistTagRules);
