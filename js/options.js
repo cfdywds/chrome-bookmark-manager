@@ -142,7 +142,10 @@ function confirmDialog(opts) {
         event.preventDefault();
         event.stopPropagation();
         done(false);
-      } else if (event.key === 'Enter' && !(event.target.closest && event.target.closest('button'))) {
+      } else if (
+        event.key === 'Enter' &&
+        !(event.target.closest && event.target.closest('button'))
+      ) {
         done(true);
       }
     };
@@ -153,7 +156,11 @@ function confirmDialog(opts) {
     wrap.addEventListener('keydown', onKey);
     wrap.classList.remove('hidden');
     if (window.UI && typeof UI.focusTrap === 'function') {
-      releaseTrap = UI.focusTrap(wrap, { onEscape: () => done(false), autofocus: false, restoreFocusTo });
+      releaseTrap = UI.focusTrap(wrap, {
+        onEscape: () => done(false),
+        autofocus: false,
+        restoreFocusTo
+      });
     }
     yes.focus();
   });
@@ -711,7 +718,10 @@ async function aiInitFixedTags() {
     const next = choice === 'third' ? merged : suggested;
     $('#setFixedTags').value = next.join('\n');
     await persistFixedTags();
-    setFtMsg(`已写入 ${next.length} 个标签（${choice === 'third' ? '并入现有池' : '覆盖标签池'}）`, 'ok');
+    setFtMsg(
+      `已写入 ${next.length} 个标签（${choice === 'third' ? '并入现有池' : '覆盖标签池'}）`,
+      'ok'
+    );
   } catch (e) {
     setFtMsg('AI 初始化失败：' + (e.message || e), 'err');
   } finally {
@@ -847,7 +857,11 @@ async function exportBackup() {
     setBackupMsg('', '');
   } catch (e) {
     setBackupMsg('导出失败：' + (e.message || e), 'err');
-    try { BM.logError('backup-export', e); } catch (ignored) { /* ignore */ }
+    try {
+      BM.logError('backup-export', e);
+    } catch (ignored) {
+      /* ignore */
+    }
   }
 }
 
@@ -886,12 +900,17 @@ function ensureBackupInput() {
       });
       notifySaved(
         `恢复完成：新增 ${result.bookmarks} 个书签、${result.folders} 个文件夹` +
-          (result.merged ? `，合并 ${result.merged} 个相同网址书签` : '') + ' ✓'
+          (result.merged ? `，合并 ${result.merged} 个相同网址书签` : '') +
+          ' ✓'
       );
       setBackupMsg('', '');
     } catch (e) {
       setBackupMsg('恢复失败：' + (e.message || e), 'err');
-      try { BM.logError('backup-import', e); } catch (ignored) { /* ignore */ }
+      try {
+        BM.logError('backup-import', e);
+      } catch (ignored) {
+        /* ignore */
+      }
     } finally {
       if (button) button.disabled = false;
     }
@@ -1096,6 +1115,42 @@ async function persistTagSync() {
     const msg = $('#tagSyncMsg');
     msg.textContent = '同步设置失败：' + (e.message || e);
     msg.className = 'settings-msg err';
+  }
+}
+
+async function handleForcePushSync() {
+  const btn = $('#btnForcePushSync');
+  if (!btn || btn.disabled) return;
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '正在重新推送...';
+  try {
+    const success = await BM.forceResyncTags();
+    if (success) {
+      if (window.UI && typeof window.UI.toast === 'function') {
+        window.UI.toast('已成功将本机全量标签和规则重建并推送到 Chrome 原生同步目录', 'ok');
+      }
+      const msg = $('#tagSyncMsg');
+      if (msg) {
+        msg.textContent = '全量重新推送成功';
+        msg.className = 'settings-msg ok';
+      }
+      if ($('#setTagSync')) $('#setTagSync').checked = true;
+    } else {
+      throw new Error('后台未确认同步成功');
+    }
+  } catch (err) {
+    if (window.UI && typeof window.UI.toast === 'function') {
+      window.UI.toast('推送失败：' + (err.message || err), 'danger');
+    }
+    const msg = $('#tagSyncMsg');
+    if (msg) {
+      msg.textContent = '推送失败：' + (err.message || err);
+      msg.className = 'settings-msg err';
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
   }
 }
 
@@ -1561,7 +1616,8 @@ function initOptionsNav() {
     event.preventDefault();
     jumpToSection(link.dataset.target, true);
     // 链接保留 href="#id"，无 JS 时仍可原生跳转
-    if (window.history && history.replaceState) history.replaceState(null, '', '#' + link.dataset.target);
+    if (window.history && history.replaceState)
+      history.replaceState(null, '', '#' + link.dataset.target);
   });
   nav.addEventListener('change', event => {
     const select = event.target.closest('.opt-nav-select');
@@ -1622,7 +1678,8 @@ function renderSectionStatuses() {
   const providerSelect = $('#setProvider');
   const hasKey = !!String(($('#setKey') && $('#setKey').value) || '').trim();
   const model = String(($('#setModel') && $('#setModel').value) || '').trim();
-  const providerLabel = selectedOptionText(providerSelect) || (providerSelect && providerSelect.value) || '';
+  const providerLabel =
+    selectedOptionText(providerSelect) || (providerSelect && providerSelect.value) || '';
   setSectionStatus(
     'ai',
     hasKey
@@ -1636,7 +1693,8 @@ function renderSectionStatuses() {
     .map(tag => tag.trim())
     .filter(Boolean);
   const maxTags = (typeof BM !== 'undefined' && BM.MAX_FIXED_TAGS) || 50;
-  const ruleCount = countRuleLines($('#setDomainTagRules')) + countRuleLines($('#setKeywordTagRules'));
+  const ruleCount =
+    countRuleLines($('#setDomainTagRules')) + countRuleLines($('#setKeywordTagRules'));
   setSectionStatus(
     'tags',
     '标签池 ' + fixedTags.length + ' 个 · 规则 ' + ruleCount + ' 条',
@@ -1653,12 +1711,17 @@ function renderSectionStatuses() {
 
   setSectionStatus(
     'appearance',
-    '宽度：' + (selectedOptionText($('#setNtWidth')) || '默认') + ' · 配色：' + (selectedOptionText($('#setNtTheme')) || '跟随系统')
+    '宽度：' +
+      (selectedOptionText($('#setNtWidth')) || '默认') +
+      ' · 配色：' +
+      (selectedOptionText($('#setNtTheme')) || '跟随系统')
   );
 
   setSectionStatus(
     'danger',
-    profile ? '当前配置：' + (profile.name || '未命名') + ' · 删除后不可恢复' : '删除 / 清理类操作集中在此'
+    profile
+      ? '当前配置：' + (profile.name || '未命名') + ' · 删除后不可恢复'
+      : '删除 / 清理类操作集中在此'
   );
 }
 
@@ -1734,6 +1797,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#setStarHook').addEventListener('change', persistStarHook);
   $('#setAutoAiTag').addEventListener('change', persistAutoAiTag);
   $('#setTagSync').addEventListener('change', persistTagSync);
+  $('#btnForcePushSync')?.addEventListener('click', handleForcePushSync);
   // 新标签页外观：改动即存，新标签页通过 onChanged 实时生效
   // 取色或输入色值即代表「要用这个背景色」：若配色还没切到「自定义」，
   // 保存下来的 bg 会被 theme='auto'/'light'/'dark' 忽略，表现为「设置背景色无效」。
@@ -1743,9 +1807,7 @@ document.addEventListener('DOMContentLoaded', () => {
     themeEl.value = 'custom';
     ntBgRowVisible(true);
   };
-  $('#setNtWidth').addEventListener('change', () =>
-    persistNtAppearance('新标签页宽度已保存')
-  );
+  $('#setNtWidth').addEventListener('change', () => persistNtAppearance('新标签页宽度已保存'));
   $('#setNtTheme').addEventListener('change', () => {
     ntBgRowVisible($('#setNtTheme').value === 'custom');
     persistNtAppearance('新标签页配色已保存');

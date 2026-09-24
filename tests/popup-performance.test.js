@@ -316,7 +316,7 @@ describe('侧边栏首屏', () => {
   it('在脚本和书签数据就绪前显示加载态，并以 defer 释放首次绘制', () => {
     expect(popupHtml).toContain('<div class="loading" role="status">正在扫描书签…</div>');
     expect([...popupHtml.matchAll(/<script defer src="([^"]+)"><\/script>/g)].map(match => match[1]))
-      .toEqual(['js/lib.js', 'js/ui.js', 'js/analyzer.js', 'js/popup.js']);
+      .toEqual(['js/lib.js', 'js/ui.js', 'js/analyzer.js', 'js/popup-modals.js', 'js/popup-dnd.js', 'js/popup.js']);
   });
 
   it('同步水合不阻塞本地书签首屏，设置读取与首轮扫描并行', () => {

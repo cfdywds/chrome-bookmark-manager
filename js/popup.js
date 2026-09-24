@@ -17,10 +17,20 @@ let trashRestoreInProgress = false;
 let activeProgressCancel = null;
 let FOLDER_NAV = { folderId: '' }; // 「组织」页文件夹视图当前浏览的文件夹 id（空=书签栏根）
 let ORG_VIEW = (function () {
-  try { return sessionStorage.getItem('bm-org-view') === 'folders' ? 'folders' : 'tags'; } catch (e) { return 'tags'; }
+  try {
+    return sessionStorage.getItem('bm-org-view') === 'folders' ? 'folders' : 'tags';
+  } catch (e) {
+    return 'tags';
+  }
 })(); // 「组织」页视图：tags | folders（sessionStorage 持久）
 let editingFolder = null; // 就地编辑状态：{mode:'new'|'rename', id?, parentId?, tempId?}
-let FOLDER_SORT = (function () { try { return sessionStorage.getItem('bm-folder-sort') || 'manual'; } catch (e) { return 'manual'; } })(); // manual | name | added
+let FOLDER_SORT = (function () {
+  try {
+    return sessionStorage.getItem('bm-folder-sort') || 'manual';
+  } catch (e) {
+    return 'manual';
+  }
+})(); // manual | name | added
 let FOLDER_SEARCH = ''; // 文件夹视图内搜索（仅过滤当前层书签）
 let highlightFolderId = ''; // 操作后高亮定位的 id
 let crumbExpanded = false; // 面包屑是否展开（收缩态点 … 后置 true）
@@ -332,150 +342,35 @@ async function openCustomRuleSettings() {
   }
 }
 
-// 自定义确认弹层（替代原生 confirm，视觉统一、可定制文案）
+// 自定义确认弹层（由 js/popup-modals.js 实现，基于 UI.focusTrap 与 UI.releaseTrap，此处保留委托）
 function confirmDialog(opts) {
-  opts = opts || {};
-  return new Promise(resolve => {
-    const wrap = $('#confirmWrap');
-    if (!wrap) {
-      resolve(false);
-      return;
-    }
-    const restoreFocusTo = document.activeElement;
-    $('#confirmTitle').textContent = opts.title || '确认操作？';
-    $('#confirmMsg').innerHTML = opts.message || '';
-    const yes = $('#confirmYes');
-    yes.textContent = opts.confirmText || '确认';
-    yes.className = 'btn ' + (opts.danger === false ? 'primary' : 'danger');
-    const third = $('#confirmThird');
-    if (opts.thirdText) {
-      third.textContent = opts.thirdText;
-      third.classList.remove('hidden');
-    } else {
-      third.classList.add('hidden');
-    }
-    const fourth = $('#confirmFourth');
-    if (opts.fourthText) {
-      fourth.textContent = opts.fourthText;
-      fourth.classList.remove('hidden');
-    } else {
-      fourth.classList.add('hidden');
-    }
-    const no = $('#confirmNo');
-    // 弹层内 Tab 循环 / Esc 取消统一走共享 UI 原语；Esc 优先在 wrap 内处理（stopPropagation 防止连带触发页面级 Esc）。
-    let releaseTrap = null;
-    let settled = false;
-    const onWrapClick = e => {
-      if (e.target === wrap) done(false);
-    };
-    const done = v => {
-      if (settled) return;
-      settled = true;
-      wrap.classList.add('hidden');
-      yes.onclick = no.onclick = third.onclick = fourth.onclick = null;
-      wrap.removeEventListener('click', onWrapClick);
-      wrap.removeEventListener('keydown', onKey);
-      // release() 负责归还焦点给触发元素
-      if (typeof releaseTrap === 'function') releaseTrap();
-      else if (restoreFocusTo && document.contains(restoreFocusTo)) restoreFocusTo.focus();
-      resolve(v);
-    };
-    // Enter 仅在焦点不在按钮上时视为确认；焦点在「取消」等按钮时应由按钮自身的点击语义生效。
-    const onKey = e => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        done(false);
-        return;
-      }
-      if (e.key === 'Enter' && !(e.target.closest && e.target.closest('button'))) {
-        done(true);
-      }
-    };
-    yes.onclick = () => done(true);
-    no.onclick = () => done(false);
-    if (opts.thirdText) third.onclick = () => done('third');
-    if (opts.fourthText) fourth.onclick = () => done('fourth');
-    wrap.addEventListener('click', onWrapClick);
-    wrap.addEventListener('keydown', onKey);
-    wrap.classList.remove('hidden');
-    if (window.UI)
-      releaseTrap = window.UI.focusTrap(wrap, {
-        onEscape: () => done(false),
-        autofocus: false,
-        restoreFocusTo
-      });
-    yes.focus();
-  });
+  const g = typeof window !== 'undefined' ? window : globalThis;
+  if (g.BMPopupModals && typeof g.BMPopupModals.confirmDialog === 'function') {
+    return g.BMPopupModals.confirmDialog(opts);
+  }
+  return Promise.resolve(false);
 }
 
 // 输入弹层：resolve 输入字符串（取消/为空 → null）
 function promptDialog(opts) {
-  opts = opts || {};
-  return new Promise(resolve => {
-    const wrap = $('#promptWrap');
-    if (!wrap) {
-      resolve(null);
-      return;
-    }
-    const restoreFocusTo = document.activeElement;
-    $('#promptTitle').textContent = opts.title || '输入';
-    $('#promptMsg').textContent = opts.message || '';
-    const input = $('#promptInput');
-    input.value = opts.value || '';
-    input.placeholder = opts.placeholder || '输入内容…';
-    const yes = $('#promptYes');
-    const no = $('#promptNo');
-    let releaseTrap = null;
-    let settled = false;
-    const onWrapClick = e => {
-      if (e.target === wrap) done(null);
-    };
-    const done = v => {
-      if (settled) return;
-      settled = true;
-      wrap.classList.add('hidden');
-      yes.onclick = no.onclick = null;
-      wrap.removeEventListener('click', onWrapClick);
-      wrap.removeEventListener('keydown', onKey);
-      if (typeof releaseTrap === 'function') releaseTrap();
-      else if (restoreFocusTo && document.contains(restoreFocusTo)) restoreFocusTo.focus();
-      resolve(v);
-    };
-    const onKey = e => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        done(null);
-        return;
-      }
-      if (e.key === 'Enter' && !(e.target.closest && e.target.closest('button'))) {
-        done(input.value.trim() || null);
-      }
-    };
-    yes.onclick = () => done(input.value.trim() || null);
-    no.onclick = () => done(null);
-    wrap.addEventListener('click', onWrapClick);
-    wrap.addEventListener('keydown', onKey);
-    wrap.classList.remove('hidden');
-    if (window.UI)
-      releaseTrap = window.UI.focusTrap(wrap, {
-        onEscape: () => done(null),
-        autofocus: false,
-        restoreFocusTo
-      });
-    input.focus();
-    input.select();
-  });
+  const g = typeof window !== 'undefined' ? window : globalThis;
+  if (g.BMPopupModals && typeof g.BMPopupModals.promptDialog === 'function') {
+    return g.BMPopupModals.promptDialog(opts);
+  }
+  return Promise.resolve(null);
 }
 
 function startProgress(label, opts) {
   opts = opts || {};
   const w = $('#progressWrap');
+  if (!w) return;
   w.classList.remove('hidden');
-  $('#progressBar').style.width = '0%';
-  $('#progressLabel').textContent = label || '处理中…';
+  const bar = $('#progressBar');
+  if (bar && bar.style) bar.style.width = '0%';
+  const lbl = $('#progressLabel');
+  if (lbl) lbl.textContent = label || '处理中…';
   const cancel = $('#progressCancel');
+  if (!cancel) return;
   activeProgressCancel = typeof opts.onCancel === 'function' ? opts.onCancel : null;
   if (activeProgressCancel) {
     cancel.textContent = opts.cancelText || '终止';
@@ -493,17 +388,27 @@ function startProgress(label, opts) {
   }
 }
 function updateProgress(pct, label) {
-  $('#progressBar').style.width = pct + '%';
-  const bar = $('#progressBar').parentElement;
-  bar.setAttribute('aria-valuenow', String(Math.round(pct)));
-  if (label) $('#progressLabel').textContent = label;
+  const bar = $('#progressBar');
+  if (bar && bar.style) {
+    bar.style.width = pct + '%';
+    const container = bar.parentElement;
+    if (container && container.setAttribute)
+      container.setAttribute('aria-valuenow', String(Math.round(pct)));
+  }
+  if (label) {
+    const lbl = $('#progressLabel');
+    if (lbl) lbl.textContent = label;
+  }
 }
 function endProgress() {
-  $('#progressWrap').classList.add('hidden');
+  const w = $('#progressWrap');
+  if (w) w.classList.add('hidden');
   const cancel = $('#progressCancel');
-  cancel.onclick = null;
-  cancel.disabled = false;
-  cancel.classList.add('hidden');
+  if (cancel) {
+    cancel.onclick = null;
+    cancel.disabled = false;
+    cancel.classList.add('hidden');
+  }
   activeProgressCancel = null;
 }
 
@@ -962,7 +867,8 @@ function renderBreadcrumb(cur) {
     crumbs = chain.map((node, i) => crumbHtml(node, i, chain.length)).join('');
   } else {
     // 路径过长：首 + … + 末，点 … 展开中间祖先
-    crumbs = crumbHtml(chain[0], 0, chain.length) +
+    crumbs =
+      crumbHtml(chain[0], 0, chain.length) +
       '<button class="crumb crumb-more" data-action="crumb-expand" data-tip="展开中间路径" aria-label="展开中间路径">…</button>' +
       crumbHtml(chain[chain.length - 1], chain.length - 1, chain.length);
   }
@@ -978,9 +884,14 @@ function crumbHtml(node, i, len) {
   const last = i === len - 1;
   const sep = i > 0 ? '<span class="crumb-sep">/</span>' : '';
   if (last)
-    return sep + `<span class="crumb crumb-current">${ICON_SM('folder')} ${escapeHtml(node.title)}</span>`;
+    return (
+      sep +
+      `<span class="crumb crumb-current">${ICON_SM('folder')} ${escapeHtml(node.title)}</span>`
+    );
   const label = (i === 0 ? ICON_SM('home') : '') + escapeHtml(node.title);
-  return sep + `<button class="crumb" data-action="folder-goto" data-id="${node.id}">${label}</button>`;
+  return (
+    sep + `<button class="crumb" data-action="folder-goto" data-id="${node.id}">${label}</button>`
+  );
 }
 
 function folderRow(f) {
@@ -1002,12 +913,12 @@ function folderRow(f) {
 
 // 就地编辑行（新建 / 重命名）：f-name 转为 input，回车保存、Esc 取消、失焦保存
 function folderRowEdit(f, mode) {
-  const id = f ? f.id : (editingFolder.tempId || 'new');
+  const id = f ? f.id : editingFolder.tempId || 'new';
   const name = f ? f.title : '';
   const isNew = mode === 'new' && !f;
   const empty = isNew || (f && f.directCount === 0);
   const cls = `row folder-row editing${empty ? ' f-empty' : ''}`;
-  const count = isNew ? '新建' : (f ? f.directCount + ' 项' : '');
+  const count = isNew ? '新建' : f ? f.directCount + ' 项' : '';
   // drag-slot：编辑态没有把手，用等宽占位让 f-icon / 输入框与其它行对齐
   return `<div class="${cls}" data-edit-mode="${mode}" data-edit-id="${id}">
     <label class="checkbox-slot"></label>
@@ -1044,10 +955,13 @@ function orgBarHtml(view) {
   if (view === 'folders') {
     const cur = currentFolder();
     const sortLabel = FOLDER_SORT === 'name' ? '名称' : FOLDER_SORT === 'added' ? '时间' : '手动';
-    tools = `<input id="folderSearch" class="org-search" type="text" value="${escapeHtml(FOLDER_SEARCH)}" placeholder="搜索当前层的文件夹或书签…" autocomplete="off" spellcheck="false">`
-      + `<button class="org-btn" data-action="folder-sort" data-tip="切换排序" aria-label="切换排序，当前 ${sortLabel}">排序:${sortLabel}</button>`
-      + `<button class="org-btn" data-action="open-tree" data-tip="目录树（浏览 / 跨层移动）" aria-label="打开目录树">${ICON_SM('folder')}目录树</button>`
-      + (cur ? `<button class="org-btn primary" data-action="new-folder" data-id="${cur.id}" data-tip="新建子文件夹" aria-label="新建子文件夹">${ICON_SM('plus')}新建</button>` : '');
+    tools =
+      `<input id="folderSearch" class="org-search" type="text" value="${escapeHtml(FOLDER_SEARCH)}" placeholder="搜索当前层的文件夹或书签…" autocomplete="off" spellcheck="false">` +
+      `<button class="org-btn" data-action="folder-sort" data-tip="切换排序" aria-label="切换排序，当前 ${sortLabel}">排序:${sortLabel}</button>` +
+      `<button class="org-btn" data-action="open-tree" data-tip="目录树（浏览 / 跨层移动）" aria-label="打开目录树">${ICON_SM('folder')}目录树</button>` +
+      (cur
+        ? `<button class="org-btn primary" data-action="new-folder" data-id="${cur.id}" data-tip="新建子文件夹" aria-label="新建子文件夹">${ICON_SM('plus')}新建</button>`
+        : '');
   } else {
     tools = `<button class="org-btn" data-action="open-tree" data-tip="目录树（浏览 / 跨层移动）" aria-label="打开目录树">${ICON_SM('folder')}目录树</button>`;
   }
@@ -1068,14 +982,25 @@ function renderFolders(container) {
     return;
   }
   let folders = sortFolders(cur.childFolders.slice(), FOLDER_SORT);
-  let bookmarks = sortBookmarks(cur.bookmarkIds.map(id => getItemById(id)).filter(Boolean), FOLDER_SORT);
+  let bookmarks = sortBookmarks(
+    cur.bookmarkIds.map(id => getItemById(id)).filter(Boolean),
+    FOLDER_SORT
+  );
   if (FOLDER_SEARCH) {
     const q = FOLDER_SEARCH.toLowerCase();
     // 搜索同时过滤子文件夹（按名称）与书签（按标题/URL/host/标签），
     // 否则只搜书签时，输文件夹名会"看起来无效"。
     folders = folders.filter(f => (f.title || '').toLowerCase().includes(q));
     bookmarks = bookmarks.filter(it => {
-      const hay = ((it.title || '') + ' ' + (it.url || '') + ' ' + (it.host || '') + ' ' + (it.tags || []).join(' ')).toLowerCase();
+      const hay = (
+        (it.title || '') +
+        ' ' +
+        (it.url || '') +
+        ' ' +
+        (it.host || '') +
+        ' ' +
+        (it.tags || []).join(' ')
+      ).toLowerCase();
       return hay.includes(q);
     });
   }
@@ -1083,7 +1008,8 @@ function renderFolders(container) {
   if (editingFolder && editingFolder.mode === 'new' && editingFolder.parentId === cur.id)
     html += folderRowEdit(null, 'new');
   if (folders.length) html += folders.map(folderRow).join('');
-  if (folders.length && bookmarks.length) html += '<div class="folder-list-sep"></div><div class="folder-list-sep-label">书签</div>';
+  if (folders.length && bookmarks.length)
+    html += '<div class="folder-list-sep"></div><div class="folder-list-sep-label">书签</div>';
   if (bookmarks.length) {
     html += renderItemRows(bookmarks, 'folder-items-' + cur.id, FIRST_LIST_COUNT, FIRST_LIST_COUNT);
   } else if (FOLDER_SEARCH && folders.length) {
@@ -1098,11 +1024,13 @@ function renderFolders(container) {
   highlightAfterRender();
 }
 function sortFolders(folders, sort) {
-  if (sort === 'name') return [...folders].sort((a, b) => (a.title || '').localeCompare(b.title || '', 'zh'));
+  if (sort === 'name')
+    return [...folders].sort((a, b) => (a.title || '').localeCompare(b.title || '', 'zh'));
   return folders; // manual / added：文件夹无 dateAdded，保持原序
 }
 function sortBookmarks(items, sort) {
-  if (sort === 'name') return [...items].sort((a, b) => (a.title || '').localeCompare(b.title || '', 'zh'));
+  if (sort === 'name')
+    return [...items].sort((a, b) => (a.title || '').localeCompare(b.title || '', 'zh'));
   if (sort === 'added') return [...items].sort((a, b) => (b.dateAdded || 0) - (a.dateAdded || 0));
   return items;
 }
@@ -1111,7 +1039,11 @@ function highlightAfterRender() {
   const el = document.querySelector(`#orgBody [data-id="${highlightFolderId}"]`);
   if (el) {
     el.classList.add('flash');
-    try { el.scrollIntoView({ block: 'nearest' }); } catch (e) { /* ignore */ }
+    try {
+      el.scrollIntoView({ block: 'nearest' });
+    } catch (e) {
+      /* ignore */
+    }
     setTimeout(() => el.classList.remove('flash'), 1300);
   }
   highlightFolderId = '';
@@ -1152,7 +1084,9 @@ function ensureTreeOverlay() {
   $('#treeClose')?.addEventListener('click', closeTreeOverlay);
   $('#treeSearch')?.addEventListener('input', e => filterTree(e.target.value));
   $('#treeBody')?.addEventListener('click', onTreeBodyClick);
-  ov.addEventListener('click', e => { if (e.target === ov) closeTreeOverlay(); });
+  ov.addEventListener('click', e => {
+    if (e.target === ov) closeTreeOverlay();
+  });
   return ov;
 }
 
@@ -1174,7 +1108,10 @@ function openFolderTree() {
 }
 
 function openMoveToPicker(ids) {
-  if (!ids || !ids.length) { toast('没有选中的书签', 'warn'); return; }
+  if (!ids || !ids.length) {
+    toast('没有选中的书签', 'warn');
+    return;
+  }
   if (!DATA || !DATA.folderTree) return;
   ensureTreeOverlay();
   treePickerIds = ids.slice();
@@ -1245,7 +1182,11 @@ function onTreeBodyClick(e) {
     } else {
       // 从树导航进入文件夹 → 切文件夹视图
       ORG_VIEW = 'folders';
-      try { sessionStorage.setItem('bm-org-view', 'folders'); } catch (e) { /* ignore */ }
+      try {
+        sessionStorage.setItem('bm-org-view', 'folders');
+      } catch (e) {
+        /* ignore */
+      }
       enterFolder(id);
       closeTreeOverlay();
     }
@@ -1256,7 +1197,9 @@ function onTreeBodyClick(e) {
 function filterTree(query) {
   const body = $('#treeBody');
   if (!body) return;
-  const q = String(query || '').trim().toLowerCase();
+  const q = String(query || '')
+    .trim()
+    .toLowerCase();
   const nodes = body.querySelectorAll('.ft-node');
   if (!q) {
     nodes.forEach(n => n.classList.remove('hidden'));
@@ -1810,7 +1753,11 @@ function openTagFilter(tag) {
   TAG_FILTER = tag || '';
   clearSearch(false);
   ORG_VIEW = 'tags';
-  try { sessionStorage.setItem('bm-org-view', 'tags'); } catch (e) { /* ignore */ }
+  try {
+    sessionStorage.setItem('bm-org-view', 'tags');
+  } catch (e) {
+    /* ignore */
+  }
   switchTab('organize');
 }
 
@@ -1885,7 +1832,11 @@ function renderSearch() {
   const inScope = (it, terms) =>
     typeof applySearchScope === 'function'
       ? applySearchScope(it, terms, scope)
-      : terms.every(t => String(it.title || '').toLowerCase().includes(t));
+      : terms.every(t =>
+          String(it.title || '')
+            .toLowerCase()
+            .includes(t)
+        );
   const hits = hasTerm
     ? sourceItems.filter(it => {
         // #标签 语法优先级最高：先按语法筛选，再按当前范围收窄
@@ -2290,7 +2241,10 @@ async function createFolder(parentId) {
   }
   editingFolder = { mode: 'new', parentId: pid, tempId: 'new-' + Date.now() };
   render('organize');
-  setTimeout(() => { const inp = $('#fEditInput'); if (inp) inp.focus(); }, 0);
+  setTimeout(() => {
+    const inp = $('#fEditInput');
+    if (inp) inp.focus();
+  }, 0);
 }
 
 async function renameFolder(id) {
@@ -2302,7 +2256,13 @@ async function renameFolder(id) {
   }
   editingFolder = { mode: 'rename', id };
   render('organize');
-  setTimeout(() => { const inp = $('#fEditInput'); if (inp) { inp.focus(); inp.select(); } }, 0);
+  setTimeout(() => {
+    const inp = $('#fEditInput');
+    if (inp) {
+      inp.focus();
+      inp.select();
+    }
+  }, 0);
 }
 
 // 就地编辑提交 / 取消（由 input 的 Enter / Esc / 失焦触发）
@@ -2310,7 +2270,10 @@ async function submitFolderEdit(mode, id, value) {
   const ed = editingFolder;
   const name = (value || '').trim();
   editingFolder = null;
-  if (!name) { render('organize'); return; }
+  if (!name) {
+    render('organize');
+    return;
+  }
   try {
     if (mode === 'new') {
       const pid = ed && ed.parentId ? ed.parentId : FOLDER_NAV.folderId;
@@ -2493,8 +2456,12 @@ function openBookmarkMenu(anchor, id) {
     else if (a === 'ai') aiTagSingle(id);
     else if (a === 'delete') softDeleteBookmark(id);
   });
-  const onAway = e => { if (!pop.contains(e.target)) closeFolderMenu(); };
-  const onKey = e => { if (e.key === 'Escape') closeFolderMenu(); };
+  const onAway = e => {
+    if (!pop.contains(e.target)) closeFolderMenu();
+  };
+  const onKey = e => {
+    if (e.key === 'Escape') closeFolderMenu();
+  };
   pop._onAway = onAway;
   pop._onKey = onKey;
   setTimeout(() => {
@@ -2736,270 +2703,21 @@ async function kbMoveBookmark(dir) {
   }
 }
 
-// ---------- 拖拽排序 / 跨组移动（HTML5 drag & drop） ----------
-let dragState = null; // { id, fromParent }
-
-// ---------- FLIP 落位动画（投放后 200ms，仅改 transform，动画结束移除类）----------
-const FLIP_DURATION_MS = 200;
-function flipKey(el) {
-  if (el.classList.contains('group-head')) {
-    const group = el.closest('.group');
-    return 'head:' + ((group && group.dataset.group) || '');
-  }
-  return 'row:' + ((el.dataset && el.dataset.id) || '');
-}
-// 记录可投放元素的当前位置（首）
-function flipSnapshot() {
-  const map = new Map();
-  document.querySelectorAll('#content .row.clickable.draggable, #content .group-head').forEach(el => {
-    const rect = el.getBoundingClientRect();
-    map.set(flipKey(el), { top: rect.top, left: rect.left });
-  });
-  return map;
-}
-// 与投放后的位置比较，对发生位移的元素播放 transform 过渡（末）
-function playFlip(before) {
-  if (!before || !before.size || typeof requestAnimationFrame !== 'function') return;
-  requestAnimationFrame(() => {
-    document.querySelectorAll('#content .row.clickable.draggable, #content .group-head').forEach(el => {
-      const prev = before.get(flipKey(el));
-      if (!prev) return;
-      const rect = el.getBoundingClientRect();
-      const dx = prev.left - rect.left;
-      const dy = prev.top - rect.top;
-      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
-      el.style.transition = 'none';
-      el.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
-      requestAnimationFrame(() => {
-        el.classList.add('flip-in');
-        el.style.transition = 'transform ' + FLIP_DURATION_MS + 'ms ease';
-        el.style.transform = '';
-        setTimeout(() => {
-          el.classList.remove('flip-in');
-          el.style.transition = '';
-        }, FLIP_DURATION_MS + 40);
-      });
-    });
-  });
-}
-
+// ---------- 拖拽排序 / 跨组移动（已解耦到 js/popup-dnd.js，支持 drop-target 高亮与落位，此处保留委托） ----------
 function bindDrag() {
-  const contentEl = content();
-  contentEl.addEventListener('dragstart', e => {
-    // 拖拽把手：书签行与文件夹行统一为 .drag-handle（行首）
-    const handle = e.target.closest('.drag-handle');
-    const row = handle ? handle.closest('.row.clickable.draggable') : null;
-    if (!row || !row.dataset.id) return;
-    const id = row.dataset.id;
-    if (row.dataset.type === 'folder') {
-      const node = DATA.folderTree && DATA.folderTree.folderById.get(id);
-      if (!node) return;
-      dragState = { id, type: 'folder', fromParent: node.parentId };
-    } else {
-      const it = getItemById(id);
-      if (!it) return;
-      dragState = { id, type: 'bookmark', fromParent: it.parentId };
-    }
-    try {
-      e.dataTransfer.setData('text/plain', id);
-    } catch (err) {
-      /* ignore */
-    }
-    e.dataTransfer.effectAllowed = 'move';
-    row.classList.add('dragging');
-  });
-  contentEl.addEventListener('dragend', () => {
-    clearDragHints();
-    dragState = null;
-    // 拖拽取消（未投放）时清掉行内残留的拖拽态
-    contentEl.querySelectorAll('.row.dragging').forEach(row => row.classList.remove('dragging'));
-  });
-  contentEl.addEventListener('dragover', e => {
-    const row = e.target.closest('.row.clickable.draggable');
-    const head = e.target.closest('.group-head');
-    if (!row && !head) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    clearDragHints();
-    if (row) {
-      const rect = row.getBoundingClientRect();
-      const isFolderRow = row.dataset.type === 'folder';
-      row.classList.add('drop-target');
-      // 拖文件夹到文件夹行 = 排序（前后指示）；拖书签到文件夹行 = 移入（drop-inside）
-      if (isFolderRow && dragState && dragState.type === 'folder') {
-        row.classList.add(e.clientY < rect.top + rect.height / 2 ? 'drop-before' : 'drop-after');
-      } else if (isFolderRow) {
-        row.classList.add('drop-inside');
-      } else {
-        row.classList.add(e.clientY < rect.top + rect.height / 2 ? 'drop-before' : 'drop-after');
-      }
-    } else if (head) {
-      head.classList.add('drop-target');
-      head.closest('.group').classList.add('drag-target');
-    }
-  });
-  contentEl.addEventListener('drop', async e => {
-    e.preventDefault();
-    // 同步快照：浏览器在 drop 事件派发结束后立即触发 dragend（不会等待 async 处理器完成），
-    // dragend 会把 dragState 置空；若在 await 之后再读 dragState 会拿到 null，
-    // 导致 "Cannot read properties of null (reading 'fromParent')"。
-    const drag = dragState;
-    if (!drag) return;
-    // FLIP：记录投放前的位置（首），重扫后再比对末位置播放落位动画
-    const flipBefore = flipSnapshot();
-    const row = e.target.closest('.row.clickable.draggable');
-    const head = e.target.closest('.group-head');
-    try {
-      // 标签视图：拖书签 = 加标签 / 继承标签（不动物理位置）
-      if (currentTab === 'organize' && ORG_VIEW === 'tags' && drag.type === 'bookmark') {
-        if (head) await dropOntoGroup(head, drag);
-        else if (row && row.dataset.id !== drag.id) await dropInheritTags(row, drag);
-      } else if (row && row.dataset.id !== drag.id) {
-        const isFolderRow = row.dataset.type === 'folder';
-        if (isFolderRow && drag.type === 'folder') await dropFolderOntoTarget(row.dataset.id, drag);
-        else if (isFolderRow) await dropBookmarkIntoFolder(row.dataset.id, drag);
-        else if (drag.type === 'folder') await dropFolderOntoTarget(row.dataset.id, drag);
-        else await dropOntoRow(row, drag);
-      } else if (head) {
-        await dropOntoGroup(head, drag);
-      }
-    } catch (err) {
-      toast('移动失败：' + (err.message || err), 'danger');
-      try {
-        BM.logError('drag', err);
-      } catch (e2) {
-        /* ignore */
-      }
-    } finally {
-      dragState = null;
-      clearDragHints();
-      // 重扫完成后播放落位动画（失败静默）
-      refresh()
-        .then(() => playFlip(flipBefore))
-        .catch(() => {});
-    }
-  });
-}
-
-function clearDragHints() {
-  document
-    .querySelectorAll(
-      '#content .drop-before, #content .drop-after, #content .drop-inside, #content .drop-target, #content .group.drag-target'
-    )
-    .forEach(el => el.classList.remove('drop-before', 'drop-after', 'drop-inside', 'drop-target', 'drag-target'));
-}
-
-// 拖到书签行：排序 / 插入到目标行所在文件夹的对应位置
-// drag 为 drop 入口处的同步快照（dragend 会清空 dragState，不能直接读）
-async function dropOntoRow(row, drag) {
-  if (!drag) return;
-  const targetIt = getItemById(row.dataset.id);
-  if (!targetIt) return;
-  const children = await chrome.bookmarks.getChildren(targetIt.parentId);
-  let index = children.findIndex(c => c.id === targetIt.id);
-  if (dsFromSameParent(drag.fromParent, targetIt.parentId)) {
-    const fromIndex = children.findIndex(c => c.id === drag.id);
-    if (fromIndex >= 0 && fromIndex < index) index -= 1;
+  const g = typeof window !== 'undefined' ? window : globalThis;
+  if (g.BMPopupDnd && typeof g.BMPopupDnd.bindDrag === 'function') {
+    return g.BMPopupDnd.bindDrag({
+      contentEl: content(),
+      getData: () => DATA,
+      getItemById,
+      getCurrentTab: () => currentTab,
+      getOrgView: () => ORG_VIEW,
+      toast,
+      refresh,
+      ensureFolder
+    });
   }
-  await chrome.bookmarks.move(drag.id, {
-    parentId: targetIt.parentId,
-    index: index < 0 ? 0 : index
-  });
-  toast('已移动书签 ✓', 'ok');
-}
-const dsFromSameParent = (a, b) => String(a) === String(b);
-
-// 拖到分组标题：整组移动（exact → 域名文件夹；category → 分类文件夹）
-async function dropOntoGroup(head, drag) {
-  if (!drag) return;
-  const group = head.closest('.group');
-  const gkey = group.dataset.group;
-  const gnameEl = head.querySelector('.g-name');
-  const name = gnameEl ? gnameEl.textContent : '';
-  if (!gkey || !name) {
-    toast('该分组不支持拖入', 'warn');
-    return;
-  }
-  // 标签视图：拖书签到标签分组 = 加该标签（不动物理位置）
-  if (gkey.startsWith('tag-')) {
-    const tag = name.replace(/^#/, '').trim();
-    if (!tag || tag === BM.FALLBACK_TAG) {
-      toast('该标签不支持拖入', 'warn');
-      return;
-    }
-    if (drag.type === 'folder') {
-      toast('文件夹不能加标签，请在文件夹视图操作', 'warn');
-      return;
-    }
-    await BM.persistTagChanges({ [drag.id]: [tag] }, 'merge');
-    toast('已加标签 #' + tag + ' ✓', 'ok');
-    refresh();
-    return;
-  }
-  let folderTitle;
-  if (gkey.startsWith('exact-')) folderTitle = name;
-  else if (gkey.startsWith('cat-')) folderTitle = '书签管家·' + name;
-  else {
-    toast('该分组不支持拖入', 'warn');
-    return;
-  }
-  const folderId = await ensureFolder(folderTitle);
-  await chrome.bookmarks.move(drag.id, { parentId: folderId });
-  toast('已移动到「' + name + '」✓', 'ok');
-}
-
-// 文件夹拖到任意行（书签行或文件夹行）：移到目标所在 parentId 的对应位置（排序 / 跨层移动）
-async function dropFolderOntoTarget(targetId, drag) {
-  let targetParentId, targetNodeId;
-  const folderNode = DATA.folderTree && DATA.folderTree.folderById.get(targetId);
-  if (folderNode) {
-    targetParentId = folderNode.parentId;
-    targetNodeId = targetId;
-  } else {
-    const it = getItemById(targetId);
-    if (!it) return;
-    targetParentId = it.parentId;
-    targetNodeId = targetId;
-  }
-  // 拖到自身父级 = 原位，无意义；真正的循环（拖进子孙）由 chrome.bookmarks.move 抛错，由 drop 的 catch 捕获
-  if (String(drag.id) === String(targetParentId)) {
-    toast('不能移动到原位置', 'warn');
-    return;
-  }
-  const children = await chrome.bookmarks.getChildren(targetParentId);
-  let index = children.findIndex(c => String(c.id) === String(targetNodeId));
-  if (index < 0) index = 0;
-  if (String(drag.fromParent) === String(targetParentId)) {
-    const fromIndex = children.findIndex(c => String(c.id) === String(drag.id));
-    if (fromIndex >= 0 && fromIndex < index) index -= 1;
-  }
-  if (index < 0) index = 0;
-  await chrome.bookmarks.move(drag.id, { parentId: targetParentId, index });
-  toast('已移动文件夹 ✓', 'ok');
-}
-
-// 书签拖到文件夹行：移入该文件夹
-async function dropBookmarkIntoFolder(folderId, drag) {
-  const node = DATA.folderTree && DATA.folderTree.folderById.get(folderId);
-  if (!node) return;
-  if (String(drag.id) === String(folderId)) return;
-  await chrome.bookmarks.move(drag.id, { parentId: folderId });
-  toast('已移入「' + node.title + '」 ✓', 'ok');
-}
-
-// 标签视图：拖书签到另一书签行 = 继承目标行的标签（并集，不动物理位置）
-async function dropInheritTags(row, drag) {
-  if (!drag) return;
-  const targetIt = getItemById(row.dataset.id);
-  if (!targetIt) return;
-  const targetTags = (targetIt.tags || []).filter(t => t && t !== BM.FALLBACK_TAG);
-  if (!targetTags.length) {
-    toast('目标书签无可继承的标签', 'warn');
-    return;
-  }
-  await BM.persistTagChanges({ [drag.id]: targetTags }, 'merge');
-  toast('已继承 ' + targetTags.length + ' 个标签 ✓', 'ok');
-  refresh();
 }
 
 // ---------- 快捷键注册表：帮助抽屉据此生成，避免文档与实现漂移 ----------
@@ -3034,7 +2752,8 @@ function maybeShowOrganizeTip() {
     store.get(key, res => {
       try {
         if (res && res[key]) return;
-        const ui = (typeof UI !== 'undefined' && UI) || (typeof window !== 'undefined' && window.UI) || null;
+        const ui =
+          (typeof UI !== 'undefined' && UI) || (typeof window !== 'undefined' && window.UI) || null;
         if (ui && typeof ui.toast === 'function') ui.toast(text, 'info');
         else toast(text, 'info');
         store.set({ [key]: true });
@@ -3175,7 +2894,14 @@ async function init() {
       folderSearchTimer = setTimeout(() => {
         render('organize');
         const inp = $('#folderSearch');
-        if (inp) { inp.focus(); try { inp.setSelectionRange(pos, pos); } catch (err) { /* ignore */ } }
+        if (inp) {
+          inp.focus();
+          try {
+            inp.setSelectionRange(pos, pos);
+          } catch (err) {
+            /* ignore */
+          }
+        }
       }, 120);
     }
   });
@@ -3335,14 +3061,22 @@ async function init() {
         if (it) openAddDrawer(it);
       } else if (action === 'org-view') {
         ORG_VIEW = btn.dataset.view === 'folders' ? 'folders' : 'tags';
-        try { sessionStorage.setItem('bm-org-view', ORG_VIEW); } catch (e) { /* ignore */ }
+        try {
+          sessionStorage.setItem('bm-org-view', ORG_VIEW);
+        } catch (e) {
+          /* ignore */
+        }
         render('organize');
       } else if (action === 'open-tree') {
         openFolderTree();
       } else if (action === 'folder-sort') {
         const order = ['manual', 'name', 'added'];
         FOLDER_SORT = order[(order.indexOf(FOLDER_SORT) + 1) % order.length];
-        try { sessionStorage.setItem('bm-folder-sort', FOLDER_SORT); } catch (e) { /* ignore */ }
+        try {
+          sessionStorage.setItem('bm-folder-sort', FOLDER_SORT);
+        } catch (e) {
+          /* ignore */
+        }
         render('organize');
       } else if (action === 'crumb-expand') {
         crumbExpanded = true;
@@ -3451,7 +3185,10 @@ async function init() {
   // 批量删除 / 全选 / 反选
   $('#bulkMove')?.addEventListener('click', () => {
     const ids = getSelectedIds();
-    if (!ids.length) { toast('没有选中的项', 'warn'); return; }
+    if (!ids.length) {
+      toast('没有选中的项', 'warn');
+      return;
+    }
     openMoveToPicker(ids);
   });
   $('#bulkDelete')?.addEventListener('click', () => {
@@ -3544,7 +3281,12 @@ async function init() {
       }
       if (currentTab === 'organize' && ORG_VIEW === 'folders' && !typing && FOLDER_NAV.folderId) {
         const cur = currentFolder();
-        if (cur && cur.parentId && DATA.folderTree && DATA.folderTree.folderById.has(cur.parentId)) {
+        if (
+          cur &&
+          cur.parentId &&
+          DATA.folderTree &&
+          DATA.folderTree.folderById.has(cur.parentId)
+        ) {
           folderUp();
           return;
         }
@@ -3632,8 +3374,16 @@ async function init() {
     // 就地编辑 input：Enter 保存、Esc 取消，屏蔽其他快捷键
     const editInput = e.target.closest ? e.target.closest('#fEditInput') : null;
     if (editInput) {
-      if (e.key === 'Enter') { e.preventDefault(); submitFolderEdit(editInput.dataset.editMode, editInput.dataset.editId, editInput.value); return; }
-      if (e.key === 'Escape') { e.preventDefault(); cancelFolderEdit(); return; }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitFolderEdit(editInput.dataset.editMode, editInput.dataset.editId, editInput.value);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelFolderEdit();
+        return;
+      }
       return;
     }
     // 概览快捷入口卡片：Enter / 空格 激活（等价点击，走同一 data-jump 分支）
@@ -5084,9 +4834,7 @@ window.addEventListener('unhandledrejection', event => reportFatal(event.reason)
 // 侧边栏文档可能被复用（扩展重载 / bfcache）：DOMContentLoaded 已经过去时必须直接初始化，
 // 否则 init 永不执行，面板会永久停在 popup.html 写死的「正在扫描书签…」骨架上。
 function bootstrap() {
-  Promise.resolve()
-    .then(init)
-    .catch(reportFatal);
+  Promise.resolve().then(init).catch(reportFatal);
 }
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', bootstrap, { once: true });
