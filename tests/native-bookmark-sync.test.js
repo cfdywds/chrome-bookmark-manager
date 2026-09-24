@@ -188,6 +188,35 @@ function syncRoot(tree) {
   return findNode(tree, '2').children.find(node => node.title === '书签管家同步数据（请勿修改）');
 }
 
+// 设备目录下所有提交头（BMN1|H|桶|代号|片数|校验和）的指纹。一次分片发布要等新头写完、
+// 旧头删掉才算落地，指纹会随之变化；用它等待发布完成，避免读到上一版分片。
+function nativeHeadFingerprint(tree) {
+  const root = syncRoot(tree);
+  const device = root && (root.children || [])[0];
+  return ((device && device.children) || [])
+    .map(node => String((node && node.title) || '').split('|'))
+    .filter(parts => parts[1] === 'H')
+    .map(parts => parts[2] + ':' + parts[5])
+    .sort()
+    .join(',');
+}
+
+// 造一台「远端记录里该 URL 是 hidden=false，且分片已经发布」的设备，返回它的 harness。
+async function publishRemoteUnhiddenDevice() {
+  const source = createHarness(createTree([
+    { id: 'source', parentId: '1', title: 'Private', url: 'https://example.com/private' }
+  ]), { bmHiddenIds: ['source'], bmFixedTags: ['工作'], bmTagRules: { domain: {}, keyword: {} } });
+  globalThis.chrome = source.chrome;
+  new Function(backgroundCode)();
+  await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+  const initialFingerprint = nativeHeadFingerprint(source.tree);
+  await source.chrome.storage.local.set({ bmHiddenIds: [] });
+  await vi.waitFor(() => expect(source.localData.bmNativeTagSyncRecords['example.com/private'].hidden)
+    .toBe(false));
+  await vi.waitFor(() => expect(nativeHeadFingerprint(source.tree)).not.toBe(initialFingerprint));
+  return source;
+}
+
 let previousChrome;
 
 beforeEach(() => {
@@ -211,12 +240,20 @@ describe('原生书签标签同步', () => {
         .resolves.toMatchObject({ ok: true });
       expect(source.localData.bmNativeTagSyncRecords['example.com/private'])
         .toMatchObject({ tags: [], hidden: true });
+      const initialFingerprint = nativeHeadFingerprint(source.tree);
       await source.chrome.storage.local.set({ bmHiddenIds: [] });
       await vi.waitFor(() => expect(source.localData.bmNativeTagSyncRecords['example.com/private'].hidden)
         .toBe(false));
+      // 记录更新之后还有一次分片发布。不等它落地就复制书签树，目标设备读到的会是上一版。
+      const hiddenFalseFingerprint = await vi.waitFor(() => {
+        const fingerprint = nativeHeadFingerprint(source.tree);
+        expect(fingerprint).not.toBe(initialFingerprint);
+        return fingerprint;
+      });
       await source.chrome.storage.local.set({ bmHiddenIds: ['source'] });
       await vi.waitFor(() => expect(source.localData.bmNativeTagSyncRecords['example.com/private'].hidden)
         .toBe(true));
+      await vi.waitFor(() => expect(nativeHeadFingerprint(source.tree)).not.toBe(hiddenFalseFingerprint));
 
       const target = createHarness(clone(source.tree), { bmHiddenIds: [] });
       target.tree[0].children[0].children = [
@@ -228,6 +265,93 @@ describe('原生书签标签同步', () => {
       await expect(target.send({ type: 'bmNativeTagSync', action: 'hydrate' }))
         .resolves.toMatchObject({ ok: true, changed: true });
       expect(target.localData.bmHiddenIds).toEqual(['target']);
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('远端未隐藏不会抹掉本机还没同步出去的隐藏', async () => {
+    const source = await publishRemoteUnhiddenDevice();
+    try {
+      // 目标设备本地刚隐藏了该书签，但这次隐藏还没写进同步记录（记录仍是 hidden=false）
+      const target = createHarness(clone(source.tree), {
+        bmHiddenIds: ['target'],
+        bmNativeTagSyncRecords: {
+          'example.com/private': { tags: [], hidden: false, revision: [1, 0, 'target-device'] }
+        }
+      });
+      target.tree[0].children[0].children = [
+        { id: 'target', parentId: '1', title: 'Private', url: 'https://example.com/private' }
+      ];
+      globalThis.chrome = target.chrome;
+      new Function(backgroundCode)();
+
+      await expect(target.send({ type: 'bmNativeTagSync', action: 'hydrate' }))
+        .resolves.toMatchObject({ ok: true });
+      expect(target.localData.bmHiddenIds).toEqual(['target']);
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('本机隐藏已同步出去后，其它设备的取消隐藏仍会生效', async () => {
+    const source = await publishRemoteUnhiddenDevice();
+    try {
+      // 本机记录里该 URL 曾写过 hidden=true：远端更新后的未隐藏代表别的设备取消了隐藏
+      const target = createHarness(clone(source.tree), {
+        bmHiddenIds: ['target'],
+        bmNativeTagSyncRecords: {
+          'example.com/private': { tags: [], hidden: true, revision: [1, 0, 'target-device'] }
+        }
+      });
+      target.tree[0].children[0].children = [
+        { id: 'target', parentId: '1', title: 'Private', url: 'https://example.com/private' }
+      ];
+      globalThis.chrome = target.chrome;
+      new Function(backgroundCode)();
+
+      await target.send({ type: 'bmNativeTagSync', action: 'hydrate' });
+      expect(target.localData.bmHiddenIds).toEqual([]);
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('水合写回时会合并本机在窗口内新做的隐藏', async () => {
+    const source = createHarness(createTree([
+      { id: 'source', parentId: '1', title: 'A', url: 'https://a.example/page' }
+    ]), { bmHiddenIds: ['source'], bmFixedTags: ['工作'], bmTagRules: { domain: {}, keyword: {} } });
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+    try {
+      await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+
+      const target = createHarness(clone(source.tree), { bmHiddenIds: [] });
+      target.tree[0].children[0].children = [
+        { id: 'b1', parentId: '1', title: 'B', url: 'https://b.example/page' },
+        { id: 'b2', parentId: '1', title: 'A', url: 'https://a.example/page' }
+      ];
+      globalThis.chrome = target.chrome;
+      new Function(backgroundCode)();
+
+      // 模拟用户在水合读完隐藏快照之后、写回之前隐藏了 b1
+      const originalGet = target.chrome.storage.local.get;
+      let injected = false;
+      target.chrome.storage.local.get = vi.fn(async keys => {
+        if (keys === 'bmHiddenIds' && !injected) {
+          injected = true;
+          target.localData.bmHiddenIds = ['b1'];
+        }
+        return originalGet(keys);
+      });
+
+      await target.send({ type: 'bmNativeTagSync', action: 'hydrate' });
+      expect(injected).toBe(true);
+      expect(target.localData.bmHiddenIds).toContain('b1');
+      expect(target.localData.bmHiddenIds).toContain('b2');
     } finally {
       if (previousChrome === undefined) delete globalThis.chrome;
       else globalThis.chrome = previousChrome;

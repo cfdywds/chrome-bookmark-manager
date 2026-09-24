@@ -891,6 +891,23 @@ function nativeEmptyDeviceIds(root) {
   })).filter(device => device.id && !device.heads.length).map(device => device.id);
 }
 
+// 远端记录只允许「补上」隐藏，不允许替本机「去掉」隐藏：取消隐藏仅在本机记录
+// 已经写过该 URL 隐藏（说明本机的隐藏早已同步出去，这条未隐藏代表其它设备的取消）
+// 且其修订号不比本机记录旧时才生效。否则本机刚写入、还没同步出去的隐藏会被
+// 自己记录的旧值（或延迟到达的旧分片）抹掉，表现为「隐藏后又出现」。
+function canApplyRemoteUnhide(remote, local) {
+  if (!local || local.hidden !== true) return false;
+  return compareNativeRevision(remote.revision, local.revision) >= 0;
+}
+
+function sameIdSet(left, right) {
+  if (left.size !== right.size) return false;
+  for (const id of left) {
+    if (!right.has(id)) return false;
+  }
+  return true;
+}
+
 async function applyNativeSyncData(api, source, allowedEmptyDeviceIds = null, configSnapshot = null) {
   const data = await readNativeSyncData(source);
   if (!data) return { changed: false, ready: false, retry: true, records: {} };
@@ -925,17 +942,21 @@ async function applyNativeSyncData(api, source, allowedEmptyDeviceIds = null, co
   }
   const stored = await api.storage.local.get([
     TAGS_KEY, HIDDEN_KEY, FIXED_TAGS_KEY, TAG_RULES_KEY, NATIVE_SYNC_CONFIG_KEY, NATIVE_SYNC_URLS_KEY,
-    NATIVE_SYNC_CONFIG_REQUEST_KEY
+    NATIVE_SYNC_CONFIG_REQUEST_KEY, NATIVE_SYNC_RECORDS_KEY
   ]);
   const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? { ...stored[TAGS_KEY] } : {};
   const hiddenIds = new Set(Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []);
+  // 本机自己写进同步记录的版本：远端记录不比它新时，不能反过来改掉本机的隐藏状态。
+  const localRecords = stored[NATIVE_SYNC_RECORDS_KEY] && typeof stored[NATIVE_SYNC_RECORDS_KEY] === 'object'
+    ? stored[NATIVE_SYNC_RECORDS_KEY] : {};
   const nextTags = { ...tags };
   const nextHiddenIds = new Set(hiddenIds);
   let tagsChanged = false;
   let hiddenChanged = false;
   const bookmarks = collectNativeUserBookmarks(source, []);
   bookmarks.forEach(bookmark => {
-    const record = data.records[syncUrlKey(bookmark.url)];
+    const key = syncUrlKey(bookmark.url);
+    const record = data.records[key];
     if (!record) return;
     const next = record.tags;
     if (next.length) {
@@ -949,10 +970,12 @@ async function applyNativeSyncData(api, source, allowedEmptyDeviceIds = null, co
     }
     if (typeof record.hidden === 'boolean') {
       const id = String(bookmark.id);
-      if (record.hidden && !nextHiddenIds.has(id)) {
-        nextHiddenIds.add(id);
-        hiddenChanged = true;
-      } else if (!record.hidden && nextHiddenIds.has(id)) {
+      if (record.hidden) {
+        if (!nextHiddenIds.has(id)) {
+          nextHiddenIds.add(id);
+          hiddenChanged = true;
+        }
+      } else if (nextHiddenIds.has(id) && canApplyRemoteUnhide(record, localRecords[key])) {
         nextHiddenIds.delete(id);
         hiddenChanged = true;
       }
@@ -960,7 +983,22 @@ async function applyNativeSyncData(api, source, allowedEmptyDeviceIds = null, co
   });
   const updates = {};
   if (tagsChanged) updates[TAGS_KEY] = nextTags;
-  if (hiddenChanged) updates[HIDDEN_KEY] = [...nextHiddenIds];
+  if (hiddenChanged) {
+    // 读快照与写回之间隔着若干 await，用户可能正好在这段时间里隐藏或取消隐藏了书签。
+    // 这段窗口内的本机改动一律优先，否则一次水合就会静默丢掉用户刚做的隐藏操作。
+    const latestHidden = await api.storage.local.get(HIDDEN_KEY);
+    const latestHiddenIds = new Set(
+      Array.isArray(latestHidden[HIDDEN_KEY]) ? latestHidden[HIDDEN_KEY].map(String) : []
+    );
+    latestHiddenIds.forEach(id => {
+      if (!hiddenIds.has(id)) nextHiddenIds.add(id);
+    });
+    hiddenIds.forEach(id => {
+      if (!latestHiddenIds.has(id)) nextHiddenIds.delete(id);
+    });
+    if (!sameIdSet(nextHiddenIds, latestHiddenIds)) updates[HIDDEN_KEY] = [...nextHiddenIds];
+    else hiddenChanged = false; // 合并结果与本机一致：没有真实变更需要上报
+  }
   let configChanged = false;
   if (data.config) {
     const currentConfig = nativeConfigValues(stored[FIXED_TAGS_KEY], stored[TAG_RULES_KEY]);
