@@ -40,13 +40,27 @@ describe('书签健康体检医生 (Health Doctor) · 高置信防误杀体系',
   });
 
   it('防误杀隔离：网络连接失败/断网/DNS解析失败绝不判定为 dead，而是 suspicious', async () => {
-    // 模拟 fetch 抛出 TypeError: Failed to fetch (典型的无外网或被墙情况)
+    // 模拟 fetch 抛出 TypeError: Failed to fetch (典型的无外网或被墙情况，连 no-cors 也失败)
     globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
 
     const res = await BM.checkUrlHealth('https://github.com/cfdywds');
     expect(res.status).toBe('suspicious');
     expect(res.isProxyDomain).toBe(true);
     expect(res.status).not.toBe('dead');
+  });
+
+  it('防误报探针：因无 CORS 响应头导致普通 fetch 报错，但 mode: no-cors 成功握手时判定为 ok', async () => {
+    globalThis.fetch = vi.fn().mockImplementation((url, init) => {
+      if (init && init.mode === 'no-cors') {
+        return Promise.resolve({ type: 'opaque', status: 0 });
+      }
+      return Promise.reject(new TypeError('Failed to fetch'));
+    });
+
+    const res = await BM.checkUrlHealth('https://juejin.cn/post/123');
+    expect(res.status).toBe('ok');
+    expect(res.code).toBe(200);
+    expect(res.reason).toContain('受同源保护');
   });
 
   it('防误杀隔离：请求超时绝不判定为 dead，而是 suspicious (timeout)', async () => {

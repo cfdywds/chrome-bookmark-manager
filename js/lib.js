@@ -4989,12 +4989,42 @@
               isProxyDomain: isProxy
             };
           }
-          return {
-            status: 'suspicious',
-            code: 0,
-            reason: '连接失败（可能需要科学上网或站点受限）',
-            isProxyDomain: isProxy
-          };
+
+          // 核心防误判探针：大部分国内正常站点因无 Access-Control-Allow-Origin，浏览器普通 fetch 会报 Failed to fetch。
+          // 此处通过 mode: 'no-cors' 探测底层 TCP/TLS 和服务器是否能实际连通与返回数据。
+          try {
+            const opaqueRes = await fetch(url, {
+              method: 'GET',
+              mode: 'no-cors',
+              signal: controller ? controller.signal : undefined,
+              cache: 'no-cache'
+            });
+            if (opaqueRes) {
+              return {
+                status: 'ok',
+                code: 200,
+                reason: '网络连通正常（受同源保护）'
+              };
+            }
+          } catch (noCorsErr) {
+            const isNoCorsAborted =
+              (controller && controller.signal.aborted) ||
+              (noCorsErr && (noCorsErr.name === 'AbortError' || String(noCorsErr).includes('abort')));
+            if (isNoCorsAborted) {
+              return {
+                status: 'suspicious',
+                code: 0,
+                reason: '请求超时（可能需要科学上网）',
+                isProxyDomain: isProxy
+              };
+            }
+            return {
+              status: 'suspicious',
+              code: 0,
+              reason: '连接失败（可能需要科学上网或站点下线）',
+              isProxyDomain: isProxy
+            };
+          }
         }
       } finally {
         if (timer) clearTimeout(timer);

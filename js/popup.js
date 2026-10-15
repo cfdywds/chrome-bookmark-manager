@@ -1700,29 +1700,24 @@ async function startHealthCheck() {
 async function bulkCleanDead() {
   if (!healthResults || !healthResults.dead.length) return;
   const ids = healthResults.dead.map(it => it.id);
-  const confirmed = typeof UI !== 'undefined' && UI.confirm
-    ? await UI.confirm({
-        title: '清理确诊失效书签？',
-        message: `共 <b>${ids.length}</b> 个确诊为 404/410 的失效书签，将移入 30 天回收站。`,
-        confirmText: '移入回收站'
-      })
-    : true;
-  if (!confirmed) return;
+  const ok = await confirmDialog({
+    title: '清理确诊失效书签？',
+    message: `共 <b>${ids.length}</b> 个确诊为 404/410 的失效书签，将移入 30 天回收站。`,
+    confirmText: '移入回收站'
+  });
+  if (!ok) return;
   try {
-    for (const id of ids) {
-      await chrome.bookmarks.remove(id).catch(() => {});
+    const res = await softDelete(ids, '失效书签体检清理');
+    if (res && res.n) {
+      toast(`已清理 ${res.n} 个失效书签（可随时在回收站恢复） ✓`, 'ok', {
+        label: '撤销',
+        onClick: () => undoDelete(res.items)
+      });
+      healthResults.dead = [];
+      scheduleRefresh();
     }
-    if (typeof UI !== 'undefined' && UI.toast) {
-      UI.toast(`已清理 ${ids.length} 个失效书签（可随时在回收站恢复） ✓`);
-    }
-    healthResults.dead = [];
-    if (typeof scan === 'function') scan();
-    else if (currentTab === 'organize' && ORG_VIEW === 'clean') renderOrganize();
-    else renderClean();
   } catch (e) {
-    if (typeof UI !== 'undefined' && UI.toast) {
-      UI.toast('清理失败：' + (e.message || e), 'danger');
-    }
+    toast('清理失败：' + (e.message || e), 'danger');
   }
 }
 
@@ -3164,6 +3159,16 @@ async function init() {
         } else {
           renderClean();
         }
+      } else if (action === 'delitem') {
+        const id = btn.dataset.id;
+        if (!id) return;
+        softDeleteBookmark(id).then(() => {
+          if (healthResults && Array.isArray(healthResults.dead)) {
+            healthResults.dead = healthResults.dead.filter(x => x.id !== id);
+          }
+          if (currentTab === 'organize' && ORG_VIEW === 'clean') renderOrganize();
+          else if (currentTab === 'overview' && overviewDetail === 'clean') renderClean();
+        });
       } else if (action === 'overview-back') {
         overviewDetail = '';
         render('overview');
