@@ -18,12 +18,11 @@ let activeProgressCancel = null;
 let FOLDER_NAV = { folderId: '' }; // 「组织」页文件夹视图当前浏览的文件夹 id（空=书签栏根）
 let ORG_VIEW = (function () {
   try {
-    const v = sessionStorage.getItem('bm-org-view');
-    return v === 'folders' || v === 'clean' ? v : 'tags';
+    return sessionStorage.getItem('bm-org-view') === 'folders' ? 'folders' : 'tags';
   } catch (e) {
     return 'tags';
   }
-})(); // 「组织」页视图：tags | folders | clean（sessionStorage 持久）
+})(); // 「组织」页视图：tags | folders（sessionStorage 持久）
 let editingFolder = null; // 就地编辑状态：{mode:'new'|'rename', id?, parentId?, tempId?}
 let FOLDER_SORT = (function () {
   try {
@@ -728,16 +727,30 @@ function renderOverview() {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 12);
   const tagCount = Object.keys(stats).length;
+  const deadN = healthResults && healthResults.dead ? healthResults.dead.length : 0;
+  const totalCleanPending = d.exactDuplicates.length + d.emptyFolders.length + deadN;
+
   // 待办入口卡片（有待办项优先；无待办也保留卡片位置，避免首屏跳动）
   const acts = [
+    {
+      ico: ICON_SM('sparkles'),
+      name: '失效体检',
+      n: deadN,
+      jump: 'clean',
+      sub: 'health',
+      cls: deadN ? 'danger' : 'accent',
+      done: healthResults ? '无失效' : '去体检',
+      alwaysActive: true
+    },
     {
       ico: ICON_SM('repeat'),
       name: '重复书签',
       n: d.exactDuplicates.length,
       jump: 'clean',
       sub: 'repeat',
-      cls: 'danger',
-      done: '无重复'
+      cls: d.exactDuplicates.length ? 'danger' : '',
+      done: '无重复',
+      alwaysActive: true
     },
     {
       ico: ICON_SM('folder'),
@@ -745,8 +758,9 @@ function renderOverview() {
       n: d.emptyFolders.length,
       jump: 'clean',
       sub: 'empty',
-      cls: 'warn',
-      done: '无空文件夹'
+      cls: d.emptyFolders.length ? 'warn' : '',
+      done: '无空夹',
+      alwaysActive: true
     },
     {
       ico: ICON_SM('archive'),
@@ -754,19 +768,20 @@ function renderOverview() {
       n: trashN,
       jump: 'trash',
       cls: '',
-      done: '空'
+      done: '空',
+      alwaysActive: true
     }
   ].sort((a, b) => (b.n > 0) - (a.n > 0));
 
   const entryCard = a => {
-    const done = a.n === 0;
+    const done = a.n === 0 && !a.alwaysActive;
     const attrs = done ? '' : ` data-jump="${a.jump}"${a.sub ? ` data-sub="${a.sub}"` : ''}`;
     // 计数为 0 时没有动作，不能渲染成可聚焦的伪按钮（会误导键盘与读屏用户）
     const a11y = done ? ' aria-disabled="true"' : ' role="button" tabindex="0"';
-    return `<div class="entry-card${done ? ' done' : ''}"${attrs}${a11y} aria-label="${a.name}：${done ? a.done : a.n}">
+    return `<div class="entry-card${done ? ' done' : ''}"${attrs}${a11y} aria-label="${a.name}：${done ? a.done : a.n}" data-tip="进入${a.name}">
       <span class="entry-icon ${a.cls}">${a.ico}</span>
       <span class="entry-title">${a.name}</span>
-      <span class="entry-count">${done ? a.done : a.n}</span>
+      <span class="entry-count">${a.n > 0 ? a.n : a.done}</span>
     </div>`;
   };
 
@@ -778,7 +793,7 @@ function renderOverview() {
     <div class="kpi">
       <div class="card big"><b>${d.total}</b><span>书签总数</span></div>
       <div class="card" data-jump="tags"><b>${tagCount}</b><span>标签</span></div>
-      <div class="card" data-jump="clean"><b>${d.exactDuplicates.length + d.emptyFolders.length}</b><span>待清理</span></div>
+      <div class="card" data-jump="clean"><b>${totalCleanPending}</b><span>待清理</span></div>
       <div class="card" data-jump="trash"><b>${trashN}</b><span>回收站</span></div>
     </div>
     <div class="search-hero">
@@ -935,30 +950,23 @@ function folderRowEdit(f, mode) {
 function renderOrganize() {
   // 首次进入「组织」页：一次性拖拽引导（chrome.storage.local 标记位，失败静默）
   maybeShowOrganizeTip();
-  const view = ORG_VIEW === 'folders' || ORG_VIEW === 'clean' ? ORG_VIEW : 'tags';
+  const view = ORG_VIEW === 'folders' ? 'folders' : 'tags';
   content().innerHTML = orgBarHtml(view) + orgHintHtml(view) + '<div id="orgBody"></div>';
   const body = $('#orgBody');
   if (!body) return;
   if (view === 'folders') renderFolders(body);
-  else if (view === 'clean') renderCleanInsideOrg(body);
   else renderTags(body);
 }
 
 // 「组织」页副标题（P2-1）：一句话说明这一页能做什么，降低理解成本
 function orgHintHtml(view) {
-  if (view === 'folders') {
-    return '<p class="org-hint">浏览 Chrome 真实文件夹结构；新建 / 重命名 / 删除文件夹，拖行首把手排序或跨层移动</p>';
-  }
-  if (view === 'clean') {
-    return '<p class="org-hint">集中清理重复书签、空文件夹与检测 404 失效死链，保持书签库整洁健康</p>';
-  }
-  return '<p class="org-hint">按标签浏览与筛选（一个书签可以有多个标签），点 #标签 快速过滤</p>';
+  return view === 'folders'
+    ? '<p class="org-hint">浏览 Chrome 真实文件夹结构；新建 / 重命名 / 删除文件夹，拖行首把手排序或跨层移动</p>'
+    : '<p class="org-hint">按标签浏览与筛选（一个书签可以有多个标签），点 #标签 快速过滤</p>';
 }
 
 function orgBarHtml(view) {
-  const tagsOn = view === 'tags';
-  const foldersOn = view === 'folders';
-  const cleanOn = view === 'clean';
+  const tagsOn = view !== 'folders';
   let tools = '';
   if (view === 'folders') {
     const cur = currentFolder();
@@ -970,42 +978,16 @@ function orgBarHtml(view) {
       (cur
         ? `<button class="org-btn primary" data-action="new-folder" data-id="${cur.id}" data-tip="新建子文件夹" aria-label="新建子文件夹">${ICON_SM('plus')}新建</button>`
         : '');
-  } else if (view === 'tags') {
-    tools = `<button class="org-btn" data-action="open-tree" data-tip="目录树（浏览 / 跨层移动）" aria-label="打开目录树">${ICON_SM('folder')}目录树</button>`;
   } else {
-    tools = '';
+    tools = `<button class="org-btn" data-action="open-tree" data-tip="目录树（浏览 / 跨层移动）" aria-label="打开目录树">${ICON_SM('folder')}目录树</button>`;
   }
-  const d = DATA;
-  const cleanCount =
-    d && d.exactDuplicates && d.emptyFolders
-      ? d.exactDuplicates.length +
-        d.emptyFolders.length +
-        (healthResults && healthResults.dead ? healthResults.dead.length : 0)
-      : 0;
-  const countBadge = cleanCount > 0 ? ` <span class="cnt">${cleanCount}</span>` : '';
-
   return `<div class="org-bar">
     <div class="org-seg" role="tablist" aria-label="组织视图">
       <button class="org-tab${tagsOn ? ' active' : ''}" role="tab" aria-selected="${tagsOn ? 'true' : 'false'}" data-action="org-view" data-view="tags">${ICON_SM('tag')} 标签</button>
-      <button class="org-tab${foldersOn ? ' active' : ''}" role="tab" aria-selected="${foldersOn ? 'true' : 'false'}" data-action="org-view" data-view="folders">${ICON_SM('folder')} 文件夹</button>
-      <button class="org-tab${cleanOn ? ' active' : ''}" role="tab" aria-selected="${cleanOn ? 'true' : 'false'}" data-action="org-view" data-view="clean">${ICON_SM('sparkles')} 清理${countBadge}</button>
+      <button class="org-tab${!tagsOn ? ' active' : ''}" role="tab" aria-selected="${!tagsOn ? 'true' : 'false'}" data-action="org-view" data-view="folders">${ICON_SM('folder')} 文件夹</button>
     </div>
     <div class="org-tools">${tools}</div>
   </div>`;
-}
-
-function renderCleanInsideOrg(container) {
-  const d = DATA;
-  const deadCount = healthResults ? healthResults.dead.length : 0;
-  const html = `
-    <div class="subtab-bar">
-      ${cleanNav('重复书签', 'repeat', ICON_SM('repeat'), d.exactDuplicates.length)}
-      ${cleanNav('空文件夹', 'empty', ICON_SM('trash'), d.emptyFolders.length)}
-      ${cleanNav('失效体检', 'health', ICON_SM('sparkles'), deadCount)}
-    </div>
-    <div id="cleanBody"></div>`;
-  container.innerHTML = html;
-  renderCleanBody();
 }
 
 function renderFolders(container) {
@@ -3342,8 +3324,7 @@ async function init() {
         const it = getItemById(btn.dataset.id);
         if (it) openAddDrawer(it);
       } else if (action === 'org-view') {
-        const v = btn.dataset.view;
-        ORG_VIEW = v === 'folders' || v === 'clean' ? v : 'tags';
+        ORG_VIEW = btn.dataset.view === 'folders' ? 'folders' : 'tags';
         try {
           sessionStorage.setItem('bm-org-view', ORG_VIEW);
         } catch (e) {
