@@ -74,6 +74,16 @@ describe('书签健康体检医生 (Health Doctor) · 高置信防误杀体系',
     expect(res.status).not.toBe('dead');
   });
 
+  it('智能错误归因：私有局域网 IP 超时时准确归因为局域网/内网服务未响应', async () => {
+    const abortErr = new Error('The user aborted a request.');
+    abortErr.name = 'AbortError';
+    globalThis.fetch = vi.fn().mockRejectedValue(abortErr);
+
+    const res = await BM.checkUrlHealth('http://192.168.10.115:8188/doc.html');
+    expect(res.status).toBe('suspicious');
+    expect(res.reason).toContain('局域网/内网服务');
+  });
+
   it('防误杀隔离：403 Forbidden 与 500 服务端错误属于 suspicious，不可误判为死链', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       status: 403,

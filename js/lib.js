@@ -4938,12 +4938,41 @@
     }
   }
 
+  function isPrivateNetworkHost(url) {
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.toLowerCase();
+      if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
+      if (/^192\.168\./.test(host)) return true;
+      if (/^10\./.test(host)) return true;
+      if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
+      if (/\.local$/i.test(host) || /\.internal$/i.test(host) || /\.lan$/i.test(host)) return true;
+      if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) && parsed.port && parsed.port !== '80' && parsed.port !== '443') {
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
   async function checkUrlHealth(url, timeoutMs = 8000) {
     if (!url || !/^https?:\/\//i.test(url)) {
       return { status: 'ok', code: 200, reason: '非 HTTP 协议' };
     }
 
     const isProxy = isLikelyProxyDomain(url);
+    const isPrivate = isPrivateNetworkHost(url);
+
+    function getFailureReason(isTimeout, defaultMsg) {
+      if (isPrivate) {
+        return isTimeout ? '局域网/内网服务超时未响应' : '局域网/内网服务未连通';
+      }
+      if (isProxy) {
+        return isTimeout ? '请求超时（可能需要科学上网）' : '无法建立外网连接（可能需要科学上网）';
+      }
+      return isTimeout ? '请求超时（可能需要科学上网）' : (defaultMsg || '连接失败（站点可能已下线）');
+    }
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     let timer = null;
     if (controller) {
@@ -4966,7 +4995,7 @@
           return {
             status: 'suspicious',
             code: 0,
-            reason: '请求超时（可能需要科学上网）',
+            reason: getFailureReason(true),
             isProxyDomain: isProxy
           };
         }
@@ -4985,7 +5014,7 @@
             return {
               status: 'suspicious',
               code: 0,
-              reason: '请求超时（可能需要科学上网）',
+              reason: getFailureReason(true),
               isProxyDomain: isProxy
             };
           }
@@ -5014,14 +5043,14 @@
               return {
                 status: 'suspicious',
                 code: 0,
-                reason: '请求超时（可能需要科学上网）',
+                reason: getFailureReason(true),
                 isProxyDomain: isProxy
               };
             }
             return {
               status: 'suspicious',
               code: 0,
-              reason: '连接失败（可能需要科学上网或站点下线）',
+              reason: getFailureReason(false, '连接失败（无法连通或站点已下线）'),
               isProxyDomain: isProxy
             };
           }
@@ -5070,7 +5099,7 @@
       return {
         status: 'suspicious',
         code: 0,
-        reason: isTimeout ? '请求超时（可能需要科学上网）' : '无法建立网络连接',
+        reason: getFailureReason(isTimeout),
         isProxyDomain: isProxy
       };
     }

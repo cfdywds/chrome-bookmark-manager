@@ -1667,6 +1667,7 @@ function renderEmpty(container) {
 let healthResults = null;
 let healthRunning = false;
 let healthProgress = { current: 0, total: 0 };
+let healthSuspiciousLimit = 40;
 
 async function startHealthCheck() {
   if (healthRunning || !DATA || !DATA.items) return;
@@ -1765,7 +1766,7 @@ function renderHealth(container) {
   html += `
     <div class="health-group" style="margin-bottom: 16px;">
       <div class="group-title" style="display:flex; justify-content:space-between; align-items:center; padding: 8px 12px; background: var(--danger-soft); border-radius: var(--radius-sm); margin-bottom: 8px;">
-        <span style="color: var(--danger); font-weight: 600;">🔴 确诊失效书签 (${dead.length})</span>
+        <span style="color: var(--danger); font-weight: 600;">🔴 确诊失效书签 (<span id="healthDeadCount">${dead.length}</span>)</span>
         ${dead.length ? '<button class="btn small danger" id="btnBulkCleanDead">一键移入回收站</button>' : ''}
       </div>`;
   if (!dead.length) {
@@ -1773,12 +1774,15 @@ function renderHealth(container) {
   } else {
     dead.forEach(item => {
       html += `
-        <div class="row">
+        <div class="row" data-id="${item.id}">
           <div class="meta">
             <div class="title" style="color: var(--danger);">${escapeHtml(item.title)} <span class="tag danger">${item.code || 404}</span></div>
             <div class="url">${escapeHtml(item.url)}</div>
           </div>
-          <button class="btn small danger" data-action="delitem" data-id="${item.id}" data-url="${escapeHtml(item.url)}" data-title="${escapeHtml(item.title)}">删除</button>
+          <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
+            <a class="btn small ghost" href="${escapeHtml(item.url)}" target="_blank" rel="noopener">打开</a>
+            <button class="btn small danger" data-action="delhealth" data-id="${item.id}" data-type="dead" data-title="${escapeHtml(item.title)}">删除</button>
+          </div>
         </div>`;
     });
   }
@@ -1788,28 +1792,37 @@ function renderHealth(container) {
   html += `
     <div class="health-group" style="margin-bottom: 16px;">
       <div class="group-title" style="padding: 8px 12px; background: var(--warn-soft); border-radius: var(--radius-sm); margin-bottom: 8px;">
-        <span style="color: var(--warn); font-weight: 600;">🟡 网络未连通 / 疑似需 VPN (${suspicious.length})</span>
+        <span style="color: var(--warn); font-weight: 600;">🟡 网络未连通 / 疑似需 VPN (<span id="healthSuspCount">${suspicious.length}</span>)</span>
         <div style="font-size: var(--fs-meta); color: var(--muted); margin-top: 4px; font-weight: normal;">
-          以下网址请求超时或连接失败，可能需要网络代理访问。已自动受保护，不可一键批量删除。
+          以下网址请求超时或连接失败，可能需要网络代理访问或属于内网服务。已自动受保护，确认无法访问后可点击右侧删除。
         </div>
       </div>`;
   if (suspicious.length) {
-    suspicious.slice(0, 30).forEach(item => {
+    const visibleList = suspicious.slice(0, healthSuspiciousLimit);
+    visibleList.forEach(item => {
       const proxyBadge = item.isProxyDomain
         ? '<span class="tag info" style="margin-left: 4px;">疑似外网</span>'
         : '';
       html += `
-        <div class="row">
+        <div class="row" data-id="${item.id}">
           <div class="meta">
             <div class="title">${escapeHtml(item.title)} ${proxyBadge}</div>
             <div class="url">${escapeHtml(item.url)}</div>
             <div class="loc" style="color: var(--muted); font-size: var(--fs-meta);">${escapeHtml(item.reason || '网络未连通')}</div>
           </div>
-          <a class="btn small ghost" href="${escapeHtml(item.url)}" target="_blank" rel="noopener">打开验证</a>
+          <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
+            <a class="btn small ghost" href="${escapeHtml(item.url)}" target="_blank" rel="noopener">打开验证</a>
+            <button class="btn small danger" data-action="delhealth" data-id="${item.id}" data-type="suspicious" data-title="${escapeHtml(item.title)}">删除</button>
+          </div>
         </div>`;
     });
-    if (suspicious.length > 30) {
-      html += `<div style="font-size: var(--fs-meta); color: var(--muted); padding: 8px 12px;">… 其余 ${suspicious.length - 30} 项已自动保护</div>`;
+    if (suspicious.length > healthSuspiciousLimit) {
+      const remaining = suspicious.length - healthSuspiciousLimit;
+      html += `
+        <div style="text-align:center; padding: 10px 0; display:flex; gap:8px; justify-content:center;">
+          <button class="btn small ghost" data-action="more-suspicious">查看更多 (还有 ${remaining} 项)</button>
+          <button class="btn small ghost" data-action="all-suspicious">展开全部 (${suspicious.length})</button>
+        </div>`;
     }
   } else {
     html += `<div style="font-size: var(--fs-meta); color: var(--muted); padding: 8px 12px;">所有书签均能顺利连通 ✓</div>`;
@@ -3159,6 +3172,67 @@ async function init() {
         } else {
           renderClean();
         }
+      } else if (action === 'delhealth') {
+        const id = btn.dataset.id;
+        if (!id) return;
+        const type = btn.dataset.type;
+        const row = btn.closest('.row');
+
+        // 1. 0ms 乐观更新折叠动画，彻底告别卡顿感
+        if (row) {
+          row.style.transition = 'opacity 0.16s ease, max-height 0.2s ease, padding 0.2s ease, margin 0.2s ease';
+          row.style.opacity = '0';
+          row.style.maxHeight = '0px';
+          row.style.padding = '0';
+          row.style.margin = '0';
+          row.style.overflow = 'hidden';
+          row.style.pointerEvents = 'none';
+        }
+
+        // 2. 内存数据同步移除并即时刷新计数
+        if (healthResults) {
+          if (type === 'dead' && Array.isArray(healthResults.dead)) {
+            healthResults.dead = healthResults.dead.filter(x => x.id !== id);
+          } else if (Array.isArray(healthResults.suspicious)) {
+            healthResults.suspicious = healthResults.suspicious.filter(x => x.id !== id);
+          }
+          const deadCountEl = $('#healthDeadCount');
+          if (deadCountEl && healthResults.dead) deadCountEl.textContent = healthResults.dead.length;
+          const suspCountEl = $('#healthSuspCount');
+          if (suspCountEl && healthResults.suspicious) suspCountEl.textContent = healthResults.suspicious.length;
+        }
+
+        // 3. 静默后台软删除，带撤销 Toast（单条免密秒删，30 天回收站兜底）
+        softDelete([id], '删除失效书签', { pruneEmptyFolders: false })
+          .then(r => {
+            if (r && r.n) {
+              toast('已移入回收站（30 天内可恢复）', 'ok', {
+                label: '撤销',
+                onClick: async () => {
+                  await undoDelete(r.items);
+                  if (currentTab === 'organize' && ORG_VIEW === 'clean') renderOrganize();
+                  else if (currentTab === 'overview' && overviewDetail === 'clean') renderClean();
+                }
+              });
+            }
+          })
+          .catch(err => {
+            console.warn('[书签管家] 体检删除失败', err);
+            toast('删除失败，已恢复', 'danger');
+            if (row) {
+              row.style.opacity = '1';
+              row.style.maxHeight = '';
+              row.style.pointerEvents = '';
+            }
+          });
+      } else if (action === 'more-suspicious') {
+        healthSuspiciousLimit += 50;
+        if (currentTab === 'organize' && ORG_VIEW === 'clean') renderOrganize();
+        else renderClean();
+      } else if (action === 'all-suspicious') {
+        healthSuspiciousLimit = Infinity;
+        if (currentTab === 'organize' && ORG_VIEW === 'clean') renderOrganize();
+        else renderClean();
       } else if (action === 'delitem') {
         const id = btn.dataset.id;
         if (!id) return;
