@@ -24,6 +24,74 @@ if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
     .catch(err => console.warn('[书签管家] 无法设置侧边栏行为', err));
 }
 
+// ===== 快捷收藏：右键上下文菜单与全局快捷键 =====
+function registerContextMenus() {
+  if (!chrome.contextMenus || !chrome.contextMenus.create) return;
+  try {
+    chrome.contextMenus.removeAll(() => {
+      chrome.contextMenus.create({
+        id: 'bm-quick-save-page',
+        title: '⭐ 快速收藏当前页面到书签管家',
+        contexts: ['page', 'selection']
+      });
+      chrome.contextMenus.create({
+        id: 'bm-quick-save-link',
+        title: '⭐ 快速收藏此链接到书签管家',
+        contexts: ['link']
+      });
+    });
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+registerContextMenus();
+
+async function handleQuickSave(url, title) {
+  if (!url || !/^https?:\/\//i.test(url)) return;
+  try {
+    const tree = await chrome.bookmarks.getTree();
+    const rootChildren = (tree[0] && tree[0].children) || [];
+    const bookmarkBar =
+      rootChildren.find(c => c.id === '1' || /书签栏|bookmarks bar/i.test(c.title)) ||
+      rootChildren[0];
+    const parentId = bookmarkBar ? bookmarkBar.id : '1';
+
+    const existing = await chrome.bookmarks.search({ url });
+    if (existing && existing.length) return;
+
+    await chrome.bookmarks.create({
+      parentId,
+      title: (title || url).trim(),
+      url
+    });
+  } catch (err) {
+    console.warn('[书签管家] 快速收藏失败', err);
+  }
+}
+
+if (chrome.contextMenus && chrome.contextMenus.onClicked) {
+  chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+    if (info.menuItemId === 'bm-quick-save-page') {
+      const url = info.pageUrl || (tab && tab.url);
+      const title = (tab && tab.title) || url;
+      await handleQuickSave(url, title);
+    } else if (info.menuItemId === 'bm-quick-save-link') {
+      const url = info.linkUrl;
+      const title = info.selectionText || url;
+      await handleQuickSave(url, title);
+    }
+  });
+}
+
+if (chrome.commands && chrome.commands.onCommand) {
+  chrome.commands.onCommand.addListener(async (command, tab) => {
+    if (command === 'quick-save' && tab && tab.url) {
+      await handleQuickSave(tab.url, tab.title);
+    }
+  });
+}
+
 // ---- 接管 ⭐ 收藏按钮：后台默认打标，不打开侧边栏或新增抽屉 ----
 const STAR_HOOK_KEY = 'bmStarHook'; // storage.local 键，true/false，默认 true
 const AUTO_AI_TAG_KEY = 'bmAutoAiTag'; // 明确开启后，普通浏览器收藏才允许静默请求 LLM
@@ -3070,6 +3138,7 @@ if (chrome.runtime && chrome.runtime.onInstalled) {
     // 重新加载 / 更新扩展后 Chrome 侧的面板注册会丢失，这里补写回来
     registerSidePanel();
     scheduleNativeHydration();
+    registerContextMenus();
   });
 }
 if (chrome.runtime && chrome.runtime.onStartup) {

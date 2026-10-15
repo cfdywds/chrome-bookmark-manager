@@ -564,6 +564,34 @@
             </div>
             <div class="opt-grid">
               <div class="form-row">
+                <label
+                  >新标签页模式
+                  <button
+                    class="help-dot"
+                    type="button"
+                    data-tip="选择新标签页的显示方式：可使用完整书签工作台、极简居中搜索页面，或关闭接管并自动跳转至指定网址。"
+                    aria-label="选择新标签页的显示方式。"
+                  >
+                    ?
+                  </button></label
+                >
+                <select id="setNtMode">
+                  <option value="full">完整工作台（卡片与列表）</option>
+                  <option value="minimal">极简居中搜索（隐藏书签列表）</option>
+                  <option value="disabled">关闭接管（自动跳转指定网址）</option>
+                </select>
+              </div>
+              <div class="form-row" id="ntRedirectRow" hidden>
+                <label>跳转目标网址</label>
+                <input
+                  type="text"
+                  id="setNtRedirectUrl"
+                  placeholder="https://www.google.com 或 about:blank"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </div>
+              <div class="form-row">
                 <label>内容区宽度</label>
                 <select id="setNtWidth">
                   <option value="1080">紧凑 · 默认（1080px / 约 3-4 列）</option>
@@ -651,7 +679,36 @@
                   <use href="icons/sprite.svg#i-download" /></svg
               ></span>
               <div>
-                <div class="opt-card-title">书签备份 / 恢复</div>
+                <div class="opt-card-title">标准 HTML 书签（跨浏览器通用）</div>
+                <p class="opt-card-desc">
+                  导出为工业标准的 HTML 书签文件（携带 TAGS 标签），可直接在 Chrome、Edge、Firefox、Safari、Brave 等任意浏览器中「导入书签」无缝恢复；亦可直接将外部 HTML 书签文件导入并还原标签。
+                </p>
+              </div>
+            </div>
+            <div class="opt-foot danger-actions">
+              <span id="htmlBackupMsg" class="settings-msg" role="alert"></span>
+              <button id="htmlExport" type="button" class="btn ghost">导出 HTML 书签</button>
+              <button id="htmlImport" type="button" class="btn danger">导入 HTML 书签</button>
+            </div>
+          </div>
+
+          <div class="opt-card opt-card-compact danger-data-card">
+            <div class="opt-card-head">
+              <span class="opt-card-icon"
+                ><svg
+                  class="ico"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <use href="icons/sprite.svg#i-download" /></svg
+              ></span>
+              <div>
+                <div class="opt-card-title">完整扩展备份 (JSON V4)</div>
                 <p class="opt-card-desc">
                   导出全部书签为 V4 JSON
                   文件；恢复时默认合并相同网址的书签与标签，也可以选择保留副本。恢复会写入书签和扩展标签数据，请先确认备份文件来源。
@@ -660,8 +717,8 @@
             </div>
             <div class="opt-foot danger-actions">
               <span id="backupMsg" class="settings-msg" role="alert"></span>
-              <button id="backupExport" type="button" class="btn ghost">导出备份</button>
-              <button id="backupImport" type="button" class="btn danger">恢复备份</button>
+              <button id="backupExport" type="button" class="btn ghost">导出 JSON 备份</button>
+              <button id="backupImport" type="button" class="btn danger">恢复 JSON 备份</button>
             </div>
           </div>
 

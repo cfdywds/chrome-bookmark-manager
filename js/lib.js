@@ -4636,6 +4636,587 @@
     return stats;
   }
 
+  // ===== 标准 Netscape HTML 书签导出与导入 =====
+
+  function escapeHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function escapeHtmlAttr(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function exportBookmarksHTML(tree, tagsById) {
+    let out = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
+<!-- This is an automatically generated file.
+     It will be read and overwritten.
+     DO NOT EDIT! -->
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
+<TITLE>Bookmarks</TITLE>
+<H1>Bookmarks</H1>
+
+<DL><p>
+`;
+    let count = 0;
+    function walk(nodes, indent) {
+      const pad = '    '.repeat(indent);
+      for (const node of nodes || []) {
+        if (!node) continue;
+        if (isNativeSyncRoot(node)) continue;
+        if (node.url) {
+          count++;
+          const tags = (tagsById && tagsById[node.id]) || [];
+          const tagsAttr = tags.length ? ` TAGS="${escapeHtmlAttr(tags.join(','))}"` : '';
+          const addDate = node.dateAdded ? ` ADD_DATE="${Math.floor(node.dateAdded / 1000)}"` : '';
+          out += `${pad}<DT><A HREF="${escapeHtmlAttr(node.url)}"${addDate}${tagsAttr}>${escapeHtml(node.title || node.url)}</A>\n`;
+        } else if (node.children) {
+          const addDate = node.dateAdded ? ` ADD_DATE="${Math.floor(node.dateAdded / 1000)}"` : '';
+          out += `${pad}<DT><H3${addDate}>${escapeHtml(node.title || 'Bookmarks')}</H3>\n`;
+          out += `${pad}<DL><p>\n`;
+          walk(node.children, indent + 1);
+          out += `${pad}</DL><p>\n`;
+        }
+      }
+    }
+    const root = tree && tree[0];
+    const roots = (root && root.children) || [];
+    walk(roots, 1);
+    out += `</DL><p>\n`;
+    return { html: out, count };
+  }
+
+  function parseNetscapeHtml(htmlText) {
+    if (!htmlText || typeof htmlText !== 'string') return [];
+
+    if (typeof DOMParser !== 'undefined') {
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlText, 'text/html');
+        function parseDl(dl) {
+          const items = [];
+          for (const child of dl.children) {
+            if (child.tagName === 'DT') {
+              const h3 = child.querySelector(':scope > H3, :scope > h3');
+              const a = child.querySelector(':scope > A, :scope > a');
+              const subDl = child.querySelector(':scope > DL, :scope > dl');
+              if (h3) {
+                const subChildren = subDl ? parseDl(subDl) : [];
+                items.push({
+                  type: 'folder',
+                  title: h3.textContent.trim() || '(未命名)',
+                  dateAdded: (Number(h3.getAttribute('ADD_DATE')) || 0) * 1000,
+                  children: subChildren
+                });
+              } else if (a) {
+                const tagsRaw = a.getAttribute('TAGS') || a.getAttribute('tags') || '';
+                const tags = tagsRaw.split(',').map(t => t.trim()).filter(Boolean);
+                items.push({
+                  type: 'bookmark',
+                  title: a.textContent.trim() || a.getAttribute('HREF') || a.getAttribute('href'),
+                  url: a.getAttribute('HREF') || a.getAttribute('href'),
+                  tags,
+                  dateAdded: (Number(a.getAttribute('ADD_DATE')) || 0) * 1000
+                });
+              }
+            }
+          }
+          return items;
+        }
+        const topDl = doc.querySelector('dl, DL');
+        if (topDl) {
+          const parsed = parseDl(topDl);
+          if (parsed.length) return parsed;
+        }
+      } catch (e) {
+        /* fallback to regex tokenizer */
+      }
+    }
+
+    const tokenRegex = /(<DT><H3[^>]*>.*?<\/H3>|<H3[^>]*>.*?<\/H3>|<DT><A[^>]*>.*?<\/A>|<A[^>]*>.*?<\/A>|<DL[^>]*>|<\/DL>)/gis;
+    const tokens = htmlText.match(tokenRegex) || [];
+    const root = { type: 'folder', title: 'root', children: [] };
+    const stack = [root];
+    let pendingFolder = null;
+
+    for (const token of tokens) {
+      if (/^<DL/i.test(token)) {
+        if (pendingFolder) {
+          stack[stack.length - 1].children.push(pendingFolder);
+          stack.push(pendingFolder);
+          pendingFolder = null;
+        }
+      } else if (/^<\/DL/i.test(token)) {
+        if (stack.length > 1) {
+          stack.pop();
+        }
+      } else if (/<H3/i.test(token)) {
+        if (pendingFolder) {
+          stack[stack.length - 1].children.push(pendingFolder);
+        }
+        const titleMatch = token.match(/<H3[^>]*>(.*?)<\/H3>/i);
+        const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : '(未命名)';
+        const dateMatch = token.match(/ADD_DATE=["']?(\d+)/i);
+        const dateAdded = dateMatch ? Number(dateMatch[1]) * 1000 : 0;
+        pendingFolder = {
+          type: 'folder',
+          title,
+          dateAdded,
+          children: []
+        };
+      } else if (/<A/i.test(token)) {
+        if (pendingFolder) {
+          stack[stack.length - 1].children.push(pendingFolder);
+          pendingFolder = null;
+        }
+        const hrefMatch = token.match(/HREF=["']([^"']*)["']/i);
+        const url = hrefMatch ? hrefMatch[1] : '';
+        const titleMatch = token.match(/<A[^>]*>(.*?)<\/A>/i);
+        const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : url;
+        const tagsMatch = token.match(/TAGS=["']([^"']*)["']/i);
+        const tags = tagsMatch ? tagsMatch[1].split(',').map(t => t.trim()).filter(Boolean) : [];
+        const dateMatch = token.match(/ADD_DATE=["']?(\d+)/i);
+        const dateAdded = dateMatch ? Number(dateMatch[1]) * 1000 : 0;
+        if (url) {
+          stack[stack.length - 1].children.push({
+            type: 'bookmark',
+            title,
+            url,
+            tags,
+            dateAdded
+          });
+        }
+      }
+    }
+    if (pendingFolder) {
+      stack[stack.length - 1].children.push(pendingFolder);
+    }
+    return root.children;
+  }
+
+  async function importBookmarksHTML(htmlText, options = {}) {
+    const dryRun = !!options.dryRun;
+    const keepDuplicates = !!options.keepDuplicates;
+    const nodes = parseNetscapeHtml(htmlText);
+    if (!nodes || !nodes.length) {
+      throw new Error('未识别到有效的 HTML 书签内容');
+    }
+
+    const stats = { folders: 0, bookmarks: 0, merged: 0, skipped: 0 };
+    const tree = await chrome.bookmarks.getTree();
+    const existingItems = flattenBookmarksTree(tree);
+    const bookmarksByUrl = new Map();
+    for (const item of existingItems) {
+      if (!bookmarksByUrl.has(item.url)) bookmarksByUrl.set(item.url, item);
+    }
+
+    const rootChildren = (tree[0] && tree[0].children) || [];
+    const bookmarkBar =
+      rootChildren.find(c => c.id === '1' || /书签栏|bookmarks bar/i.test(c.title)) ||
+      rootChildren[0];
+    const defaultParentId = bookmarkBar ? bookmarkBar.id : '1';
+
+    const restoredTags = {};
+    const currentTags = getTags() || {};
+
+    async function walk(list, parentId) {
+      for (const node of list) {
+        if (node.type === 'folder') {
+          if (dryRun) {
+            stats.folders++;
+            await walk(node.children || [], parentId);
+            continue;
+          }
+          let folderId;
+          try {
+            const created = await chrome.bookmarks.create({
+              parentId,
+              title: node.title || '(未命名)'
+            });
+            folderId = created.id;
+            stats.folders++;
+          } catch (e) {
+            stats.skipped++;
+            continue;
+          }
+          await walk(node.children || [], folderId);
+        } else if (node.type === 'bookmark') {
+          let url;
+          try {
+            url = normalizeHttpUrl(node.url).href;
+          } catch (e) {
+            stats.skipped++;
+            continue;
+          }
+          const existing = !keepDuplicates && bookmarksByUrl.get(url);
+          if (existing) {
+            stats.merged++;
+            if (!dryRun && node.tags && node.tags.length) {
+              const prev = currentTags[existing.id] || [];
+              const mergedTags = Array.from(new Set([...prev, ...node.tags]));
+              restoredTags[existing.id] = mergedTags;
+            }
+            continue;
+          }
+          if (dryRun) {
+            stats.bookmarks++;
+            bookmarksByUrl.set(url, { id: 'preview-' + stats.bookmarks });
+            continue;
+          }
+          const createInfo = { parentId, title: node.title || url, url };
+          await sendBackupImportMessage('reserve', createInfo.parentId, createInfo.url);
+          try {
+            const created = await chrome.bookmarks.create(createInfo);
+            bookmarksByUrl.set(url, created);
+            await sendBackupImportMessage('confirm', createInfo.parentId, createInfo.url, created.id);
+            if (node.tags && node.tags.length) {
+              restoredTags[created.id] = node.tags;
+            }
+            stats.bookmarks++;
+          } catch (e) {
+            await sendBackupImportMessage('cancel', createInfo.parentId, createInfo.url);
+            stats.skipped++;
+          }
+        }
+      }
+    }
+
+    await walk(nodes, defaultParentId);
+
+    if (!dryRun && Object.keys(restoredTags).length) {
+      const mergedAll = { ...currentTags, ...restoredTags };
+      await chrome.storage.local.set({ bmTags: mergedAll });
+      setCachedTags(mergedAll);
+    }
+
+    return stats;
+  }
+
+  // ===== 书签健康体检医生 (Health Doctor) · 高置信防误杀体系 =====
+
+  const KNOWN_PROXY_DOMAINS = [
+    'google.com',
+    'google.co',
+    'googleapis.com',
+    'gstatic.com',
+    'github.com',
+    'githubusercontent.com',
+    'github.io',
+    'youtube.com',
+    'youtu.be',
+    'ytimg.com',
+    'twitter.com',
+    'x.com',
+    't.co',
+    'twimg.com',
+    'facebook.com',
+    'fbcdn.net',
+    'instagram.com',
+    'medium.com',
+    'wikipedia.org',
+    'reddit.com',
+    'stackoverflow.com',
+    'stackexchange.com',
+    'openai.com',
+    'anthropic.com',
+    'docker.com'
+  ];
+
+  function isLikelyProxyDomain(url) {
+    try {
+      const host = new URL(url).hostname.toLowerCase();
+      return KNOWN_PROXY_DOMAINS.some(d => host === d || host.endsWith('.' + d));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function checkUrlHealth(url, timeoutMs = 8000) {
+    if (!url || !/^https?:\/\//i.test(url)) {
+      return { status: 'ok', code: 200, reason: '非 HTTP 协议' };
+    }
+
+    const isProxy = isLikelyProxyDomain(url);
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    let timer = null;
+    if (controller) {
+      timer = setTimeout(() => controller.abort(), timeoutMs);
+    }
+
+    try {
+      let res;
+      try {
+        res = await fetch(url, {
+          method: 'HEAD',
+          signal: controller ? controller.signal : undefined,
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+        });
+      } catch (headErr) {
+        const isHeadAborted =
+          (controller && controller.signal.aborted) ||
+          (headErr && (headErr.name === 'AbortError' || String(headErr).includes('abort')));
+        if (isHeadAborted) {
+          return {
+            status: 'suspicious',
+            code: 0,
+            reason: '请求超时（可能需要科学上网）',
+            isProxyDomain: isProxy
+          };
+        }
+        // 若 HEAD 失败或被拒绝，尝试 GET 首字节
+        try {
+          res = await fetch(url, {
+            method: 'GET',
+            signal: controller ? controller.signal : undefined,
+            headers: { Range: 'bytes=0-0' }
+          });
+        } catch (getErr) {
+          const isGetAborted =
+            (controller && controller.signal.aborted) ||
+            (getErr && (getErr.name === 'AbortError' || String(getErr).includes('abort')));
+          if (isGetAborted) {
+            return {
+              status: 'suspicious',
+              code: 0,
+              reason: '请求超时（可能需要科学上网）',
+              isProxyDomain: isProxy
+            };
+          }
+          return {
+            status: 'suspicious',
+            code: 0,
+            reason: '连接失败（可能需要科学上网或站点受限）',
+            isProxyDomain: isProxy
+          };
+        }
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+
+      const code = res.status;
+      if (code === 404 || code === 410) {
+        return {
+          status: 'dead',
+          code,
+          reason: code === 404 ? '404 页面不存在' : '410 资源已永久下线'
+        };
+      }
+      if (code >= 300 && code < 400) {
+        const location = (res.headers && res.headers.get('location')) || '';
+        return {
+          status: 'redirect',
+          code,
+          redirectUrl: location,
+          reason: `重定向至 ${location || '新网址'}`
+        };
+      }
+      if (code === 401 || code === 403) {
+        return {
+          status: 'suspicious',
+          code,
+          reason: '需要登录或被站点反爬拦截',
+          isProxyDomain: isProxy
+        };
+      }
+      if (code >= 500) {
+        return {
+          status: 'suspicious',
+          code,
+          reason: `服务器临时错误 (${code})`,
+          isProxyDomain: isProxy
+        };
+      }
+      return { status: 'ok', code, reason: '正常' };
+    } catch (err) {
+      if (timer) clearTimeout(timer);
+      const isTimeout = err && (err.name === 'AbortError' || String(err).includes('abort'));
+      return {
+        status: 'suspicious',
+        code: 0,
+        reason: isTimeout ? '请求超时（可能需要科学上网）' : '无法建立网络连接',
+        isProxyDomain: isProxy
+      };
+    }
+  }
+
+  async function checkBookmarksHealth(items, options = {}) {
+    const concurrency = Math.max(1, Math.min(options.concurrency || 6, 12));
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
+    const timeoutMs = options.timeoutMs || 8000;
+    const signal = options.signal;
+
+    const list = Array.isArray(items) ? items : [];
+    const results = { dead: [], suspicious: [], redirect: [], ok: [] };
+    let processed = 0;
+    let cursor = 0;
+
+    async function worker() {
+      while (cursor < list.length) {
+        if (signal && signal.aborted) break;
+        const index = cursor++;
+        const it = list[index];
+        const health = await checkUrlHealth(it.url, timeoutMs);
+        const itemRes = { ...it, ...health };
+
+        if (health.status === 'dead') results.dead.push(itemRes);
+        else if (health.status === 'redirect') results.redirect.push(itemRes);
+        else if (health.status === 'suspicious') results.suspicious.push(itemRes);
+        else results.ok.push(itemRes);
+
+        processed++;
+        onProgress(processed, list.length, itemRes);
+      }
+    }
+
+    const workers = [];
+    for (let i = 0; i < concurrency; i++) {
+      workers.push(worker());
+    }
+    await Promise.all(workers);
+
+    return results;
+  }
+
+  // ===== 轻量拼音提取引擎 (Pinyin Search Engine) =====
+
+  const PINYIN_BOUNDARIES = [
+    { p: 'a', c: '啊' },
+    { p: 'b', c: '芭' },
+    { p: 'c', c: '擦' },
+    { p: 'd', c: '搭' },
+    { p: 'e', c: '蛾' },
+    { p: 'f', c: '发' },
+    { p: 'g', c: '噶' },
+    { p: 'h', c: '哈' },
+    { p: 'j', c: '击' },
+    { p: 'k', c: '喀' },
+    { p: 'l', c: '垃' },
+    { p: 'm', c: '妈' },
+    { p: 'n', c: '拿' },
+    { p: 'o', c: '哦' },
+    { p: 'p', c: '趴' },
+    { p: 'q', c: '期' },
+    { p: 'r', c: '然' },
+    { p: 's', c: '撒' },
+    { p: 't', c: '塌' },
+    { p: 'w', c: '挖' },
+    { p: 'x', c: '昔' },
+    { p: 'y', c: '压' },
+    { p: 'z', c: '匝' }
+  ];
+
+  let pinyinCollator = null;
+  try {
+    pinyinCollator = new Intl.Collator('zh-CN-u-co-pinyin');
+  } catch (e) {
+    pinyinCollator = null;
+  }
+
+  const PINYIN_SPECIAL_INITIALS = {
+    重: 'c',
+    长: 'c',
+    行: 'h',
+    地: 'd',
+    得: 'd',
+    乐: 'l',
+    着: 'z',
+    调: 't',
+    数: 's',
+    传: 'c',
+    便: 'b',
+    更: 'g',
+    解: 'j'
+  };
+
+  function getCharInitial(char) {
+    if (!char) return '';
+    if (PINYIN_SPECIAL_INITIALS[char]) return PINYIN_SPECIAL_INITIALS[char];
+    const code = char.charCodeAt(0);
+    if (code < 0x4e00 || code > 0x9fa5) return '';
+
+    if (!pinyinCollator) return '';
+    if (pinyinCollator.compare(char, PINYIN_BOUNDARIES[0].c) < 0) return '';
+    for (let i = PINYIN_BOUNDARIES.length - 1; i >= 0; i--) {
+      if (pinyinCollator.compare(char, PINYIN_BOUNDARIES[i].c) >= 0) {
+        return PINYIN_BOUNDARIES[i].p;
+      }
+    }
+    return '';
+  }
+
+  function toPinyinInitials(text) {
+    if (!text || typeof text !== 'string') return '';
+    let initials = '';
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const initial = getCharInitial(char);
+      if (initial) {
+        initials += initial;
+      } else if (/[a-zA-Z0-9]/.test(char)) {
+        initials += char.toLowerCase();
+      }
+    }
+    return initials;
+  }
+
+  const PINYIN_COMMON_WORDS = {
+    哔哩哔哩: 'bilibili',
+    掘金: 'juejin',
+    知乎: 'zhihu',
+    百度: 'baidu',
+    淘宝: 'taobao',
+    腾讯: 'tencent',
+    阿里: 'ali',
+    微信: 'weixin',
+    微博: 'weibo',
+    豆瓣: 'douban',
+    语雀: 'yuque',
+    简书: 'jianshu',
+    谷歌: 'guge',
+    阮一峰: 'ruanyifeng',
+    工具: 'gongju',
+    前端: 'qianduan',
+    后端: 'houduan',
+    开发: 'kaifa',
+    设计: 'sheji',
+    产品: 'chanpin',
+    社区: 'shequ',
+    文档: 'wendang',
+    教程: 'jiaocheng',
+    博客: 'boke',
+    开源: 'kaiyuan',
+    算法: 'suanfa',
+    架构: 'jiagou'
+  };
+
+  function toPinyinKeywords(text) {
+    if (!text || typeof text !== 'string') return [];
+    const keywords = [];
+    const initials = toPinyinInitials(text);
+    if (initials && initials !== text.toLowerCase()) {
+      keywords.push(initials);
+    }
+    for (const [word, py] of Object.entries(PINYIN_COMMON_WORDS)) {
+      if (text.includes(word)) {
+        keywords.push(py);
+      }
+    }
+    return keywords;
+  }
+
+  global.BMPinyin = {
+    getCharInitial,
+    toPinyinInitials,
+    toPinyinKeywords
+  };
+
   // ---- 错误日志（本地留存最近 50 条，便于排查） ----
   async function logError(tag, err) {
     try {
@@ -4785,6 +5366,14 @@
     purgeExpiredTrash,
     exportBookmarksJSON,
     importBookmarksJSON,
+    exportBookmarksHTML,
+    parseNetscapeHtml,
+    importBookmarksHTML,
+    checkUrlHealth,
+    checkBookmarksHealth,
+    isLikelyProxyDomain,
+    toPinyinInitials,
+    toPinyinKeywords,
     logError,
     migrateStorage,
     STORAGE_VERSION

@@ -180,6 +180,12 @@ function ntBgRowVisible(show) {
 
 function fillNtAppearance(raw) {
   raw = raw && typeof raw === 'object' ? raw : {};
+  const modeEl = $('#setNtMode');
+  if (modeEl) modeEl.value = ['full', 'minimal', 'disabled'].includes(raw.mode) ? raw.mode : 'full';
+  const redirectEl = $('#setNtRedirectUrl');
+  if (redirectEl) redirectEl.value = String(raw.redirectUrl || '');
+  const redirectRow = $('#ntRedirectRow');
+  if (redirectRow) redirectRow.hidden = modeEl ? modeEl.value !== 'disabled' : true;
   const widthEl = $('#setNtWidth');
   if (widthEl) widthEl.value = NT_WIDTH_OPTIONS.indexOf(raw.width) >= 0 ? raw.width : '1080';
   const themeEl = $('#setNtTheme');
@@ -196,7 +202,11 @@ function fillNtAppearance(raw) {
 
 function ntAppearanceValue() {
   const hex = $('#setNtBgHex').value.trim();
+  const mode = ($('#setNtMode') && $('#setNtMode').value) || 'full';
+  const redirectUrl = ($('#setNtRedirectUrl') && $('#setNtRedirectUrl').value.trim()) || '';
   return {
+    mode,
+    redirectUrl,
     width: $('#setNtWidth').value,
     theme: $('#setNtTheme').value,
     bg: /^#[0-9a-fA-F]{6}$/.test(hex) ? hex.toLowerCase() : NT_DEFAULT_BG
@@ -916,6 +926,92 @@ function ensureBackupInput() {
     }
   });
   return backupFileInput;
+}
+
+function setHtmlBackupMsg(text, type) {
+  const el = $('#htmlBackupMsg');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'settings-msg' + (type ? ' ' + type : '');
+}
+
+async function exportHtmlBackup() {
+  try {
+    const tree = await chrome.bookmarks.getTree();
+    const tags = (await BM.getTags()) || {};
+    const result = BM.exportBookmarksHTML(tree, tags);
+    const blob = new Blob([result.html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'bookmarks-' + new Date().toISOString().slice(0, 10) + '.html';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    notifySaved('已导出 ' + result.count + ' 个 HTML 书签（带标签） ✓');
+    setHtmlBackupMsg('', '');
+  } catch (e) {
+    setHtmlBackupMsg('导出失败：' + (e.message || e), 'err');
+    try {
+      BM.logError('html-export', e);
+    } catch (ignored) {
+      /* ignore */
+    }
+  }
+}
+
+let htmlFileInput = null;
+function ensureHtmlInput() {
+  if (htmlFileInput) return htmlFileInput;
+  htmlFileInput = document.createElement('input');
+  htmlFileInput.type = 'file';
+  htmlFileInput.accept = 'text/html,.html,.htm';
+  htmlFileInput.hidden = true;
+  document.body.appendChild(htmlFileInput);
+  htmlFileInput.addEventListener('change', async () => {
+    const file = htmlFileInput.files && htmlFileInput.files[0];
+    htmlFileInput.value = '';
+    if (!file) return;
+    const button = $('#htmlImport');
+    if (button) button.disabled = true;
+    try {
+      const htmlText = await file.text();
+      const stats = await BM.importBookmarksHTML(htmlText, { dryRun: true });
+      const choice = await confirmDialog({
+        title: '导入标准 HTML 书签？',
+        message:
+          `该文件将新增 <b>${stats.folders}</b> 个文件夹、<b>${stats.bookmarks}</b> 个书签` +
+          (stats.merged ? `，合并 <b>${stats.merged}</b> 个相同网址书签及其标签` : '') +
+          (stats.skipped ? `（跳过 ${stats.skipped} 个）` : '') +
+          '。书签将规范恢复至书签栏中。',
+        confirmText: stats.merged ? '合并并导入' : '开始导入',
+        thirdText: stats.merged ? '保留副本' : '',
+        danger: false
+      });
+      if (!choice) return;
+      const result = await BM.importBookmarksHTML(htmlText, {
+        dryRun: false,
+        keepDuplicates: choice === 'third'
+      });
+      notifySaved(
+        `导入完成：新增 ${result.bookmarks} 个书签、${result.folders} 个文件夹` +
+          (result.merged ? `，合并 ${result.merged} 个相同网址书签` : '') +
+          ' ✓'
+      );
+      setHtmlBackupMsg('', '');
+    } catch (e) {
+      setHtmlBackupMsg('导入失败：' + (e.message || e), 'err');
+      try {
+        BM.logError('html-import', e);
+      } catch (ignored) {
+        /* ignore */
+      }
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
+  return htmlFileInput;
 }
 
 async function clearTrash() {
@@ -1774,6 +1870,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('#profileNew').addEventListener('click', createLlmProfile);
   $('#profileDelete').addEventListener('click', deleteActiveLlmProfile);
+  $('#htmlExport')?.addEventListener('click', exportHtmlBackup);
+  $('#htmlImport')?.addEventListener('click', () => ensureHtmlInput().click());
   $('#backupExport').addEventListener('click', exportBackup);
   $('#backupImport').addEventListener('click', () => ensureBackupInput().click());
   $('#trashClear').addEventListener('click', clearTrash);
@@ -1807,6 +1905,15 @@ document.addEventListener('DOMContentLoaded', () => {
     themeEl.value = 'custom';
     ntBgRowVisible(true);
   };
+  $('#setNtMode')?.addEventListener('change', () => {
+    const isDis = $('#setNtMode').value === 'disabled';
+    const row = $('#ntRedirectRow');
+    if (row) row.hidden = !isDis;
+    persistNtAppearance('新标签页接管模式已保存');
+  });
+  $('#setNtRedirectUrl')?.addEventListener('change', () =>
+    persistNtAppearance('跳转网址已保存')
+  );
   $('#setNtWidth').addEventListener('change', () => persistNtAppearance('新标签页宽度已保存'));
   $('#setNtTheme').addEventListener('change', () => {
     ntBgRowVisible($('#setNtTheme').value === 'custom');

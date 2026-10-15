@@ -203,6 +203,7 @@
         }
         Object.assign(it, metadata);
         it.dead = null; // 失效链接状态，由 popup 扫描填充
+        it.pinyin = BM.toPinyinKeywords ? BM.toPinyinKeywords(it.title).join(' ') : '';
         it.tags = tagsById[it.id] || []; // 多标签（来自 bmTags 映射）
         it.hidden = BM.isHidden ? BM.isHidden(it.id) : false; // 隐藏书签（日常视图排除）
         itemById.set(it.id, it);

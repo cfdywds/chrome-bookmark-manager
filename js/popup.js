@@ -18,11 +18,12 @@ let activeProgressCancel = null;
 let FOLDER_NAV = { folderId: '' }; // 「组织」页文件夹视图当前浏览的文件夹 id（空=书签栏根）
 let ORG_VIEW = (function () {
   try {
-    return sessionStorage.getItem('bm-org-view') === 'folders' ? 'folders' : 'tags';
+    const v = sessionStorage.getItem('bm-org-view');
+    return v === 'folders' || v === 'clean' ? v : 'tags';
   } catch (e) {
     return 'tags';
   }
-})(); // 「组织」页视图：tags | folders（sessionStorage 持久）
+})(); // 「组织」页视图：tags | folders | clean（sessionStorage 持久）
 let editingFolder = null; // 就地编辑状态：{mode:'new'|'rename', id?, parentId?, tempId?}
 let FOLDER_SORT = (function () {
   try {
@@ -930,27 +931,34 @@ function folderRowEdit(f, mode) {
   </div>`;
 }
 
-// ---------- 组织页：标签视图 + 文件夹视图双视图统一入口 ----------
+// ---------- 组织页：标签视图 + 文件夹视图 + 清理视图统一入口 ----------
 function renderOrganize() {
   // 首次进入「组织」页：一次性拖拽引导（chrome.storage.local 标记位，失败静默）
   maybeShowOrganizeTip();
-  const view = ORG_VIEW === 'folders' ? 'folders' : 'tags';
+  const view = ORG_VIEW === 'folders' || ORG_VIEW === 'clean' ? ORG_VIEW : 'tags';
   content().innerHTML = orgBarHtml(view) + orgHintHtml(view) + '<div id="orgBody"></div>';
   const body = $('#orgBody');
   if (!body) return;
   if (view === 'folders') renderFolders(body);
+  else if (view === 'clean') renderCleanInsideOrg(body);
   else renderTags(body);
 }
 
 // 「组织」页副标题（P2-1）：一句话说明这一页能做什么，降低理解成本
 function orgHintHtml(view) {
-  return view === 'folders'
-    ? '<p class="org-hint">浏览 Chrome 真实文件夹结构；新建 / 重命名 / 删除文件夹，拖行首把手排序或跨层移动</p>'
-    : '<p class="org-hint">按标签浏览与筛选（一个书签可以有多个标签），点 #标签 快速过滤</p>';
+  if (view === 'folders') {
+    return '<p class="org-hint">浏览 Chrome 真实文件夹结构；新建 / 重命名 / 删除文件夹，拖行首把手排序或跨层移动</p>';
+  }
+  if (view === 'clean') {
+    return '<p class="org-hint">集中清理重复书签、空文件夹与检测 404 失效死链，保持书签库整洁健康</p>';
+  }
+  return '<p class="org-hint">按标签浏览与筛选（一个书签可以有多个标签），点 #标签 快速过滤</p>';
 }
 
 function orgBarHtml(view) {
-  const tagsOn = view !== 'folders';
+  const tagsOn = view === 'tags';
+  const foldersOn = view === 'folders';
+  const cleanOn = view === 'clean';
   let tools = '';
   if (view === 'folders') {
     const cur = currentFolder();
@@ -962,16 +970,42 @@ function orgBarHtml(view) {
       (cur
         ? `<button class="org-btn primary" data-action="new-folder" data-id="${cur.id}" data-tip="新建子文件夹" aria-label="新建子文件夹">${ICON_SM('plus')}新建</button>`
         : '');
-  } else {
+  } else if (view === 'tags') {
     tools = `<button class="org-btn" data-action="open-tree" data-tip="目录树（浏览 / 跨层移动）" aria-label="打开目录树">${ICON_SM('folder')}目录树</button>`;
+  } else {
+    tools = '';
   }
+  const d = DATA;
+  const cleanCount =
+    d && d.exactDuplicates && d.emptyFolders
+      ? d.exactDuplicates.length +
+        d.emptyFolders.length +
+        (healthResults && healthResults.dead ? healthResults.dead.length : 0)
+      : 0;
+  const countBadge = cleanCount > 0 ? ` <span class="cnt">${cleanCount}</span>` : '';
+
   return `<div class="org-bar">
     <div class="org-seg" role="tablist" aria-label="组织视图">
       <button class="org-tab${tagsOn ? ' active' : ''}" role="tab" aria-selected="${tagsOn ? 'true' : 'false'}" data-action="org-view" data-view="tags">${ICON_SM('tag')} 标签</button>
-      <button class="org-tab${!tagsOn ? ' active' : ''}" role="tab" aria-selected="${!tagsOn ? 'true' : 'false'}" data-action="org-view" data-view="folders">${ICON_SM('folder')} 文件夹</button>
+      <button class="org-tab${foldersOn ? ' active' : ''}" role="tab" aria-selected="${foldersOn ? 'true' : 'false'}" data-action="org-view" data-view="folders">${ICON_SM('folder')} 文件夹</button>
+      <button class="org-tab${cleanOn ? ' active' : ''}" role="tab" aria-selected="${cleanOn ? 'true' : 'false'}" data-action="org-view" data-view="clean">${ICON_SM('sparkles')} 清理${countBadge}</button>
     </div>
     <div class="org-tools">${tools}</div>
   </div>`;
+}
+
+function renderCleanInsideOrg(container) {
+  const d = DATA;
+  const deadCount = healthResults ? healthResults.dead.length : 0;
+  const html = `
+    <div class="subtab-bar">
+      ${cleanNav('重复书签', 'repeat', ICON_SM('repeat'), d.exactDuplicates.length)}
+      ${cleanNav('空文件夹', 'empty', ICON_SM('trash'), d.emptyFolders.length)}
+      ${cleanNav('失效体检', 'health', ICON_SM('sparkles'), deadCount)}
+    </div>
+    <div id="cleanBody"></div>`;
+  container.innerHTML = html;
+  renderCleanBody();
 }
 
 function renderFolders(container) {
@@ -1572,6 +1606,7 @@ function renderClean() {
     <div class="subtab-bar">
       ${cleanNav('重复书签', 'repeat', ICON_SM('repeat'), d.exactDuplicates.length)}
       ${cleanNav('空文件夹', 'empty', ICON_SM('trash'), d.emptyFolders.length)}
+      ${cleanNav('失效体检', 'health', ICON_SM('sparkles'), healthResults ? healthResults.dead.length : 0)}
     </div>
     <div id="cleanBody"></div>`;
   content().innerHTML = html;
@@ -1582,6 +1617,7 @@ function renderCleanBody() {
   const body = $('#cleanBody');
   if (!body) return;
   if (cleanSub === 'empty') renderEmpty(body);
+  else if (cleanSub === 'health') renderHealth(body);
   else renderExact(body);
 }
 
@@ -1625,6 +1661,169 @@ function renderEmpty(container) {
   });
   html += folders.more;
   c.innerHTML = html;
+}
+
+// ---------- 书签健康体检医生：高置信防误杀工作台 ----------
+let healthResults = null;
+let healthRunning = false;
+let healthProgress = { current: 0, total: 0 };
+
+async function startHealthCheck() {
+  if (healthRunning || !DATA || !DATA.items) return;
+  healthRunning = true;
+  healthProgress = { current: 0, total: DATA.items.length };
+  renderCleanBody();
+
+  try {
+    healthResults = await BM.checkBookmarksHealth(DATA.items, {
+      concurrency: 6,
+      timeoutMs: 6000,
+      onProgress: (current, total) => {
+        healthProgress = { current, total };
+        const pLabel = $('#healthProgressLabel');
+        const pBar = $('#healthProgressBar');
+        if (pLabel) pLabel.textContent = `体检中 (${current} / ${total})`;
+        if (pBar) pBar.style.width = Math.round((current / total) * 100) + '%';
+      }
+    });
+  } catch (err) {
+    if (typeof UI !== 'undefined' && UI.toast) {
+      UI.toast('体检遇到错误：' + (err.message || err), 'danger');
+    }
+  } finally {
+    healthRunning = false;
+    if (currentTab === 'organize' && ORG_VIEW === 'clean') renderOrganize();
+    else renderClean();
+  }
+}
+
+async function bulkCleanDead() {
+  if (!healthResults || !healthResults.dead.length) return;
+  const ids = healthResults.dead.map(it => it.id);
+  const confirmed = typeof UI !== 'undefined' && UI.confirm
+    ? await UI.confirm({
+        title: '清理确诊失效书签？',
+        message: `共 <b>${ids.length}</b> 个确诊为 404/410 的失效书签，将移入 30 天回收站。`,
+        confirmText: '移入回收站'
+      })
+    : true;
+  if (!confirmed) return;
+  try {
+    for (const id of ids) {
+      await chrome.bookmarks.remove(id).catch(() => {});
+    }
+    if (typeof UI !== 'undefined' && UI.toast) {
+      UI.toast(`已清理 ${ids.length} 个失效书签（可随时在回收站恢复） ✓`);
+    }
+    healthResults.dead = [];
+    if (typeof scan === 'function') scan();
+    else if (currentTab === 'organize' && ORG_VIEW === 'clean') renderOrganize();
+    else renderClean();
+  } catch (e) {
+    if (typeof UI !== 'undefined' && UI.toast) {
+      UI.toast('清理失败：' + (e.message || e), 'danger');
+    }
+  }
+}
+
+function renderHealth(container) {
+  const c = container || content();
+  if (healthRunning) {
+    const percent = healthProgress.total
+      ? Math.round((healthProgress.current / healthProgress.total) * 100)
+      : 0;
+    c.innerHTML = `
+      <div class="health-running-box" style="padding: 24px 16px; text-align: center;">
+        <div style="font-weight: 600; margin-bottom: 8px;" id="healthProgressLabel">正在体检书签 (${healthProgress.current} / ${healthProgress.total})</div>
+        <div class="progress-track" style="height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 12px auto; max-width: 280px;">
+          <div id="healthProgressBar" style="width: ${percent}%; height: 100%; background: var(--primary); transition: width 0.2s;"></div>
+        </div>
+        <div style="font-size: var(--fs-meta); color: var(--muted);">并发安全探测中，严格高置信判定，请稍候…</div>
+      </div>`;
+    return;
+  }
+
+  if (!healthResults) {
+    c.innerHTML = `
+      <div class="empty-state" style="padding: 32px 16px;">
+        <span class="emoji">${ICON('sparkles')}</span>
+        <div class="title">书签健康度体检</div>
+        <div class="desc" style="max-width: 280px; margin: 8px auto 16px; font-size: var(--fs-meta); color: var(--muted); line-height: 1.5;">
+          一键探测书签有效性。严格遵循高置信防误杀原则：仅 404/410 判定为死链，网络超时或断连将自动隔离保护，绝不误删。
+        </div>
+        <button class="btn primary" id="btnStartHealth">${ICON_SM('sparkles')} 开始健康体检</button>
+      </div>`;
+    $('#btnStartHealth')?.addEventListener('click', startHealthCheck);
+    return;
+  }
+
+  const dead = healthResults.dead || [];
+  const suspicious = healthResults.suspicious || [];
+
+  let html = `
+    <div class="section-toolbar">
+      <span class="sec-title">体检完成</span>
+      <button class="btn small ghost" id="btnRestartHealth">${ICON_SM('refresh')} 重新体检</button>
+    </div>`;
+
+  // 1) 确诊死链
+  html += `
+    <div class="health-group" style="margin-bottom: 16px;">
+      <div class="group-title" style="display:flex; justify-content:space-between; align-items:center; padding: 8px 12px; background: var(--danger-soft); border-radius: var(--radius-sm); margin-bottom: 8px;">
+        <span style="color: var(--danger); font-weight: 600;">🔴 确诊失效书签 (${dead.length})</span>
+        ${dead.length ? '<button class="btn small danger" id="btnBulkCleanDead">一键移入回收站</button>' : ''}
+      </div>`;
+  if (!dead.length) {
+    html += `<div style="font-size: var(--fs-meta); color: var(--muted); padding: 8px 12px;">没有确诊失效的书签，非常健康 ✓</div>`;
+  } else {
+    dead.forEach(item => {
+      html += `
+        <div class="row">
+          <div class="meta">
+            <div class="title" style="color: var(--danger);">${escapeHtml(item.title)} <span class="tag danger">${item.code || 404}</span></div>
+            <div class="url">${escapeHtml(item.url)}</div>
+          </div>
+          <button class="btn small danger" data-action="delitem" data-id="${item.id}" data-url="${escapeHtml(item.url)}" data-title="${escapeHtml(item.title)}">删除</button>
+        </div>`;
+    });
+  }
+  html += `</div>`;
+
+  // 2) 需验证 / 疑似需代理（防误杀隔离）
+  html += `
+    <div class="health-group" style="margin-bottom: 16px;">
+      <div class="group-title" style="padding: 8px 12px; background: var(--warn-soft); border-radius: var(--radius-sm); margin-bottom: 8px;">
+        <span style="color: var(--warn); font-weight: 600;">🟡 网络未连通 / 疑似需 VPN (${suspicious.length})</span>
+        <div style="font-size: var(--fs-meta); color: var(--muted); margin-top: 4px; font-weight: normal;">
+          以下网址请求超时或连接失败，可能需要网络代理访问。已自动受保护，不可一键批量删除。
+        </div>
+      </div>`;
+  if (suspicious.length) {
+    suspicious.slice(0, 30).forEach(item => {
+      const proxyBadge = item.isProxyDomain
+        ? '<span class="tag info" style="margin-left: 4px;">疑似外网</span>'
+        : '';
+      html += `
+        <div class="row">
+          <div class="meta">
+            <div class="title">${escapeHtml(item.title)} ${proxyBadge}</div>
+            <div class="url">${escapeHtml(item.url)}</div>
+            <div class="loc" style="color: var(--muted); font-size: var(--fs-meta);">${escapeHtml(item.reason || '网络未连通')}</div>
+          </div>
+          <a class="btn small ghost" href="${escapeHtml(item.url)}" target="_blank" rel="noopener">打开验证</a>
+        </div>`;
+    });
+    if (suspicious.length > 30) {
+      html += `<div style="font-size: var(--fs-meta); color: var(--muted); padding: 8px 12px;">… 其余 ${suspicious.length - 30} 项已自动保护</div>`;
+    }
+  } else {
+    html += `<div style="font-size: var(--fs-meta); color: var(--muted); padding: 8px 12px;">所有书签均能顺利连通 ✓</div>`;
+  }
+  html += `</div>`;
+
+  c.innerHTML = html;
+  $('#btnRestartHealth')?.addEventListener('click', startHealthCheck);
+  $('#btnBulkCleanDead')?.addEventListener('click', bulkCleanDead);
 }
 
 // ---------- 回收站 ----------
@@ -2960,7 +3159,11 @@ async function init() {
       } else if (action === 'clean-sub') {
         // 清理 tab 子区块切换
         cleanSub = btn.dataset.sub || 'repeat';
-        renderClean();
+        if (currentTab === 'organize' && ORG_VIEW === 'clean') {
+          renderOrganize();
+        } else {
+          renderClean();
+        }
       } else if (action === 'overview-back') {
         overviewDetail = '';
         render('overview');
@@ -3060,7 +3263,8 @@ async function init() {
         const it = getItemById(btn.dataset.id);
         if (it) openAddDrawer(it);
       } else if (action === 'org-view') {
-        ORG_VIEW = btn.dataset.view === 'folders' ? 'folders' : 'tags';
+        const v = btn.dataset.view;
+        ORG_VIEW = v === 'folders' || v === 'clean' ? v : 'tags';
         try {
           sessionStorage.setItem('bm-org-view', ORG_VIEW);
         } catch (e) {

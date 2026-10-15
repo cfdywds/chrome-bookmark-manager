@@ -1615,3 +1615,25 @@
 .nt-version:empty {
   display: none;
 }
+
+/* ===== 极简居中搜索模式 ===== */
+body.nt-minimal-mode #ntTags,
+body.nt-minimal-mode #ntGrid,
+body.nt-minimal-mode .nt-source-link,
+body.nt-minimal-mode .nt-view-toggle,
+body.nt-minimal-mode .nt-count {
+  display: none !important;
+}
+body.nt-minimal-mode .nt-wrap {
+  min-height: 75vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+body.nt-minimal-mode .nt-top {
+  justify-content: center;
+  margin-bottom: var(--space-4);
+}
+body.nt-minimal-mode .nt-search-wrap {
+  margin: 0 auto;
+}

@@ -57,6 +57,19 @@
   // 应用外观：注入 --nt-maxw 与主题标记；theme='auto' 时还原为系统（移除覆盖）
   function applyAppearance(raw) {
     raw = raw && typeof raw === 'object' ? raw : {};
+    const mode = raw.mode || 'full';
+    if (mode === 'disabled') {
+      const target = String(raw.redirectUrl || '').trim() || 'chrome://new-tab-page/';
+      try {
+        window.location.replace(target);
+        return;
+      } catch (e) {
+        /* ignore */
+      }
+    }
+    if (document.body) {
+      document.body.classList.toggle('nt-minimal-mode', mode === 'minimal');
+    }
     const width = NT_WIDTHS.indexOf(raw.width) >= 0 ? raw.width : '1080';
     const theme = ['auto', 'light', 'dark', 'custom'].indexOf(raw.theme) >= 0 ? raw.theme : 'auto';
     const bg = /^#[0-9a-fA-F]{6}$/.test(String(raw.bg || ''))
@@ -173,6 +186,10 @@
         }
         // 文本词：AND 匹配 hay
         if (textTerms.length) {
+          const pinyinKws =
+            typeof BMPinyin !== 'undefined' && BMPinyin.toPinyinKeywords
+              ? BMPinyin.toPinyinKeywords(it.title || '')
+              : [];
           const hay = (
             (it.title || '') +
             ' ' +
@@ -180,7 +197,8 @@
             ' ' +
             (it.host || '') +
             ' ' +
-            (it.tags || []).join(' ')
+            (it.tags || []).join(' ') +
+            (pinyinKws.length ? ' ' + pinyinKws.join(' ') : '')
           ).toLowerCase();
           if (!textTerms.every(t => hay.includes(t))) return false;
         }

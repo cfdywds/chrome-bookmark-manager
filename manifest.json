@@ -9,8 +9,18 @@
     "alarms",
     "favicon",
     "sidePanel",
-    "activeTab"
+    "activeTab",
+    "contextMenus"
   ],
+  "commands": {
+    "quick-save": {
+      "suggested_key": {
+        "default": "Alt+S",
+        "mac": "Alt+S"
+      },
+      "description": "快速收藏当前页面"
+    }
+  },
   "optional_host_permissions": [
     "https://*/*",
     "http://localhost/*",
