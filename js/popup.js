@@ -2913,6 +2913,7 @@ function bindDrag() {
 function registerShortcuts() {
   if (!window.UI || typeof UI.registerShortcut !== 'function') return;
   const R = entry => UI.registerShortcut(entry);
+  R({ keys: 'Alt + S (Mac: ⌥+S)', desc: '浏览器任意网页：一键快捷收藏当前页', group: '全局快捷键' });
   R({ keys: '/', desc: '聚焦搜索框', group: '键盘快捷键' });
   R({ keys: 'Ctrl / ⌘ + K', desc: '聚焦搜索框', group: '键盘快捷键' });
   R({ keys: 'j / k', desc: '上下移动高亮行', group: '键盘快捷键' });

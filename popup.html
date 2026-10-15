@@ -416,16 +416,42 @@
       </div>
       <div class="drawer-body">
         <div class="help-group">
-          <div class="help-group-title">主要入口</div>
+          <div class="help-group-title">主要入口与健康维护</div>
           <div class="help-item">
-            <b>概览</b>——搜索 + 标签云 +
-            待办提醒；重复书签、空文件夹和回收站均从这里进入，备份与清空回收站请到设置页危险操作区
+            <b>概览</b>——搜索 + 标签云 + 待办提醒；失效体检、重复书签、空文件夹和回收站均从这里进入，备份与清空回收站请到设置页危险操作区
+          </div>
+          <div class="help-item">
+            <b>失效体检</b>——概览页点击「✨ 失效体检」卡片即可一键并发体检；仅 404/410 确诊为死链，自动识别局域网内网超时，支持 0ms 乐观秒删与 30 天回收站撤销
           </div>
           <div class="help-item">
             <b>组织</b>——按标签或文件夹浏览 / 筛选（一个书签可多个标签），点 #标签 快速过滤
           </div>
           <div class="help-item"><b>隐藏</b>——单独查看已隐藏书签，可取消隐藏、编辑或删除</div>
         </div>
+
+        <div class="help-group">
+          <div class="help-group-title">极速检索与快捷收藏</div>
+          <div class="help-item">
+            <b>拼音 / 简拼搜索</b>——搜索框支持汉字首字母简拼（如输入 <code>blbl</code> 搜哔哩哔哩、<code>tb</code> 搜淘宝）及全拼，免去切换中文输入法
+          </div>
+          <div class="help-item">
+            <b>全局快捷键收藏</b>——在浏览器任意网页按 <kbd>Alt + S</kbd>（Mac: <kbd>⌥ + S</kbd>），瞬间收藏当前页并自动应用本地智能打标
+          </div>
+          <div class="help-item">
+            <b>右键菜单快捷收藏</b>——网页空白处右键「⭐ 收藏当前网页至书签管家」，超链接右键「⭐ 收藏此链接至书签管家」
+          </div>
+        </div>
+
+        <div class="help-group">
+          <div class="help-group-title">跨端互通与新标签页</div>
+          <div class="help-item">
+            <b>跨浏览器 HTML 导入导出</b>——设置页提供标准 Netscape HTML 导出与导入，无损携带标签体系统，可在 Chrome / Edge / Firefox / Safari / Arc 等任意浏览器无缝互通
+          </div>
+          <div class="help-item">
+            <b>新标签页模式控制</b>——在设置页可自由选择：完整工作台模式、极简居中搜索模式、或关闭接管（秒级无感跳转指定主页）
+          </div>
+        </div>
+
         <div class="help-group">
           <div class="help-group-title">通用技巧</div>
           <div class="help-item">勾选列表项 → 底部出现「删除选中」批量栏（含全选 / 反选）</div>
@@ -437,7 +463,7 @@
           <div class="help-item">新增书签：输入网址自动推荐标签，可 AI 打标（生成 1-3 个标签）</div>
           <div class="help-item">书签行上的 AI 打标按钮可为单个书签打标（已有标签时覆盖重打）</div>
           <div class="help-item">所有删除都会先进回收站（30 天内可恢复）</div>
-          <div class="help-item">顶部搜索框可全局搜索标题 / 网址 / 域名 / 标签</div>
+          <div class="help-item">顶部搜索框可全局搜索标题 / 网址 / 域名 / 标签 / 拼音简拼</div>
         </div>
         <!-- 键盘快捷键由 js/ui.js 的快捷键注册表在打开抽屉时生成，避免文档与实现漂移 -->
         <div class="help-group" id="helpShortcuts" aria-label="键盘快捷键"></div>
