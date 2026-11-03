@@ -3222,52 +3222,180 @@
   }
 
   // ---- 隐藏书签：从日常视图（New Tab/标签页/清理统计）排除，但不删除 ----
-  // 存储：chrome.storage.local 的 bmHiddenIds（书签 id 数组）
+  // 存储：chrome.storage.local 的 bmHiddenIds（书签 id 数组）与 bmHiddenUrls（URL 键数组）。
+  // Chrome 在重启、重新登录或书签同步冲突后会重新分配书签 ID，只按 ID 记录会让隐藏
+  // 在这之后失效。URL 键跟随书签本体，因此两份都写，判定时任一命中即视为隐藏。
   const HIDDEN_KEY = 'bmHiddenIds';
-  let hiddenCache = null; // Set 或 null
+  const HIDDEN_URLS_KEY = 'bmHiddenUrls';
+  let hiddenCache = null; // Set 或 null（书签 id）
+  let hiddenUrlCache = null; // Set 或 null（URL 键，与 background.syncUrlKey 同算法）
+  // 缓存是否落后于 storage。这里只标记「需要重读」而不清空缓存：清空会让 isHidden
+  // 在重读完成前对所有书签返回 false，界面表现为隐藏书签整批突然又显示出来。
+  let hiddenStale = false;
+  // 失效代数。读取进行中又有新写入时，读完的结果可能已经过期，必须继续标记落后，
+  // 否则读到一半就被「读到的最新」错觉覆盖，此后再也不重读。
+  let hiddenStaleEpoch = 0;
+  let hiddenLoading = null;
+  // 隐藏的读改写必须串行：两个并发的切换各自持有一份独立快照时，后写会覆盖先写，
+  // 表现为「隐藏成功之后又有一部分隐藏书签回来了」。
+  let hiddenMutationQueue = Promise.resolve();
 
+  function queueHiddenMutation(task) {
+    const result = hiddenMutationQueue.then(task, task);
+    hiddenMutationQueue = result.catch(() => {});
+    return result;
+  }
+
+  // 读取失败时保留上一次成功读取的快照（若有），不缓存空集合：空集合会让 isHidden
+  // 对所有书签返回 false，并且此后不再重读。
   async function loadHiddenIds() {
-    if (hiddenCache) return hiddenCache;
+    if (hiddenCache && !hiddenStale) return hiddenCache;
+    // 并发调用共用一个请求：两次并发读取可能一旧一新，后完成的那次会覆盖新值。
+    if (hiddenLoading) return hiddenLoading;
+    const epoch = hiddenStaleEpoch;
+    const task = (async () => {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const r = await chrome.storage.local.get([HIDDEN_KEY, HIDDEN_URLS_KEY]);
+          hiddenCache = new Set(Array.isArray(r[HIDDEN_KEY]) ? r[HIDDEN_KEY].map(String) : []);
+          hiddenUrlCache = new Set(
+            Array.isArray(r[HIDDEN_URLS_KEY]) ? r[HIDDEN_URLS_KEY].map(String) : []
+          );
+          // 读取期间如果又收到新的失效标记，保持落后，下一次再读。
+          hiddenStale = hiddenStaleEpoch !== epoch;
+          return hiddenCache;
+        } catch (e) {
+          // 首次读取失败时再试一次，避免扩展刚唤醒时把整库隐藏误判为全部可见。
+          if (attempt === 1) {
+            if (!hiddenCache) return new Set();
+            return hiddenCache;
+          }
+        }
+      }
+      return hiddenCache || new Set();
+    })();
+    hiddenLoading = task;
     try {
-      const r = await chrome.storage.local.get(HIDDEN_KEY);
-      hiddenCache = new Set(Array.isArray(r[HIDDEN_KEY]) ? r[HIDDEN_KEY] : []);
-    } catch (e) {
-      hiddenCache = new Set();
+      return await task;
+    } finally {
+      if (hiddenLoading === task) hiddenLoading = null;
     }
-    return hiddenCache;
   }
 
-  function invalidateHiddenIds() {
-    hiddenCache = null;
-  }
-
-  // 同步判断（可能未加载，返回 false）
-  function isHidden(id) {
-    return hiddenCache ? hiddenCache.has(id) : false;
-  }
-
-  // 切换隐藏状态；返回新的状态（true = 已隐藏）
-  async function toggleHidden(id) {
-    if (!id) return false;
+  // 已隐藏的 URL 键集合（未加载时返回空集合，调用前应先 loadHiddenIds）。
+  async function loadHiddenUrls() {
     await loadHiddenIds();
-    let nowHidden;
-    if (hiddenCache.has(id)) {
-      hiddenCache.delete(id);
-      nowHidden = false;
-    } else {
-      hiddenCache.add(id);
-      nowHidden = true;
-    }
-    try {
-      await chrome.storage.local.set({ [HIDDEN_KEY]: [...hiddenCache] });
-    } catch (e) {
-      /* ignore */
-    }
-    // 与 setTags 保持一致：显式触发一次防抖发布。MV3 下 storage.onChanged
-    // 不会唤醒已休眠的 Service Worker，仅靠后台监听可能漏掉隐藏状态变更，
-    // 导致标签已同步而隐藏状态从未写入内部书签目录。
-    scheduleSyncTags();
-    return nowHidden;
+    return hiddenUrlCache || new Set();
+  }
+
+  // 标记缓存落后，下次读取时重读。坚持不清空，避免出现「全部可见」的空窗。
+  function invalidateHiddenIds() {
+    hiddenStale = true;
+    hiddenStaleEpoch++;
+  }
+
+  // 同步判断（可能未加载，返回 false）。urlKey 命中说明该网址曾被隐藏过，
+  // 即使书签 ID 已被 Chrome 重新分配也仍然成立。
+  function isHidden(id, urlKey) {
+    if (!hiddenCache) return false;
+    if (id && hiddenCache.has(String(id))) return true;
+    if (urlKey && hiddenUrlCache) return hiddenUrlCache.has(String(urlKey).toLowerCase());
+    return false;
+  }
+
+  // 把「已隐藏但只记录了 ID」的历史数据补上 URL 键。entries: [{ id, key }]，
+  // key 由 urlKey(bookmark.url) 得到。迁移只增不减：解析不出 URL 的 ID 保持原样，
+  // 绝不因为拿不到地址而丢掉已有的隐藏记录。
+  async function ensureHiddenUrls(entries) {
+    if (!Array.isArray(entries) || !entries.length) return false;
+    // 与切换隐藏共用同一个串行队列：迁移只增不减，但写入必须排在切换之后，
+    // 否则它基于旧快照算出的并集会覆盖掉刚隐藏的网址。
+    return queueHiddenMutation(async () => {
+      await loadHiddenIds();
+      if (!hiddenCache) return false;
+      const urls = hiddenUrlCache || new Set();
+      let added = false;
+      entries.forEach(entry => {
+        if (!entry || !entry.id || !entry.key) return;
+        if (!hiddenCache.has(String(entry.id))) return;
+        const key = String(entry.key).toLowerCase();
+        if (urls.has(key)) return;
+        urls.add(key);
+        added = true;
+      });
+      if (!added) return false;
+      try {
+        // 写入前再读一次最新集合：另一个页面可能刚隐藏了新的网址，不能把它覆盖掉。
+        const latest = await chrome.storage.local.get(HIDDEN_URLS_KEY);
+        const latestUrls = new Set(
+          Array.isArray(latest[HIDDEN_URLS_KEY]) ? latest[HIDDEN_URLS_KEY].map(String) : []
+        );
+        urls.forEach(key => latestUrls.add(key));
+        await chrome.storage.local.set({ [HIDDEN_URLS_KEY]: [...latestUrls] });
+        hiddenUrlCache = latestUrls;
+        // 这里只写了 urls、没有重读 ids，无权断言缓存已经是最新：
+        // 保持（或设置）落后标记，让下一轮扫描重新对齐 storage。
+        hiddenStale = true;
+        hiddenStaleEpoch++;
+      } catch (e) {
+        // 迁移失败不影响本次判定，保持缓存原样，下次扫描会再试。
+        return false;
+      }
+      return true;
+    });
+  }
+
+  // 设置隐藏状态；返回操作后的状态（true = 已隐藏）。
+  // urlKey 让隐藏跟随网址而不是书签 ID：ID 被 Chrome 重新分配后仍能判定与取消。
+  // desiredHidden 是界面此刻显示的「点击后应有的状态」：显式传入它，而不是让本函数
+  // 自己按 storage 反转。两者不一致时（另一页面刚改过、或 URL 键已命中），自行反转
+  // 会让「点隐藏」执行成「取消隐藏」，表现为同一次操作要点两次才生效。
+  async function toggleHidden(id, urlKey, desiredHidden) {
+    if (!id) return false;
+    return queueHiddenMutation(async () => {
+      const key = urlKey ? String(urlKey).toLowerCase() : '';
+      // 读改写直接从 storage 取独立快照，不依赖（也不清空）页面缓存：
+      // 既避免用陈旧集合整表覆盖，也不会在写回前留下「全部可见」的空窗。
+      const stored = await chrome.storage.local.get([HIDDEN_KEY, HIDDEN_URLS_KEY]);
+      const ids = new Set(
+        Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []
+      );
+      const urls = new Set(
+        Array.isArray(stored[HIDDEN_URLS_KEY]) ? stored[HIDDEN_URLS_KEY].map(String) : []
+      );
+      const currentlyHidden = ids.has(String(id)) || (key && urls.has(key));
+      const nowHidden =
+        typeof desiredHidden === 'boolean' ? desiredHidden : !currentlyHidden;
+      if (nowHidden === currentlyHidden) {
+        // 已经是目标状态：不重复写盘，但把缓存对齐到刚才读到的 storage 快照。
+        hiddenCache = ids;
+        hiddenUrlCache = urls;
+        hiddenStale = true;
+        hiddenStaleEpoch++;
+        return nowHidden;
+      }
+      if (nowHidden) {
+        ids.add(String(id));
+        if (key) urls.add(key);
+      } else {
+        ids.delete(String(id));
+        if (key) urls.delete(key);
+      }
+      // 写入失败必须向上抛出：静默吞掉会让界面显示「已隐藏」，重开页面后又出现。
+      await chrome.storage.local.set({ [HIDDEN_KEY]: [...ids], [HIDDEN_URLS_KEY]: [...urls] });
+      // 写入成功后才同步内存快照，中途失败时界面仍按上一次可信状态渲染。
+      hiddenCache = ids;
+      hiddenUrlCache = urls;
+      // 写入值来自本页面读到的快照；其它页面可能紧接着又写过 storage。标记落后，
+      // 让下一轮扫描重新对齐，避免本页面长期停留在「少了别人那条隐藏」的状态。
+      hiddenStale = true;
+      hiddenStaleEpoch++;
+      // 与 setTags 保持一致：显式触发一次防抖发布。MV3 下 storage.onChanged
+      // 不会唤醒已休眠的 Service Worker，仅靠后台监听可能漏掉隐藏状态变更，
+      // 导致标签已同步而隐藏状态从未写入内部书签目录。
+      scheduleSyncTags();
+      return nowHidden;
+    });
   }
 
   // 同域名+同路由检测用的路由键：普通页面取路径第一段（/index.html 视为首页）。
@@ -4222,16 +4350,33 @@
 
   // V4 节点：文件夹 [标题, 子节点, 原文件夹 ID]；书签 [标题, URL, 标签?, 已隐藏?]。
   // 仅保留恢复所需字段，标签与隐藏状态直接跟随书签，避免保存原始 Chrome 节点和 ID 映射。
-  function encodeBackupNodes(nodes, tags, hiddenIds) {
+  // hidden 为 { ids, urls }：任一命中即按已隐藏导出，避免书签 ID 变化后备份丢掉隐藏。
+  function makeHiddenMatcher(hidden) {
+    const ids = hidden && hidden.ids instanceof Set ? hidden.ids : new Set();
+    const urls = hidden && hidden.urls instanceof Set ? hidden.urls : new Set();
+    return node => {
+      if (!node) return false;
+      if (ids.has(String(node.id))) return true;
+      if (!urls.size || !node.url) return false;
+      try {
+        return urls.has(urlKey(node.url));
+      } catch (e) {
+        return false;
+      }
+    };
+  }
+
+  function encodeBackupNodes(nodes, tags, isNodeHidden) {
     return (nodes || []).flatMap(node => {
       if (!node) return [];
       if (isNativeSyncRoot(node)) return [];
       if (node.url) {
         const entry = [String(node.title || ''), String(node.url)];
         const itemTags = Array.isArray(tags[node.id]) ? tags[node.id] : [];
-        if (itemTags.length || hiddenIds.has(node.id)) {
+        const hidden = isNodeHidden(node);
+        if (itemTags.length || hidden) {
           entry.push(itemTags);
-          if (hiddenIds.has(node.id)) entry.push(1);
+          if (hidden) entry.push(1);
         }
         return [entry];
       }
@@ -4239,14 +4384,15 @@
       return [
         [
           String(node.title || ''),
-          encodeBackupNodes(node.children, tags, hiddenIds),
+          encodeBackupNodes(node.children, tags, isNodeHidden),
           String(node.id || '')
         ]
       ];
     });
   }
 
-  function encodeBackupRoots(tree, tags, hiddenIds) {
+  function encodeBackupRoots(tree, tags, hidden) {
+    const isNodeHidden = makeHiddenMatcher(hidden);
     const root = tree && tree[0];
     return ((root && root.children) || []).flatMap(node => {
       if (!node || isNativeSyncRoot(node) || node.url || !Array.isArray(node.children)) return [];
@@ -4254,7 +4400,7 @@
         [
           String(node.id || ''),
           String(node.title || ''),
-          encodeBackupNodes(node.children, tags, hiddenIds)
+          encodeBackupNodes(node.children, tags, isNodeHidden)
         ]
       ];
     });
@@ -4321,7 +4467,10 @@
     const tree = await chrome.bookmarks.getTree();
     const trash = await getTrash();
     const tags = (await loadTags()) || {};
-    const hiddenIds = [...(await loadHiddenIds())];
+    const hidden = {
+      ids: new Set(await loadHiddenIds()),
+      urls: new Set(await loadHiddenUrls())
+    };
     const fixedTags = (await loadFixedTags()).filter(t => t !== FALLBACK_TAG);
     const tagRules = (await loadTagRules()) || {};
     const exportedAt = Date.now();
@@ -4329,7 +4478,7 @@
       app: BACKUP_APP,
       version: BACKUP_VERSION,
       exportedAt,
-      roots: encodeBackupRoots(tree, tags, new Set(hiddenIds)),
+      roots: encodeBackupRoots(tree, tags, hidden),
       trash: encodeBackupTrash(trash, exportedAt),
       fixedTags,
       tagRules
@@ -4470,6 +4619,7 @@
     const folderIdMap = new Map();
     const restoredTags = {};
     const restoredHiddenIds = new Set();
+    const restoredHiddenUrls = new Set();
 
     function restoreBookmarkMetadata(node, bookmarkId) {
       if (node.tags.length) {
@@ -4477,7 +4627,15 @@
         if (tags.length)
           restoredTags[bookmarkId] = [...new Set([...(restoredTags[bookmarkId] || []), ...tags])];
       }
-      if (node.hidden) restoredHiddenIds.add(bookmarkId);
+      if (node.hidden) {
+        restoredHiddenIds.add(bookmarkId);
+        // 同时记录 URL 键：换设备/换浏览器导入后书签 ID 必然不同，只有 URL 键能延续隐藏。
+        try {
+          restoredHiddenUrls.add(urlKey(node.url));
+        } catch (e) {
+          /* 地址无法解析时只保留 ID 记录 */
+        }
+      }
     }
 
     // 递归创建（同根目录顶级同名文件夹复用，深层总是新建）。
@@ -4609,11 +4767,16 @@
           /* ignore */
         }
       }
-      if (restoredHiddenIds.size) {
+      if (restoredHiddenIds.size || restoredHiddenUrls.size) {
         try {
           const cur = new Set(await loadHiddenIds());
-          restoredHiddenIds.forEach(id => cur.add(id));
-          await chrome.storage.local.set({ [HIDDEN_KEY]: [...cur] });
+          const curUrls = new Set(await loadHiddenUrls());
+          restoredHiddenIds.forEach(id => cur.add(String(id)));
+          restoredHiddenUrls.forEach(key => curUrls.add(key));
+          await chrome.storage.local.set({
+            [HIDDEN_KEY]: [...cur],
+            [HIDDEN_URLS_KEY]: [...curUrls]
+          });
           invalidateHiddenIds();
         } catch (e) {
           /* ignore */
@@ -5369,6 +5532,8 @@
     normalizeToPool,
     upgradeDefaultFixedTags,
     loadHiddenIds,
+    loadHiddenUrls,
+    ensureHiddenUrls,
     invalidateHiddenIds,
     isHidden,
     toggleHidden,

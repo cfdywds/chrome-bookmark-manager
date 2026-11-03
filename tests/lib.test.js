@@ -1398,3 +1398,220 @@ describe('PROVIDERS（服务商预设，DRY 共享）', () => {
     expect(BM.PROVIDERS.deepseek.base).toContain('api.deepseek.com');
   });
 });
+
+describe('隐藏书签（ID + URL 双键）', () => {
+  const withChrome = async (stub, run) => {
+    const previous = globalThis.chrome;
+    globalThis.chrome = stub;
+    BM.invalidateHiddenIds();
+    try {
+      return await run();
+    } finally {
+      if (previous === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previous;
+      BM.invalidateHiddenIds();
+    }
+  };
+
+  it('书签 ID 重新分配后，按 URL 键仍判定为隐藏', async () => {
+    const stub = {
+      storage: {
+        local: {
+          get: async () => ({ bmHiddenIds: ['old-id'], bmHiddenUrls: ['a.example/page'] })
+        }
+      },
+      runtime: { sendMessage: async () => ({ ok: true }) }
+    };
+    await withChrome(stub, async () => {
+      await BM.loadHiddenIds();
+      expect(BM.isHidden('old-id')).toBe(true);
+      expect(BM.isHidden('new-id')).toBe(false);
+      expect(BM.isHidden('new-id', 'a.example/page')).toBe(true);
+      expect(BM.isHidden('new-id', 'other.example/page')).toBe(false);
+    });
+  });
+
+  it('历史隐藏记录会补齐 URL 键，且解析不到地址的条目原样保留', async () => {
+    const writes = [];
+    const stub = {
+      storage: {
+        local: {
+          get: async () => ({ bmHiddenIds: ['b1', 'gone'], bmHiddenUrls: [] }),
+          set: async values => {
+            writes.push(values);
+          }
+        }
+      },
+      runtime: { sendMessage: async () => ({ ok: true }) }
+    };
+    await withChrome(stub, async () => {
+      await BM.loadHiddenIds();
+      const changed = await BM.ensureHiddenUrls([{ id: 'b1', key: 'x.example/page' }]);
+      expect(changed).toBe(true);
+      expect(writes[0].bmHiddenUrls).toEqual(['x.example/page']);
+      // 'gone' 找不到对应书签，绝不能因为迁移而丢掉这条隐藏
+      expect([...(await BM.loadHiddenIds())]).toEqual(['b1', 'gone']);
+    });
+  });
+
+  it('读取失败时保留上一次可信快照，不会让整库隐藏变成全部可见', async () => {
+    let fail = false;
+    const stub = {
+      storage: {
+        local: {
+          get: async () => {
+            if (fail) throw new Error('Extension context invalidated.');
+            return { bmHiddenIds: ['b1'], bmHiddenUrls: [] };
+          }
+        }
+      },
+      runtime: { sendMessage: async () => ({ ok: true }) }
+    };
+    await withChrome(stub, async () => {
+      // 先建立一份可信快照
+      expect([...(await BM.loadHiddenIds())]).toEqual(['b1']);
+      // 之后读取失败：缓存只被标记为落后，不能被清成空集合（否则整库隐藏全显示）
+      fail = true;
+      BM.invalidateHiddenIds();
+      expect([...(await BM.loadHiddenIds())]).toEqual(['b1']);
+      expect(BM.isHidden('b1')).toBe(true);
+      // 存储恢复后重新读取并跟上新值
+      fail = false;
+      const after = await BM.loadHiddenIds();
+      expect([...(after)]).toEqual(['b1']);
+    });
+  });
+
+  it('并发隐藏多条不会互相覆盖（读改写串行）', async () => {
+    const store = { bmHiddenIds: ['old'], bmHiddenUrls: [] };
+    const stub = {
+      storage: {
+        local: {
+          get: async () => ({ ...store }),
+          set: async values => {
+            Object.assign(store, values);
+          }
+        }
+      },
+      runtime: { sendMessage: async () => ({ ok: true }) }
+    };
+    await withChrome(stub, async () => {
+      await Promise.all([
+        BM.toggleHidden('a', 'a.example/page'),
+        BM.toggleHidden('b', 'b.example/page'),
+        BM.toggleHidden('c', 'c.example/page')
+      ]);
+      expect([...store.bmHiddenIds].sort()).toEqual(['a', 'b', 'c', 'old']);
+      expect([...store.bmHiddenUrls].sort()).toEqual([
+        'a.example/page',
+        'b.example/page',
+        'c.example/page'
+      ]);
+    });
+  });
+
+  it('写入失败时抛出，且不会让缓存进入「全部可见」状态', async () => {
+    const stub = {
+      storage: {
+        local: {
+          get: async () => ({ bmHiddenIds: ['b1'], bmHiddenUrls: ['b1.example/page'] }),
+          set: async () => {
+            throw new Error('QUOTA_BYTES quota exceeded');
+          }
+        }
+      },
+      runtime: { sendMessage: async () => ({ ok: true }) }
+    };
+    await withChrome(stub, async () => {
+      await BM.loadHiddenIds();
+      await expect(BM.toggleHidden('b2', 'b2.example/page')).rejects.toThrow(/quota/i);
+      // 失败后仍按上一次可信状态判定，不会把已有隐藏显示出来
+      expect(BM.isHidden('b1', 'b1.example/page')).toBe(true);
+    });
+  });
+
+  it('另一页面写入隐藏后，本页面重新扫描能看到（不会停在旧缓存）', async () => {
+    const libCode = readFileSync(join(__dirname, '..', 'js', 'lib.js'), 'utf-8');
+    const store = { bmHiddenIds: [], bmHiddenUrls: [] };
+    const stubChrome = {
+      storage: {
+        local: {
+          get: async () => ({ ...store }),
+          set: async values => {
+            Object.assign(store, values);
+          }
+        }
+      },
+      runtime: { sendMessage: async () => ({ ok: true }) }
+    };
+    const previous = globalThis.chrome;
+    globalThis.chrome = stubChrome;
+    BM.invalidateHiddenIds();
+    try {
+      // 两个页面各自持有一份模块级缓存，但共享同一个 storage
+      const makePage = () => {
+        const sandbox = { chrome: stubChrome };
+        new Function('window', 'globalThis', libCode)(sandbox, sandbox);
+        return sandbox.BM;
+      };
+
+      const pageA = makePage();
+      const pageB = makePage();
+      await pageA.loadHiddenIds();
+      await pageA.toggleHidden('a1', 'a.example/page');
+      // 另一个页面（侧边栏）此时隐藏了 b1，页面 A 没有收到 storage 通知
+      await pageB.toggleHidden('b1', 'b.example/page');
+
+      const ids = await pageA.loadHiddenIds();
+      expect([...ids].sort()).toEqual(['a1', 'b1']);
+      expect(pageA.isHidden('b1', 'b.example/page')).toBe(true);
+    } finally {
+      if (previous === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previous;
+      BM.invalidateHiddenIds();
+    }
+  });
+
+  it('显式期望状态优先：界面认为未隐藏时，点隐藏不会被执行成取消', async () => {
+    const store = { bmHiddenIds: ['b1'], bmHiddenUrls: ['b1.example/page'] };
+    const stub = {
+      storage: {
+        local: {
+          get: async () => ({ ...store }),
+          set: async values => {
+            Object.assign(store, values);
+          }
+        }
+      },
+      runtime: { sendMessage: async () => ({ ok: true }) }
+    };
+    await withChrome(stub, async () => {
+      // storage 里已经是隐藏的，但界面此刻显示的是「未隐藏」，用户点了隐藏
+      const result = await BM.toggleHidden('b1', 'b1.example/page', true);
+      expect(result).toBe(true);
+      expect(store.bmHiddenIds).toContain('b1');
+      expect(store.bmHiddenUrls).toContain('b1.example/page');
+    });
+  });
+
+  it('重复执行同一期望状态是幂等的（撤销不会反向变成隐藏）', async () => {
+    const store = { bmHiddenIds: ['b1'], bmHiddenUrls: ['b1.example/page'] };
+    const stub = {
+      storage: {
+        local: {
+          get: async () => ({ ...store }),
+          set: async values => {
+            Object.assign(store, values);
+          }
+        }
+      },
+      runtime: { sendMessage: async () => ({ ok: true }) }
+    };
+    await withChrome(stub, async () => {
+      expect(await BM.toggleHidden('b1', 'b1.example/page', false)).toBe(false);
+      expect(await BM.toggleHidden('b1', 'b1.example/page', false)).toBe(false);
+      expect(store.bmHiddenIds).toEqual([]);
+      expect(store.bmHiddenUrls).toEqual([]);
+    });
+  });
+});

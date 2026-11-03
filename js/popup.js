@@ -3258,12 +3258,20 @@ async function init() {
       } else if (action === 'migrate-tags') {
         migrateTags();
       } else if (action === 'toggle-hidden') {
-        // 切换书签隐藏状态（从日常视图排除/恢复）
-        BM.toggleHidden(btn.dataset.id).then(() => {
-          const it = getItemById(btn.dataset.id);
-          if (it) it.hidden = BM.isHidden(it.id);
-          refresh();
-        });
+        // 切换书签隐藏状态（从日常视图排除/恢复）。同时带上 URL 键，书签 ID 被
+        // Chrome 重新分配后隐藏仍能跟随网址生效；同时把「点击后应有的状态」显式传下去，
+        // 避免 storage 与界面状态不一致时把「隐藏」执行成「取消隐藏」。
+        const hideItem = getItemById(btn.dataset.id);
+        const nextHidden = !(hideItem && hideItem.hidden);
+        BM.toggleHidden(btn.dataset.id, hideItem && hideItem.key, nextHidden)
+          .then(actual => {
+            const it = getItemById(btn.dataset.id);
+            if (it) it.hidden = typeof actual === 'boolean' ? actual : nextHidden;
+            refresh();
+          })
+          .catch(error => {
+            toast((error && error.message) || '隐藏状态保存失败', 'warn');
+          });
       } else if (action === 'create-tag') {
         createTag();
       } else if (action === 'manage-tags') {

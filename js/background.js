@@ -97,6 +97,9 @@ const STAR_HOOK_KEY = 'bmStarHook'; // storage.local 键，true/false，默认 t
 const AUTO_AI_TAG_KEY = 'bmAutoAiTag'; // 明确开启后，普通浏览器收藏才允许静默请求 LLM
 const TAGS_KEY = 'bmTags';
 const HIDDEN_KEY = 'bmHiddenIds';
+// 隐藏状态同时按 URL 键保存：Chrome 重启/重新登录会重新分配书签 ID，只有 ID 的
+// 隐藏记录在 ID 漂移后无法匹配，会表现为「隐藏过的书签又出现了」。
+const HIDDEN_URLS_KEY = 'bmHiddenUrls';
 const FIXED_TAGS_KEY = 'bmFixedTags';
 const TAG_RULES_KEY = 'bmTagRules';
 const LEGACY_DOMAIN_GROUPS_MIGRATED_KEY = 'bmDomainGroupsMigrated';
@@ -458,33 +461,57 @@ function nativeRecordTagsForUrl(bookmarks, tags, key) {
   return normalizeNativeTags(values);
 }
 
-function nativeRecordHiddenForUrl(bookmarks, hiddenIds, key) {
-  const hidden =
-    hiddenIds instanceof Set
-      ? hiddenIds
-      : new Set(
-          Array.isArray(hiddenIds)
-            ? hiddenIds.map(String)
-            : hiddenIds && typeof hiddenIds === 'object'
-              ? Object.keys(hiddenIds).filter(id => hiddenIds[id])
-              : []
-        );
+// 隐藏集合统一成 { ids, urls }：ids 是书签 ID，urls 是规范化 URL 键。
+// 兼容旧调用方直接传 Set/数组（只有 ID）的形式。
+function normalizeHiddenSets(hidden) {
+  if (hidden instanceof Set) return { ids: new Set([...hidden].map(String)), urls: new Set() };
+  if (Array.isArray(hidden)) return { ids: new Set(hidden.map(String)), urls: new Set() };
+  const value = hidden && typeof hidden === 'object' ? hidden : {};
+  const toSet = source =>
+    source instanceof Set
+      ? new Set([...source].map(item => String(item).toLowerCase()))
+      : new Set(Array.isArray(source) ? source.map(item => String(item).toLowerCase()) : []);
+  const ids = value.ids instanceof Set || Array.isArray(value.ids) ? toSet(value.ids) : new Set();
+  const urls =
+    value.urls instanceof Set || Array.isArray(value.urls) ? toSet(value.urls) : new Set();
+  return { ids, urls };
+}
+
+// 该 URL 的同步记录是否应标记为隐藏。
+// URL 键代表「用户隐藏过这个网址」的意图：命中就保持隐藏，不因为当前书签的 ID 不在
+// 集合里而退回 false——那正是 Chrome 重新分配书签 ID 后隐藏失效的原因。
+function nativeRecordHiddenForUrl(bookmarks, hidden, key) {
+  const sets = normalizeHiddenSets(hidden);
+  const normalizedKey = String(key || '').toLowerCase();
+  if (normalizedKey && sets.urls.has(normalizedKey)) return true;
   return (bookmarks || []).some(
-    bookmark => syncUrlKey(bookmark.url) === key && hidden.has(String(bookmark.id))
+    bookmark => syncUrlKey(bookmark.url) === key && sets.ids.has(String(bookmark.id))
   );
 }
 
-function updateNativeRecordsForUrls(records, state, bookmarks, tags, keys, hiddenIds) {
+function updateNativeRecordsForUrls(records, state, bookmarks, tags, keys, hidden) {
+  const sets = normalizeHiddenSets(hidden);
   [...new Set(keys || [])]
     .filter(Boolean)
     .sort()
     .forEach(key => {
       records[key] = {
         tags: nativeRecordTagsForUrl(bookmarks, tags, key),
-        hidden: nativeRecordHiddenForUrl(bookmarks, hiddenIds, key),
+        hidden: nativeRecordHiddenForUrl(bookmarks, sets, key),
         revision: nativeNextRevision(state)
       };
     });
+}
+
+// 从 storage 快照里取出隐藏集合（ID + URL 键）。
+function hiddenSetsFromStorage(stored) {
+  const source = stored || {};
+  return {
+    ids: new Set(Array.isArray(source[HIDDEN_KEY]) ? source[HIDDEN_KEY].map(String) : []),
+    urls: new Set(
+      Array.isArray(source[HIDDEN_URLS_KEY]) ? source[HIDDEN_URLS_KEY].map(String) : []
+    )
+  };
 }
 
 function nativeBucketForUrl(key) {
@@ -1252,6 +1279,7 @@ async function applyNativeSyncData(
   const stored = await api.storage.local.get([
     TAGS_KEY,
     HIDDEN_KEY,
+    HIDDEN_URLS_KEY,
     FIXED_TAGS_KEY,
     TAG_RULES_KEY,
     NATIVE_SYNC_CONFIG_KEY,
@@ -1261,9 +1289,9 @@ async function applyNativeSyncData(
   ]);
   const tags =
     stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? { ...stored[TAGS_KEY] } : {};
-  const hiddenIds = new Set(
-    Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []
-  );
+  const hiddenSets = hiddenSetsFromStorage(stored);
+  const hiddenIds = hiddenSets.ids;
+  const hiddenUrls = hiddenSets.urls;
   // 本机自己写进同步记录的版本：远端记录不比它新时，不能反过来改掉本机的隐藏状态。
   const localRecords =
     stored[NATIVE_SYNC_RECORDS_KEY] && typeof stored[NATIVE_SYNC_RECORDS_KEY] === 'object'
@@ -1271,6 +1299,7 @@ async function applyNativeSyncData(
       : {};
   const nextTags = { ...tags };
   const nextHiddenIds = new Set(hiddenIds);
+  const nextHiddenUrls = new Set(hiddenUrls);
   let tagsChanged = false;
   let hiddenChanged = false;
   const bookmarks = collectNativeUserBookmarks(source, []);
@@ -1295,8 +1324,15 @@ async function applyNativeSyncData(
           nextHiddenIds.add(id);
           hiddenChanged = true;
         }
+        // 远端记录说这个网址是隐藏的，就把意图锚定到 URL 键：此后书签 ID 再被
+        // Chrome 重新分配也不会失效，历史上只有 ID 的记录也在这一步被补齐。
+        if (key && !nextHiddenUrls.has(key)) {
+          nextHiddenUrls.add(key);
+          hiddenChanged = true;
+        }
       } else if (nextHiddenIds.has(id) && canApplyRemoteUnhide(record, localRecords[key])) {
         nextHiddenIds.delete(id);
+        if (key) nextHiddenUrls.delete(key);
         hiddenChanged = true;
       }
     }
@@ -1306,18 +1342,29 @@ async function applyNativeSyncData(
   if (hiddenChanged) {
     // 读快照与写回之间隔着若干 await，用户可能正好在这段时间里隐藏或取消隐藏了书签。
     // 这段窗口内的本机改动一律优先，否则一次水合就会静默丢掉用户刚做的隐藏操作。
-    const latestHidden = await api.storage.local.get(HIDDEN_KEY);
-    const latestHiddenIds = new Set(
-      Array.isArray(latestHidden[HIDDEN_KEY]) ? latestHidden[HIDDEN_KEY].map(String) : []
-    );
-    latestHiddenIds.forEach(id => {
+    const latestHidden = await api.storage.local.get([HIDDEN_KEY, HIDDEN_URLS_KEY]);
+    const latestSets = hiddenSetsFromStorage(latestHidden);
+    latestSets.ids.forEach(id => {
       if (!hiddenIds.has(id)) nextHiddenIds.add(id);
     });
     hiddenIds.forEach(id => {
-      if (!latestHiddenIds.has(id)) nextHiddenIds.delete(id);
+      if (!latestSets.ids.has(id)) nextHiddenIds.delete(id);
     });
-    if (!sameIdSet(nextHiddenIds, latestHiddenIds)) updates[HIDDEN_KEY] = [...nextHiddenIds];
-    else hiddenChanged = false; // 合并结果与本机一致：没有真实变更需要上报
+    latestSets.urls.forEach(key => {
+      if (!hiddenUrls.has(key)) nextHiddenUrls.add(key);
+    });
+    hiddenUrls.forEach(key => {
+      if (!latestSets.urls.has(key)) nextHiddenUrls.delete(key);
+    });
+    if (!sameIdSet(nextHiddenIds, latestSets.ids)) updates[HIDDEN_KEY] = [...nextHiddenIds];
+    if (!sameIdSet(nextHiddenUrls, latestSets.urls))
+      updates[HIDDEN_URLS_KEY] = [...nextHiddenUrls];
+    // 合并结果与本机一致：没有真实变更需要上报
+    if (
+      !Object.prototype.hasOwnProperty.call(updates, HIDDEN_KEY) &&
+      !Object.prototype.hasOwnProperty.call(updates, HIDDEN_URLS_KEY)
+    )
+      hiddenChanged = false;
   }
   let configChanged = false;
   if (data.config) {
@@ -1417,11 +1464,14 @@ async function applyNativeSyncData(
 }
 
 async function publishMissingNativeSyncRecords(api, state, tree, remoteRecords) {
-  const stored = await api.storage.local.get([TAGS_KEY, HIDDEN_KEY, NATIVE_SYNC_RECORDS_KEY]);
+  const stored = await api.storage.local.get([
+    TAGS_KEY,
+    HIDDEN_KEY,
+    HIDDEN_URLS_KEY,
+    NATIVE_SYNC_RECORDS_KEY
+  ]);
   const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
-  const hiddenIds = new Set(
-    Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []
-  );
+  const hiddenSets = hiddenSetsFromStorage(stored);
   const records =
     stored[NATIVE_SYNC_RECORDS_KEY] && typeof stored[NATIVE_SYNC_RECORDS_KEY] === 'object'
       ? { ...stored[NATIVE_SYNC_RECORDS_KEY] }
@@ -1431,11 +1481,11 @@ async function publishMissingNativeSyncRecords(api, state, tree, remoteRecords) 
   bookmarks.forEach(bookmark => {
     const key = syncUrlKey(bookmark.url);
     if (!key || Object.prototype.hasOwnProperty.call(remoteRecords, key)) return;
-    if (!normalizeNativeTags(tags[bookmark.id]).length && !hiddenIds.has(String(bookmark.id)))
+    if (!normalizeNativeTags(tags[bookmark.id]).length && !hiddenSets.ids.has(String(bookmark.id)))
       return;
     keys.add(key);
   });
-  updateNativeRecordsForUrls(records, state, bookmarks, tags, keys, hiddenIds);
+  updateNativeRecordsForUrls(records, state, bookmarks, tags, keys, hiddenSets);
   state.seeded = true;
   await api.storage.local.set({
     [NATIVE_SYNC_RECORDS_KEY]: records,
@@ -1601,15 +1651,13 @@ async function seedNativeSyncFromLocal(api, state, tree, replaceRecords, options
   const storedTags = await api.storage.local.get(TAGS_KEY);
   const stored = {
     ...storedTags,
-    ...(await api.storage.local.get([HIDDEN_KEY, FIXED_TAGS_KEY, TAG_RULES_KEY]))
+    ...(await api.storage.local.get([HIDDEN_KEY, HIDDEN_URLS_KEY, FIXED_TAGS_KEY, TAG_RULES_KEY]))
   };
   // storage.get 会让出执行权；用户可能在这期间关闭同步或发起了新请求。
   // 在创建持久化 records/config 前再次检查，不能给已取消的开启任务留下缓存。
   if (options.requireCurrentSetting && !(await canWriteNativeSyncSeed(api))) return null;
   const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
-  const hiddenIds = new Set(
-    Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []
-  );
+  const hiddenSets = hiddenSetsFromStorage(stored);
   const records = replaceRecords ? {} : await loadNativeSyncRecords(api);
   const bookmarks = collectNativeUserBookmarks(tree, []);
   const byKey = {};
@@ -1617,14 +1665,15 @@ async function seedNativeSyncFromLocal(api, state, tree, replaceRecords, options
   bookmarks.forEach(bookmark => {
     const key = syncUrlKey(bookmark.url);
     const values = normalizeNativeTags(tags[bookmark.id]);
-    if (!key || (!values.length && !hiddenIds.has(String(bookmark.id)))) return;
+    const hidden = nativeRecordHiddenForUrl(bookmarks, hiddenSets, key);
+    if (!key || (!values.length && !hidden)) return;
     byKey[key] = normalizeNativeTags([...(byKey[key] || []), ...values]);
-    if (hiddenIds.has(String(bookmark.id))) byKey[key] = byKey[key] || [];
+    if (hidden) byKey[key] = byKey[key] || [];
   });
   Object.entries(byKey).forEach(([key, values]) => {
     records[key] = {
       tags: values,
-      hidden: nativeRecordHiddenForUrl(bookmarks, hiddenIds, key),
+      hidden: nativeRecordHiddenForUrl(bookmarks, hiddenSets, key),
       revision: seedRevision || nativeNextRevision(state),
       ...(seedRevision ? { provisional: true } : {})
     };
@@ -1693,14 +1742,14 @@ async function publishNativeSyncSeed(api, seeded, requestId) {
 }
 
 async function hasLocalNativeMetadataAssignments(api, tree) {
-  const stored = await api.storage.local.get([TAGS_KEY, HIDDEN_KEY]);
+  const stored = await api.storage.local.get([TAGS_KEY, HIDDEN_KEY, HIDDEN_URLS_KEY]);
   const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
-  const hiddenIds = new Set(
-    Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []
-  );
+  const hiddenSets = hiddenSetsFromStorage(stored);
   return collectNativeUserBookmarks(tree, []).some(
     bookmark =>
-      normalizeNativeTags(tags[bookmark.id]).length > 0 || hiddenIds.has(String(bookmark.id))
+      normalizeNativeTags(tags[bookmark.id]).length > 0 ||
+      hiddenSets.ids.has(String(bookmark.id)) ||
+      hiddenSets.urls.has(syncUrlKey(bookmark.url))
   );
 }
 
@@ -1818,11 +1867,9 @@ async function recordNativeTagChanges(api, change) {
     return;
   }
   const records = await loadNativeSyncRecords(api);
-  const stored = await api.storage.local.get(HIDDEN_KEY);
-  const hiddenIds = new Set(
-    Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []
-  );
-  updateNativeRecordsForUrls(records, state, bookmarks, after, affectedKeys, hiddenIds);
+  const stored = await api.storage.local.get([HIDDEN_KEY, HIDDEN_URLS_KEY]);
+  const hiddenSets = hiddenSetsFromStorage(stored);
+  updateNativeRecordsForUrls(records, state, bookmarks, after, affectedKeys, hiddenSets);
   await api.storage.local.set({
     [NATIVE_SYNC_RECORDS_KEY]: records,
     [NATIVE_SYNC_URLS_KEY]: currentUrls,
@@ -1855,10 +1902,13 @@ async function recordNativeHiddenChanges(api, change) {
     if (previousUrls[String(id)]) affectedKeys.add(previousUrls[String(id)]);
   });
   if (!affectedKeys.size) return;
-  const stored = await api.storage.local.get(TAGS_KEY);
+  // 以 storage 里的 ID + URL 意图为准，而不是只信 change.newValue：
+  // URL 键是「隐藏过这个网址」的唯一凭据，缺了它就无法在书签 ID 变化后继续隐藏。
+  const stored = await api.storage.local.get([TAGS_KEY, HIDDEN_KEY, HIDDEN_URLS_KEY]);
   const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
+  const hiddenSets = hiddenSetsFromStorage(stored);
   const records = await loadNativeSyncRecords(api);
-  updateNativeRecordsForUrls(records, state, bookmarks, tags, affectedKeys, after);
+  updateNativeRecordsForUrls(records, state, bookmarks, tags, affectedKeys, hiddenSets);
   await api.storage.local.set({
     [NATIVE_SYNC_RECORDS_KEY]: records,
     [NATIVE_SYNC_URLS_KEY]: currentUrls,
@@ -1949,11 +1999,14 @@ async function recordNativeBookmarkRemovals(api, nodes) {
   if (!removedBookmarks.length) return;
   const tree = await api.bookmarks.getTree();
   const bookmarks = collectNativeUserBookmarks(tree, []);
-  const stored = await api.storage.local.get([TAGS_KEY, HIDDEN_KEY, NATIVE_SYNC_URLS_KEY]);
+  const stored = await api.storage.local.get([
+    TAGS_KEY,
+    HIDDEN_KEY,
+    HIDDEN_URLS_KEY,
+    NATIVE_SYNC_URLS_KEY
+  ]);
   const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
-  const hiddenIds = new Set(
-    Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []
-  );
+  const hiddenSets = hiddenSetsFromStorage(stored);
   const previousUrls =
     stored[NATIVE_SYNC_URLS_KEY] && typeof stored[NATIVE_SYNC_URLS_KEY] === 'object'
       ? stored[NATIVE_SYNC_URLS_KEY]
@@ -1967,7 +2020,7 @@ async function recordNativeBookmarkRemovals(api, nodes) {
   });
   if (!affectedKeys.size) return;
   const records = await loadNativeSyncRecords(api);
-  updateNativeRecordsForUrls(records, state, bookmarks, tags, affectedKeys, hiddenIds);
+  updateNativeRecordsForUrls(records, state, bookmarks, tags, affectedKeys, hiddenSets);
   await api.storage.local.set({
     [NATIVE_SYNC_RECORDS_KEY]: records,
     [NATIVE_SYNC_URLS_KEY]: nativeBookmarkUrlMap(bookmarks),
@@ -1990,14 +2043,12 @@ async function recordNativeBookmarkUrlMigration(api, id, oldUrl, newUrl) {
   if (!bookmark || syncUrlKey(bookmark.url) !== newKey) {
     throw new Error('书签地址尚未更新，无法迁移标签');
   }
-  const stored = await api.storage.local.get([TAGS_KEY, HIDDEN_KEY]);
+  const stored = await api.storage.local.get([TAGS_KEY, HIDDEN_KEY, HIDDEN_URLS_KEY]);
   const tags = stored[TAGS_KEY] && typeof stored[TAGS_KEY] === 'object' ? stored[TAGS_KEY] : {};
-  const hiddenIds = new Set(
-    Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []
-  );
+  const hiddenSets = hiddenSetsFromStorage(stored);
   const records = await loadNativeSyncRecords(api);
   const affectedKeys = new Set([oldKey, newKey]);
-  updateNativeRecordsForUrls(records, state, bookmarks, tags, affectedKeys, hiddenIds);
+  updateNativeRecordsForUrls(records, state, bookmarks, tags, affectedKeys, hiddenSets);
   await api.storage.local.set({
     [NATIVE_SYNC_RECORDS_KEY]: records,
     [NATIVE_SYNC_URLS_KEY]: nativeBookmarkUrlMap(bookmarks),

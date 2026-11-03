@@ -1192,7 +1192,7 @@
     const previous = !!it.hidden;
     it.hidden = nextHidden;
     render();
-    const task = window.BM.toggleHidden(it.id)
+    const task = window.BM.toggleHidden(it.id, it.key, nextHidden)
       .then(actual => {
         if (actual !== nextHidden) {
           it.hidden = actual;

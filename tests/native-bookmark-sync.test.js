@@ -337,11 +337,18 @@ describe('原生书签标签同步', () => {
       globalThis.chrome = target.chrome;
       new Function(backgroundCode)();
 
-      // 模拟用户在水合读完隐藏快照之后、写回之前隐藏了 b1
+      // 模拟用户在水合读完隐藏快照之后、写回之前隐藏了 b1。
+      // 水合开始时读的是「标签 + 隐藏 + 配置」的大列表，写回前只重读隐藏两键；
+      // 用后者作为窗口内的判定依据。
       const originalGet = target.chrome.storage.local.get;
       let injected = false;
+      const isHiddenOnlyRead = keys =>
+        Array.isArray(keys) &&
+        keys.length === 2 &&
+        keys.includes('bmHiddenIds') &&
+        keys.includes('bmHiddenUrls');
       target.chrome.storage.local.get = vi.fn(async keys => {
-        if (keys === 'bmHiddenIds' && !injected) {
+        if (isHiddenOnlyRead(keys) && !injected) {
           injected = true;
           target.localData.bmHiddenIds = ['b1'];
         }
@@ -352,6 +359,45 @@ describe('原生书签标签同步', () => {
       expect(injected).toBe(true);
       expect(target.localData.bmHiddenIds).toContain('b1');
       expect(target.localData.bmHiddenIds).toContain('b2');
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('书签 ID 重新分配后，隐藏仍然跟随网址生效', async () => {
+    // 设备 A：网址被隐藏
+    const source = createHarness(
+      createTree([
+        { id: 't1', parentId: '1', title: 'Drift', url: 'https://drift.example/page' }
+      ]),
+      { bmHiddenIds: ['t1'], bmFixedTags: ['工作'], bmTagRules: { domain: {}, keyword: {} } }
+    );
+    globalThis.chrome = source.chrome;
+    new Function(backgroundCode)();
+    try {
+      await source.send({ type: 'bmNativeTagSync', action: 'setEnabled', enabled: true });
+
+      // 设备 B：同一个网址，但书签 ID 已被 Chrome 重新分配
+      const target = createHarness(clone(source.tree), { bmHiddenIds: [] });
+      target.tree[0].children[0].children = [
+        { id: 'changed', parentId: '1', title: 'Drift', url: 'https://drift.example/page' }
+      ];
+      globalThis.chrome = target.chrome;
+      new Function(backgroundCode)();
+
+      await target.send({ type: 'bmNativeTagSync', action: 'hydrate' });
+      // 远端记录里的 hidden=true 会把当前 ID 与 URL 键一起补回
+      expect(target.localData.bmHiddenIds).toContain('changed');
+      expect(target.localData.bmHiddenUrls).toContain('drift.example/page');
+
+      // 再次漂移，并且本地 ID 白名单整份丢失：只靠 URL 键也要能恢复
+      target.localData.bmHiddenIds = [];
+      target.tree[0].children[0].children = [
+        { id: 'changed-again', parentId: '1', title: 'Drift', url: 'https://drift.example/page' }
+      ];
+      await target.send({ type: 'bmNativeTagSync', action: 'hydrate' });
+      expect(target.localData.bmHiddenIds).toContain('changed-again');
     } finally {
       if (previousChrome === undefined) delete globalThis.chrome;
       else globalThis.chrome = previousChrome;

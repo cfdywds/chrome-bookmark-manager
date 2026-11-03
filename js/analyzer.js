@@ -165,6 +165,31 @@
       Promise.resolve().then(() => BM.loadHiddenIds()).catch(() => {})
     ]);
 
+    // 历史隐藏记录只保存了书签 ID。Chrome 在重启、重新登录或书签同步冲突后会重新
+    // 分配 ID，只按 ID 判定会让隐藏失效。这里按当前书签树补齐 URL 键，既迁移旧数据，
+    // 也让本次扫描立刻按 URL 命中已经漂移的 ID。
+    //
+    // 只把「确实是隐藏项、且还没有 URL 键」的条目交给迁移：正常情况下这个集合为空，
+    // 因此不会每轮扫描都进入后台串行队列等待，避免连续隐藏时把界面拖慢。
+    try {
+      if (BM.ensureHiddenUrls && BM.loadHiddenUrls) {
+        const hiddenIds = (await BM.loadHiddenIds()) || new Set();
+        if (hiddenIds.size) {
+          const hiddenUrls = (await BM.loadHiddenUrls()) || new Set();
+          const pending = [];
+          items.forEach(it => {
+            if (!hiddenIds.has(String(it.id))) return;
+            const key = BM.urlKey(it.url);
+            if (hiddenUrls.has(key)) return;
+            pending.push({ id: it.id, key });
+          });
+          if (pending.length) await BM.ensureHiddenUrls(pending);
+        }
+      }
+    } catch (e) {
+      /* 迁移失败不影响本次扫描 */
+    }
+
     const tagsById = BM.getTags() || {};
     const byUrl = new Map();
     const categories = {};
@@ -205,7 +230,7 @@
         it.dead = null; // 失效链接状态，由 popup 扫描填充
         it.pinyin = BM.toPinyinKeywords ? BM.toPinyinKeywords(it.title).join(' ') : '';
         it.tags = tagsById[it.id] || []; // 多标签（来自 bmTags 映射）
-        it.hidden = BM.isHidden ? BM.isHidden(it.id) : false; // 隐藏书签（日常视图排除）
+        it.hidden = BM.isHidden ? BM.isHidden(it.id, it.key) : false; // 隐藏书签（日常视图排除）
         itemById.set(it.id, it);
         const sameUrlItems = itemsByUrl.get(it.url);
         if (sameUrlItems) sameUrlItems.push(it);
