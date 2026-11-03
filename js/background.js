@@ -508,9 +508,7 @@ function hiddenSetsFromStorage(stored) {
   const source = stored || {};
   return {
     ids: new Set(Array.isArray(source[HIDDEN_KEY]) ? source[HIDDEN_KEY].map(String) : []),
-    urls: new Set(
-      Array.isArray(source[HIDDEN_URLS_KEY]) ? source[HIDDEN_URLS_KEY].map(String) : []
-    )
+    urls: new Set(Array.isArray(source[HIDDEN_URLS_KEY]) ? source[HIDDEN_URLS_KEY].map(String) : [])
   };
 }
 
@@ -1357,8 +1355,7 @@ async function applyNativeSyncData(
       if (!latestSets.urls.has(key)) nextHiddenUrls.delete(key);
     });
     if (!sameIdSet(nextHiddenIds, latestSets.ids)) updates[HIDDEN_KEY] = [...nextHiddenIds];
-    if (!sameIdSet(nextHiddenUrls, latestSets.urls))
-      updates[HIDDEN_URLS_KEY] = [...nextHiddenUrls];
+    if (!sameIdSet(nextHiddenUrls, latestSets.urls)) updates[HIDDEN_URLS_KEY] = [...nextHiddenUrls];
     // 合并结果与本机一致：没有真实变更需要上报
     if (
       !Object.prototype.hasOwnProperty.call(updates, HIDDEN_KEY) &&

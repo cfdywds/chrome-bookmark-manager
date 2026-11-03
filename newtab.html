@@ -85,7 +85,16 @@
                 aria-label="卡片视图"
                 aria-pressed="true"
               >
-                <svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <svg
+                  class="ico ico-sm"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
                   <use href="icons/sprite.svg#i-grid" />
                 </svg>
               </button>
@@ -97,7 +106,16 @@
                 aria-label="紧凑列表视图"
                 aria-pressed="false"
               >
-                <svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <svg
+                  class="ico ico-sm"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
                   <use href="icons/sprite.svg#i-list" />
                 </svg>
               </button>
@@ -119,14 +137,34 @@
               aria-label="选择网页搜索引擎"
             >
               <span class="nt-engine-logo google" id="ntSearchEngineLogo" aria-hidden="true">
-                <img class="nt-engine-icon" src="icons/engines/google.svg" alt="" draggable="false" />
+                <img
+                  class="nt-engine-icon"
+                  src="icons/engines/google.svg"
+                  alt=""
+                  draggable="false"
+                />
               </span>
-              <svg class="nt-engine-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <svg
+                class="nt-engine-caret"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
                 <use href="icons/sprite.svg#i-chevron-down" />
               </svg>
             </button>
             <!-- select 仅作状态载体（持久化/测试），交互走自绘菜单 -->
-            <select id="ntSearchEngine" class="nt-engine-select" hidden tabindex="-1" aria-hidden="true">
+            <select
+              id="ntSearchEngine"
+              class="nt-engine-select"
+              hidden
+              tabindex="-1"
+              aria-hidden="true"
+            >
               <option value="google">Google</option>
               <option value="bing">Bing</option>
               <option value="baidu">百度</option>
@@ -185,7 +223,16 @@
             data-tip="按文件夹筛选"
             aria-label="按文件夹筛选"
           >
-            <svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg
+              class="ico ico-sm"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
               <use href="icons/sprite.svg#i-folder" />
             </svg>
           </button>
@@ -197,12 +244,23 @@
             data-tip="清除搜索、标签与文件夹筛选"
             aria-label="清除搜索、标签与文件夹筛选"
           >
-            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg
+              class="ico"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
               <use href="icons/sprite.svg#i-x" />
             </svg>
             <span>清除筛选</span>
           </button>
-          <button id="ntClear" class="nt-clear hidden" data-tip="清空搜索" aria-label="清空搜索">✕</button>
+          <button id="ntClear" class="nt-clear hidden" data-tip="清空搜索" aria-label="清空搜索">
+            ✕
+          </button>
         </div>
 
         <!-- 标签筛选条 -->
@@ -270,8 +328,15 @@
           </svg>
           按文件夹筛选
         </div>
-        <div class="nt-folder-modal-summary" id="ntFolderSummary" aria-live="polite">正在加载目录…</div>
-        <div class="nt-folder-options" id="ntFolderMenu" role="listbox" aria-label="文件夹目录"></div>
+        <div class="nt-folder-modal-summary" id="ntFolderSummary" aria-live="polite">
+          正在加载目录…
+        </div>
+        <div
+          class="nt-folder-options"
+          id="ntFolderMenu"
+          role="listbox"
+          aria-label="文件夹目录"
+        ></div>
         <div class="modal-actions">
           <button id="ntFolderClear" class="btn ghost" type="button">全部文件夹</button>
           <button id="ntFolderClose" class="btn primary" type="button">完成</button>

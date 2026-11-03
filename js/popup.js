@@ -2913,7 +2913,11 @@ function bindDrag() {
 function registerShortcuts() {
   if (!window.UI || typeof UI.registerShortcut !== 'function') return;
   const R = entry => UI.registerShortcut(entry);
-  R({ keys: 'Alt + S (Mac: ⌥+S)', desc: '浏览器任意网页：一键快捷收藏当前页', group: '全局快捷键' });
+  R({
+    keys: 'Alt + S (Mac: ⌥+S)',
+    desc: '浏览器任意网页：一键快捷收藏当前页',
+    group: '全局快捷键'
+  });
   R({ keys: '/', desc: '聚焦搜索框', group: '键盘快捷键' });
   R({ keys: 'Ctrl / ⌘ + K', desc: '聚焦搜索框', group: '键盘快捷键' });
   R({ keys: 'j / k', desc: '上下移动高亮行', group: '键盘快捷键' });
@@ -3163,7 +3167,8 @@ async function init() {
 
         // 1. 0ms 乐观更新折叠动画，彻底告别卡顿感
         if (row) {
-          row.style.transition = 'opacity 0.16s ease, max-height 0.2s ease, padding 0.2s ease, margin 0.2s ease';
+          row.style.transition =
+            'opacity 0.16s ease, max-height 0.2s ease, padding 0.2s ease, margin 0.2s ease';
           row.style.opacity = '0';
           row.style.maxHeight = '0px';
           row.style.padding = '0';
@@ -3180,9 +3185,11 @@ async function init() {
             healthResults.suspicious = healthResults.suspicious.filter(x => x.id !== id);
           }
           const deadCountEl = $('#healthDeadCount');
-          if (deadCountEl && healthResults.dead) deadCountEl.textContent = healthResults.dead.length;
+          if (deadCountEl && healthResults.dead)
+            deadCountEl.textContent = healthResults.dead.length;
           const suspCountEl = $('#healthSuspCount');
-          if (suspCountEl && healthResults.suspicious) suspCountEl.textContent = healthResults.suspicious.length;
+          if (suspCountEl && healthResults.suspicious)
+            suspCountEl.textContent = healthResults.suspicious.length;
         }
 
         // 3. 静默后台软删除，带撤销 Toast（单条免密秒删，30 天回收站兜底）

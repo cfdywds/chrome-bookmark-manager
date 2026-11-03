@@ -80,7 +80,8 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-1);
-  min-width: 32px; min-height: 32px;
+  min-width: 32px;
+  min-height: 32px;
   padding: 4px var(--space-2);
   color: var(--ink-2);
   font-size: var(--fs-title);
@@ -359,7 +360,10 @@
     background var(--dur-fast) var(--ease),
     box-shadow var(--dur-fast) var(--ease);
 }
-.nt-filter-toggle .ico { width: 16px; height: 16px; }
+.nt-filter-toggle .ico {
+  width: 16px;
+  height: 16px;
+}
 .nt-filter-toggle:hover {
   border-color: var(--line);
   color: var(--ink);
@@ -1062,7 +1066,9 @@
   .nt-edit {
     width: 100%;
   }
-  .nt-source-link span { display: none; }
+  .nt-source-link span {
+    display: none;
+  }
   /* 「打开管理面板」同窄屏一起收成纯图标：与相邻的 32px 图标按钮对齐命中区，
      文字折行会把整条顶栏撑高（420px 下实测 65px → 32px） */
   .nt-panel-btn {
@@ -1080,7 +1086,9 @@
 }
 
 @media (max-width: 420px) {
-  .nt-count { display: none; }
+  .nt-count {
+    display: none;
+  }
 }
 
 @media (max-width: 320px) {
@@ -1232,8 +1240,18 @@
   cursor: pointer;
   outline: none;
 }
-.nt-folder-option.is-all { margin-bottom: 7px; }
-.nt-folder-option.is-all::after { content: ''; position: absolute; right: 7px; bottom: -4px; left: 7px; height: 1px; background: var(--line-2); }
+.nt-folder-option.is-all {
+  margin-bottom: 7px;
+}
+.nt-folder-option.is-all::after {
+  content: '';
+  position: absolute;
+  right: 7px;
+  bottom: -4px;
+  left: 7px;
+  height: 1px;
+  background: var(--line-2);
+}
 .nt-folder-option:hover,
 .nt-folder-option:focus-visible {
   background: var(--surface-sub);
@@ -1244,17 +1262,56 @@
   color: var(--primary);
   font-weight: 600;
 }
-.nt-folder-option-guides { display: flex; align-self: stretch; flex: 0 0 auto; }
-.nt-folder-guide { position: relative; width: 16px; flex: 0 0 16px; }
-.nt-folder-guide::before { content: ''; position: absolute; top: 0; bottom: 0; left: 8px; width: 1px; }
+.nt-folder-option-guides {
+  display: flex;
+  align-self: stretch;
+  flex: 0 0 auto;
+}
+.nt-folder-guide {
+  position: relative;
+  width: 16px;
+  flex: 0 0 16px;
+}
+.nt-folder-guide::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 8px;
+  width: 1px;
+}
 .nt-folder-guide.has-line::before,
-.nt-folder-guide.is-branch::before { background: var(--line-2); }
-.nt-folder-guide.is-branch.is-last::before { bottom: 50%; }
-.nt-folder-guide.is-branch::after { content: ''; position: absolute; top: calc(50% - 0.5px); left: 8px; width: 8px; height: 1px; background: var(--line-2); }
-.nt-folder-option-icon { display: grid; place-items: center; flex: 0 0 16px; width: 16px; height: 16px; color: var(--muted); }
-.nt-folder-option-icon .ico { width: 15px; height: 15px; }
+.nt-folder-guide.is-branch::before {
+  background: var(--line-2);
+}
+.nt-folder-guide.is-branch.is-last::before {
+  bottom: 50%;
+}
+.nt-folder-guide.is-branch::after {
+  content: '';
+  position: absolute;
+  top: calc(50% - 0.5px);
+  left: 8px;
+  width: 8px;
+  height: 1px;
+  background: var(--line-2);
+}
+.nt-folder-option-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+.nt-folder-option-icon .ico {
+  width: 15px;
+  height: 15px;
+}
 .nt-folder-option:hover .nt-folder-option-icon,
-.nt-folder-option[aria-selected='true'] .nt-folder-option-icon { color: inherit; }
+.nt-folder-option[aria-selected='true'] .nt-folder-option-icon {
+  color: inherit;
+}
 .nt-folder-option-label {
   flex: 1;
   min-width: 0;
@@ -1274,8 +1331,14 @@
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
-.nt-folder-option:hover .nt-folder-option-count { background: var(--surface-sub-hover); color: var(--ink-2); }
-.nt-folder-option[aria-selected='true'] .nt-folder-option-count { background: color-mix(in srgb, var(--primary) 18%, transparent); color: var(--primary); }
+.nt-folder-option:hover .nt-folder-option-count {
+  background: var(--surface-sub-hover);
+  color: var(--ink-2);
+}
+.nt-folder-option[aria-selected='true'] .nt-folder-option-count {
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+  color: var(--primary);
+}
 
 /* ===== 键盘高亮（j/k 与方向键移动，复用 --primary-soft 语义）===== */
 .nt-card-wrap.kb-active {

@@ -132,14 +132,21 @@
   }
 
   function domainGroupsSignature() {
-    const groups = BM.getDomainGroups ? (BM.getDomainGroups() || {}) : {};
-    return Object.keys(groups).sort().map(key => key + '\u0000' + groups[key]).join('\u0001');
+    const groups = BM.getDomainGroups ? BM.getDomainGroups() || {} : {};
+    return Object.keys(groups)
+      .sort()
+      .map(key => key + '\u0000' + groups[key])
+      .join('\u0001');
   }
 
   function getMetadata(url, title) {
     if (BM.getBookmarkMetadata) return BM.getBookmarkMetadata(url, title);
     let host = '';
-    try { host = new URL(url).hostname; } catch (e) { host = ''; }
+    try {
+      host = new URL(url).hostname;
+    } catch (e) {
+      host = '';
+    }
     return {
       host,
       domain: BM.getRegisteredDomain(host),
@@ -158,11 +165,21 @@
 
     // 配置相互独立；并行加载可缩短首次扫描的 storage 等待时间。
     await Promise.all([
-      Promise.resolve().then(() => BM.loadDomainGroups()).catch(() => {}),
-      Promise.resolve().then(() => BM.loadTags()).catch(() => {}),
-      Promise.resolve().then(() => BM.loadFixedTags()).catch(() => {}),
-      Promise.resolve().then(() => BM.loadTagRules()).catch(() => {}),
-      Promise.resolve().then(() => BM.loadHiddenIds()).catch(() => {})
+      Promise.resolve()
+        .then(() => BM.loadDomainGroups())
+        .catch(() => {}),
+      Promise.resolve()
+        .then(() => BM.loadTags())
+        .catch(() => {}),
+      Promise.resolve()
+        .then(() => BM.loadFixedTags())
+        .catch(() => {}),
+      Promise.resolve()
+        .then(() => BM.loadTagRules())
+        .catch(() => {}),
+      Promise.resolve()
+        .then(() => BM.loadHiddenIds())
+        .catch(() => {})
     ]);
 
     // 历史隐藏记录只保存了书签 ID。Chrome 在重启、重新登录或书签同步冲突后会重新
@@ -220,9 +237,13 @@
         const it = items[index];
         seenIds.add(it.id);
         const cached = metadataCache.get(it.id);
-        const metadata = cached && cached.url === it.url && cached.title === it.title && cached.groupSignature === groupSignature
-          ? cached.metadata
-          : getMetadata(it.url, it.title);
+        const metadata =
+          cached &&
+          cached.url === it.url &&
+          cached.title === it.title &&
+          cached.groupSignature === groupSignature
+            ? cached.metadata
+            : getMetadata(it.url, it.title);
         if (!cached || cached.metadata !== metadata) {
           metadataCache.set(it.id, { url: it.url, title: it.title, groupSignature, metadata });
         }

@@ -3357,15 +3357,12 @@
       // 读改写直接从 storage 取独立快照，不依赖（也不清空）页面缓存：
       // 既避免用陈旧集合整表覆盖，也不会在写回前留下「全部可见」的空窗。
       const stored = await chrome.storage.local.get([HIDDEN_KEY, HIDDEN_URLS_KEY]);
-      const ids = new Set(
-        Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []
-      );
+      const ids = new Set(Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []);
       const urls = new Set(
         Array.isArray(stored[HIDDEN_URLS_KEY]) ? stored[HIDDEN_URLS_KEY].map(String) : []
       );
       const currentlyHidden = ids.has(String(id)) || (key && urls.has(key));
-      const nowHidden =
-        typeof desiredHidden === 'boolean' ? desiredHidden : !currentlyHidden;
+      const nowHidden = typeof desiredHidden === 'boolean' ? desiredHidden : !currentlyHidden;
       if (nowHidden === currentlyHidden) {
         // 已经是目标状态：不重复写盘，但把缓存对齐到刚才读到的 storage 快照。
         hiddenCache = ids;
@@ -4880,7 +4877,10 @@
                 });
               } else if (a) {
                 const tagsRaw = a.getAttribute('TAGS') || a.getAttribute('tags') || '';
-                const tags = tagsRaw.split(',').map(t => t.trim()).filter(Boolean);
+                const tags = tagsRaw
+                  .split(',')
+                  .map(t => t.trim())
+                  .filter(Boolean);
                 items.push({
                   type: 'bookmark',
                   title: a.textContent.trim() || a.getAttribute('HREF') || a.getAttribute('href'),
@@ -4903,7 +4903,8 @@
       }
     }
 
-    const tokenRegex = /(<DT><H3[^>]*>.*?<\/H3>|<H3[^>]*>.*?<\/H3>|<DT><A[^>]*>.*?<\/A>|<A[^>]*>.*?<\/A>|<DL[^>]*>|<\/DL>)/gis;
+    const tokenRegex =
+      /(<DT><H3[^>]*>.*?<\/H3>|<H3[^>]*>.*?<\/H3>|<DT><A[^>]*>.*?<\/A>|<A[^>]*>.*?<\/A>|<DL[^>]*>|<\/DL>)/gis;
     const tokens = htmlText.match(tokenRegex) || [];
     const root = { type: 'folder', title: 'root', children: [] };
     const stack = [root];
@@ -4944,7 +4945,12 @@
         const titleMatch = token.match(/<A[^>]*>(.*?)<\/A>/i);
         const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : url;
         const tagsMatch = token.match(/TAGS=["']([^"']*)["']/i);
-        const tags = tagsMatch ? tagsMatch[1].split(',').map(t => t.trim()).filter(Boolean) : [];
+        const tags = tagsMatch
+          ? tagsMatch[1]
+              .split(',')
+              .map(t => t.trim())
+              .filter(Boolean)
+          : [];
         const dateMatch = token.match(/ADD_DATE=["']?(\d+)/i);
         const dateAdded = dateMatch ? Number(dateMatch[1]) * 1000 : 0;
         if (url) {
@@ -5038,7 +5044,12 @@
           try {
             const created = await chrome.bookmarks.create(createInfo);
             bookmarksByUrl.set(url, created);
-            await sendBackupImportMessage('confirm', createInfo.parentId, createInfo.url, created.id);
+            await sendBackupImportMessage(
+              'confirm',
+              createInfo.parentId,
+              createInfo.url,
+              created.id
+            );
             if (node.tags && node.tags.length) {
               restoredTags[created.id] = node.tags;
             }
@@ -5110,7 +5121,12 @@
       if (/^10\./.test(host)) return true;
       if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
       if (/\.local$/i.test(host) || /\.internal$/i.test(host) || /\.lan$/i.test(host)) return true;
-      if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) && parsed.port && parsed.port !== '80' && parsed.port !== '443') {
+      if (
+        /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) &&
+        parsed.port &&
+        parsed.port !== '80' &&
+        parsed.port !== '443'
+      ) {
         return true;
       }
       return false;
@@ -5134,7 +5150,9 @@
       if (isProxy) {
         return isTimeout ? '请求超时（可能需要科学上网）' : '无法建立外网连接（可能需要科学上网）';
       }
-      return isTimeout ? '请求超时（可能需要科学上网）' : (defaultMsg || '连接失败（站点可能已下线）');
+      return isTimeout
+        ? '请求超时（可能需要科学上网）'
+        : defaultMsg || '连接失败（站点可能已下线）';
     }
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     let timer = null;
@@ -5201,7 +5219,8 @@
           } catch (noCorsErr) {
             const isNoCorsAborted =
               (controller && controller.signal.aborted) ||
-              (noCorsErr && (noCorsErr.name === 'AbortError' || String(noCorsErr).includes('abort')));
+              (noCorsErr &&
+                (noCorsErr.name === 'AbortError' || String(noCorsErr).includes('abort')));
             if (isNoCorsAborted) {
               return {
                 status: 'suspicious',

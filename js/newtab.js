@@ -286,7 +286,10 @@
     const tagList = it.tags || [];
     // 列表列宽固定，标签最多 2 个 + 余数，避免撑破列宽导致跨行错位
     const chips =
-      tagList.slice(0, 2).map(t => `<span class="nt-tag-chip">#${esc(t)}</span>`).join('') +
+      tagList
+        .slice(0, 2)
+        .map(t => `<span class="nt-tag-chip">#${esc(t)}</span>`)
+        .join('') +
       (tagList.length > 2 ? `<span class="nt-tag-chip more">+${tagList.length - 2}</span>` : '');
     const tagsHtml = chips || '<span class="nt-row-untagged">未打标</span>';
     // 目录取路径末两级，并去掉首段（书签栏/其他书签这类根容器对每一行都相同）：
@@ -428,10 +431,13 @@
   function folderGuideHtml(ancestors, isLast) {
     if (!ancestors.length) return '';
     const parentHasNext = ancestors[ancestors.length - 1] === true;
-    return ancestors
-      .slice(0, -1)
-      .map(hasNext => `<i class="nt-folder-guide${hasNext ? ' has-line' : ''}"></i>`)
-      .join('') + `<i class="nt-folder-guide is-branch${isLast && !parentHasNext ? ' is-last' : ''}"></i>`;
+    return (
+      ancestors
+        .slice(0, -1)
+        .map(hasNext => `<i class="nt-folder-guide${hasNext ? ' has-line' : ''}"></i>`)
+        .join('') +
+      `<i class="nt-folder-guide is-branch${isLast && !parentHasNext ? ' is-last' : ''}"></i>`
+    );
   }
   function renderFolders() {
     const menu = $('#ntFolderMenu');
@@ -448,11 +454,16 @@
       const visit = list => {
         for (const node of list) {
           nodes.push(
-            node.id + '/' +
-              node.parentId + '/' +
-              node.title + '/' +
-              node.totalCount + '/' +
-              node.visibleCount + '/' +
+            node.id +
+              '/' +
+              node.parentId +
+              '/' +
+              node.title +
+              '/' +
+              node.totalCount +
+              '/' +
+              node.visibleCount +
+              '/' +
               (node.childFolders || []).map(child => child.id).join('|')
           );
           visit(node.childFolders || []);
@@ -464,7 +475,9 @@
     const renderKey = folderSignature + ':' + activeFolder;
     if (renderKey !== folderRenderKey) {
       folderRenderKey = renderKey;
-      const folderChoices = [{ value: '', title: '全部文件夹', count: DATA.total || 0, depth: 0, guides: '' }];
+      const folderChoices = [
+        { value: '', title: '全部文件夹', count: DATA.total || 0, depth: 0, guides: '' }
+      ];
       const walk = (nodes, depth, ancestors) => {
         nodes.forEach((node, index) => {
           const isLast = index === nodes.length - 1;
@@ -506,7 +519,10 @@
       const active = Boolean(selectedNode);
       filterToggle.classList.toggle('active', active);
       filterToggle.setAttribute('aria-pressed', String(active));
-      filterToggle.setAttribute('data-tip', active ? `当前文件夹：${selectedNode.title}` : '按文件夹筛选');
+      filterToggle.setAttribute(
+        'data-tip',
+        active ? `当前文件夹：${selectedNode.title}` : '按文件夹筛选'
+      );
     }
     const clearBtn = $('#ntFolderClear');
     if (clearBtn) clearBtn.disabled = !selectedNode;
@@ -814,7 +830,8 @@
     const modal = $('#ntConfirmWrap');
     if (modal && !modal.classList.contains('hidden')) return;
     const tag = (e.target.tagName || '').toLowerCase();
-    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable)
+      return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === '/') {
       e.preventDefault();
@@ -1038,17 +1055,22 @@
       const wasHidden = it.hidden;
       const hiddenTask = setHiddenOptimistic(it, !wasHidden);
       if (!wasHidden) {
-        showToast('已隐藏', 'ok', {
-          label: '撤销',
-          onClick: async () => {
-            try {
-              await setHiddenOptimistic(it, false);
-              showToast('已取消隐藏', 'ok', undefined, { compact: true });
-            } catch (err) {
-              showToast('撤销失败：' + (err.message || err), 'danger');
+        showToast(
+          '已隐藏',
+          'ok',
+          {
+            label: '撤销',
+            onClick: async () => {
+              try {
+                await setHiddenOptimistic(it, false);
+                showToast('已取消隐藏', 'ok', undefined, { compact: true });
+              } catch (err) {
+                showToast('撤销失败：' + (err.message || err), 'danger');
+              }
             }
-          }
-        }, { compact: true });
+          },
+          { compact: true }
+        );
       } else {
         showToast('已取消隐藏', 'ok', undefined, { compact: true });
       }
@@ -1227,7 +1249,7 @@
       pendingDeletes.add(String(it.id));
       const liveItem =
         (DATA && DATA.itemById && DATA.itemById.get && DATA.itemById.get(String(it.id))) ||
-        (DATA && DATA.items || []).find(entry => String(entry.id) === String(it.id));
+        ((DATA && DATA.items) || []).find(entry => String(entry.id) === String(it.id));
       if (liveItem) removeDeletedItemFromData(liveItem);
       render();
 
@@ -1252,29 +1274,34 @@
         throw e;
       }
       completedDeletes.add(String(it.id));
-      showToast('已移入回收站', 'ok', {
-        label: '撤销',
-        onClick: async () => {
-          try {
-            // 等删除收尾完成，避免撤销被后台判为「删除进行中」而静默失败
-            await waitDeleteFinalize(it.id);
-            clearDeleteViewState(it.id);
-            const r = await window.BM.restoreTrashItems([{ id: it.id }]);
-            if (r.restored) {
-              showToast('已恢复书签 ✓', 'ok', undefined, { compact: true });
-            } else {
-              // 带上后台给出的具体原因，不再一律说「可能已被永久删除」
-              const reason = (r.failed[0] && r.failed[0].error) || '该记录可能已被永久删除';
-              showToast('恢复失败：' + reason, true);
+      showToast(
+        '已移入回收站',
+        'ok',
+        {
+          label: '撤销',
+          onClick: async () => {
+            try {
+              // 等删除收尾完成，避免撤销被后台判为「删除进行中」而静默失败
+              await waitDeleteFinalize(it.id);
+              clearDeleteViewState(it.id);
+              const r = await window.BM.restoreTrashItems([{ id: it.id }]);
+              if (r.restored) {
+                showToast('已恢复书签 ✓', 'ok', undefined, { compact: true });
+              } else {
+                // 带上后台给出的具体原因，不再一律说「可能已被永久删除」
+                const reason = (r.failed[0] && r.failed[0].error) || '该记录可能已被永久删除';
+                showToast('恢复失败：' + reason, true);
+              }
+              DATA = await window.BMAnalyzer.analyze();
+              applyPendingDeletes();
+              render();
+            } catch (err) {
+              showToast('恢复失败：' + (err.message || err), true);
             }
-            DATA = await window.BMAnalyzer.analyze();
-            applyPendingDeletes();
-            render();
-          } catch (err) {
-            showToast('恢复失败：' + (err.message || err), true);
           }
-        }
-      }, { compact: true });
+        },
+        { compact: true }
+      );
       // 删除收尾不阻塞列表反馈：撤销只需等「回收站确认」落地（后台据此判定删除已完成），
       // 标签清理继续在后台收尾，不拖住撤销。
       const confirmDelete = (async () => {
@@ -1379,7 +1406,11 @@
       </div>`;
     // AI 打标：结果填入标签输入框，用户确认后点「保存」落盘
     wrap.querySelector('[data-edit-act="ai"]').onclick = () => {
-      aiTagIntoEditor(it, wrap.querySelector('[data-edit-act="ai"]'), wrap.querySelector('.nt-edit-tags'));
+      aiTagIntoEditor(
+        it,
+        wrap.querySelector('[data-edit-act="ai"]'),
+        wrap.querySelector('.nt-edit-tags')
+      );
     };
     // 保存
     wrap.querySelector('[data-edit-act="save"]').onclick = async () => {
@@ -1418,7 +1449,10 @@
     let cfg = {};
     try {
       const r = await chrome.storage.local.get('bmSettings');
-      cfg = Object.assign({ provider: 'deepseek', baseUrl: '', apiKey: '', model: '' }, r.bmSettings || {});
+      cfg = Object.assign(
+        { provider: 'deepseek', baseUrl: '', apiKey: '', model: '' },
+        r.bmSettings || {}
+      );
     } catch (e) {
       /* 保持空配置 */
     }
@@ -1438,7 +1472,9 @@
       showToast('仅支持普通网页（http/https）', true);
       return;
     }
-    const meta = window.BM.getBookmarkMetadata ? window.BM.getBookmarkMetadata(it.url, it.title) : null;
+    const meta = window.BM.getBookmarkMetadata
+      ? window.BM.getBookmarkMetadata(it.url, it.title)
+      : null;
     if (meta && (meta.sensitive || []).some(s => s.sev === 'high')) {
       showToast('该站点为高风险敏感站点，已自动保护，不发送给 AI', true);
       return;
@@ -1583,14 +1619,16 @@
       console.error('[书签管家] newtab 初始化失败', e);
     }
     // 首屏已展示后再做一次标签拉取。初始化任务若仍在后台队列中，完成后会在此继续。
-    void tagConfigurationTask.then(async result => {
-      if (result.failed) return;
-      const changed = await window.BM.pullTagsFromCloud();
-      if (!changed || !DATA) return;
-      window.BM.invalidateTags && window.BM.invalidateTags();
-      DATA = await window.BMAnalyzer.analyze();
-      applyPendingDeletes();
-      render();
-    }).catch(() => {});
+    void tagConfigurationTask
+      .then(async result => {
+        if (result.failed) return;
+        const changed = await window.BM.pullTagsFromCloud();
+        if (!changed || !DATA) return;
+        window.BM.invalidateTags && window.BM.invalidateTags();
+        DATA = await window.BMAnalyzer.analyze();
+        applyPendingDeletes();
+        render();
+      })
+      .catch(() => {});
   })();
 })();

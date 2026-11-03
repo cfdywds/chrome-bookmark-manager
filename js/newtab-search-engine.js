@@ -5,10 +5,30 @@
   const STORAGE_KEY = 'bmNewtabSearchEngine';
   const DEFAULT_ENGINE = 'google';
   const ENGINES = Object.freeze({
-    google: { label: 'Google', mark: 'G', icon: 'icons/engines/google.svg', template: 'https://www.google.com/search?q=%s' },
-    bing: { label: 'Bing', mark: 'B', icon: 'icons/engines/bing.svg', template: 'https://www.bing.com/search?q=%s' },
-    baidu: { label: '百度', mark: '百', icon: 'icons/engines/baidu.svg', template: 'https://www.baidu.com/s?wd=%s' },
-    duckduckgo: { label: 'DuckDuckGo', mark: 'D', icon: 'icons/engines/duckduckgo.svg', template: 'https://duckduckgo.com/?q=%s' }
+    google: {
+      label: 'Google',
+      mark: 'G',
+      icon: 'icons/engines/google.svg',
+      template: 'https://www.google.com/search?q=%s'
+    },
+    bing: {
+      label: 'Bing',
+      mark: 'B',
+      icon: 'icons/engines/bing.svg',
+      template: 'https://www.bing.com/search?q=%s'
+    },
+    baidu: {
+      label: '百度',
+      mark: '百',
+      icon: 'icons/engines/baidu.svg',
+      template: 'https://www.baidu.com/s?wd=%s'
+    },
+    duckduckgo: {
+      label: 'DuckDuckGo',
+      mark: 'D',
+      icon: 'icons/engines/duckduckgo.svg',
+      template: 'https://duckduckgo.com/?q=%s'
+    }
   });
 
   function buildSearchUrl(query, template) {
@@ -187,8 +207,7 @@
     function openMenu() {
       menu.hidden = false;
       btn.setAttribute('aria-expanded', 'true');
-      const current =
-        menu.querySelector('.nt-engine-option[aria-selected="true"]') || items()[0];
+      const current = menu.querySelector('.nt-engine-option[aria-selected="true"]') || items()[0];
       if (current) current.focus();
     }
 
@@ -291,6 +310,7 @@
   }
 
   window.BMSearchEngine = { ENGINES, buildSearchUrl, normalizeEngineId };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
+  if (document.readyState === 'loading')
+    document.addEventListener('DOMContentLoaded', init, { once: true });
   else init();
 })();

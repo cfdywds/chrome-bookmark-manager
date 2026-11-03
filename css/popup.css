@@ -1152,7 +1152,8 @@ mark {
 
 /* ===== Toast ===== */
 #toasts {
-  position: fixed; bottom: 68px;
+  position: fixed;
+  bottom: 68px;
   left: 50%;
   transform: translateX(-50%);
   z-index: var(--z-toast, 200);
@@ -1192,7 +1193,9 @@ mark {
 .toast-out {
   opacity: 0;
   transform: translateY(-8px);
-  transition: opacity 0.3s, transform 0.3s;
+  transition:
+    opacity 0.3s,
+    transform 0.3s;
 }
 .toast-act {
   border: none;
@@ -2361,7 +2364,9 @@ mark {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 .breadcrumb .crumb:hover {
   background: var(--primary-soft);
@@ -2512,7 +2517,13 @@ mark {
 /* 文件夹 / 书签分隔线 */
 .folder-list-sep {
   height: 1px;
-  background: linear-gradient(90deg, transparent 0%, var(--line) 12%, var(--line) 88%, transparent 100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--line) 12%,
+    var(--line) 88%,
+    transparent 100%
+  );
   margin: 8px 10px 4px;
 }
 .folder-list-sep-label {
@@ -2648,7 +2659,10 @@ mark {
   align-items: center;
   gap: 5px;
 }
-.org-tool:hover { background: var(--bg); color: var(--ink); }
+.org-tool:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
 .tree-overlay {
   position: fixed;
   inset: 0;
@@ -2660,7 +2674,9 @@ mark {
   justify-content: center;
   animation: tree-fade 0.16s ease;
 }
-.tree-overlay.hidden { display: none; }
+.tree-overlay.hidden {
+  display: none;
+}
 .tree-panel {
   margin: 24px;
   background: var(--panel);
@@ -2692,7 +2708,9 @@ mark {
   background: var(--panel);
   color: var(--ink);
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 .tree-head #treeSearch:focus {
   border-color: var(--primary);
@@ -2719,18 +2737,28 @@ mark {
   font-size: var(--fs-title);
   color: var(--ink-2);
   border-left: 3px solid transparent;
-  transition: background 0.12s, border-color 0.12s;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
 }
-.ft-row:hover { background: var(--bg); border-left-color: var(--primary-3); }
-.ft-row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.ft-row:hover {
+  background: var(--bg);
+  border-left-color: var(--primary-3);
+}
+.ft-row:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
 
 /* move 模式：悬停目标文件夹时给出明确的「移入此处」视觉 */
-.tree-body[data-mode="move"] .ft-row:hover {
+.tree-body[data-mode='move'] .ft-row:hover {
   background: var(--primary-soft);
   border-left-color: var(--primary);
   color: var(--ink);
 }
-.tree-body[data-mode="move"] .ft-row:hover .ft-name { color: var(--primary); }
+.tree-body[data-mode='move'] .ft-row:hover .ft-name {
+  color: var(--primary);
+}
 .ft-toggle {
   width: 18px;
   height: 18px;
@@ -2745,10 +2773,18 @@ mark {
   font-size: var(--fs-meta);
   padding: 0;
   border-radius: 4px;
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
-.ft-toggle:hover { background: var(--line); color: var(--ink-2); }
-.ft-row .f-icon { color: var(--primary); flex-shrink: 0; }
+.ft-toggle:hover {
+  background: var(--line);
+  color: var(--ink-2);
+}
+.ft-row .f-icon {
+  color: var(--primary);
+  flex-shrink: 0;
+}
 .ft-name {
   flex: 1;
   min-width: 0;
@@ -2765,7 +2801,10 @@ mark {
   border-radius: var(--radius-pill);
   font-variant-numeric: tabular-nums;
 }
-.ft-row:hover .ft-count { background: var(--panel); color: var(--ink-2); }
+.ft-row:hover .ft-count {
+  background: var(--panel);
+  color: var(--ink-2);
+}
 
 /* 层级引导线：子级容器左侧的垂直线，让深嵌套结构一眼可读 */
 .ft-children {
@@ -2784,12 +2823,16 @@ mark {
   border-radius: 1px;
 }
 .ft-node.hidden > .ft-row,
-.ft-node.hidden > .ft-children { display: none; }
+.ft-node.hidden > .ft-children {
+  display: none;
+}
 
 /* =========================================================
    阶段4：操作后定位闪烁 / 面包屑展开
    ========================================================= */
-.row.flash { animation: bm-flash 1.3s ease; }
+.row.flash {
+  animation: bm-flash 1.3s ease;
+}
 .breadcrumb .crumb-more {
   color: var(--muted);
   background: none;
@@ -2798,7 +2841,10 @@ mark {
   cursor: pointer;
   font-size: var(--fs-meta);
 }
-.breadcrumb .crumb-more:hover { background: var(--primary-soft); color: var(--primary); }
+.breadcrumb .crumb-more:hover {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
 
 /* =========================================================
    组织页紧凑工具条（合并视图切换 + 搜索 + 排序 + 目录树 + 新建）
@@ -3347,7 +3393,9 @@ mark {
     font-size: var(--fs-title);
   }
   /* 只对表单控件与已知控件容器限宽；其余行内元素（如提示文字）另起一行 */
-  .opt-card .form-row > :is(
+  .opt-card
+    .form-row
+    > :is(
       input,
       select,
       textarea,
@@ -3766,9 +3814,30 @@ mark {
     animation: none !important;
   }
 }
-@keyframes tree-fade { from { opacity: 0; } to { opacity: 1; } }
-@keyframes tree-pop {
-  from { opacity: 0; transform: translateY(8px) scale(0.98); }
-  to { opacity: 1; transform: none; }
+@keyframes tree-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
-@keyframes bm-flash { 0%, 100% { background: transparent; } 25% { background: var(--primary-soft); } }
+@keyframes tree-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes bm-flash {
+  0%,
+  100% {
+    background: transparent;
+  }
+  25% {
+    background: var(--primary-soft);
+  }
+}

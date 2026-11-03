@@ -116,7 +116,8 @@
     escapeStack.push(escapeToken);
     traps.set(container, { release: release });
 
-    if (opts.autofocus !== false) moveFocus(opts.initialFocus || focusables(container)[0] || container);
+    if (opts.autofocus !== false)
+      moveFocus(opts.initialFocus || focusables(container)[0] || container);
     return release;
   }
 

@@ -1911,9 +1911,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (row) row.hidden = !isDis;
     persistNtAppearance('新标签页接管模式已保存');
   });
-  $('#setNtRedirectUrl')?.addEventListener('change', () =>
-    persistNtAppearance('跳转网址已保存')
-  );
+  $('#setNtRedirectUrl')?.addEventListener('change', () => persistNtAppearance('跳转网址已保存'));
   $('#setNtWidth').addEventListener('change', () => persistNtAppearance('新标签页宽度已保存'));
   $('#setNtTheme').addEventListener('change', () => {
     ntBgRowVisible($('#setNtTheme').value === 'custom');
