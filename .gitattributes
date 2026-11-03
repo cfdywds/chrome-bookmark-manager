@@ -1,0 +1,26 @@
+# 行尾：仓库内按 LF 存储，任何平台 checkout 也用 LF
+# 项目里已有 .prettierrc（endOfLine 未显式指定，默认 lf），这里与之对齐，
+# 避免 Windows 上 core.autocrlf=true 时 git 反复报 "LF will be replaced by CRLF"。
+* text=auto eol=lf
+
+# 文本类需要显式声明，保证 diff 可读、可合并
+*.js text
+*.css text
+*.html text
+*.json text
+*.md text
+*.svg text
+*.yml text
+*.yaml text
+
+# 二进制：不做行尾转换与文本 diff
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.zip binary
+*.mp4 binary
+*.woff binary
+*.woff2 binary

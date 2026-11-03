@@ -18,6 +18,11 @@ Thumbs.db
 *.tmp
 *.bak
 
+# 演示视频等大体积媒体素材（按需本地保留，不入库）
+*.mp4
+*.mov
+*.webm
+
 # 端到端验证产物（headless Chrome profile + 截图，内含真实书签/登录数据，禁止入库）
 .tmp-e2e/
 

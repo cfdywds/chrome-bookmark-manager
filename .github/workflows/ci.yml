@@ -20,4 +20,5 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run lint
+      - run: npx prettier --check "js/**/*.js" "css/*.css" "*.html"
       - run: git diff --check
