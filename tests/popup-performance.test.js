@@ -224,8 +224,8 @@ describe('标签池重命名', () => {
 
 describe('操作反馈', () => {
   it('短提示位于底部，长任务状态放在内容区与底栏之间', () => {
-    expect(popupCss).toContain('position: fixed; bottom: 68px;');
-    expect(popupCss).not.toContain('position: fixed; top: 12px;');
+    expect(popupCss).toMatch(/position: fixed;\s*bottom: 68px;/);
+    expect(popupCss).not.toMatch(/position: fixed;\s*top: 12px;/);
     expect(popupHtml.indexOf('id="operationNotice"')).toBeGreaterThan(popupHtml.indexOf('<main id="content">'));
     expect(popupHtml.indexOf('id="progressWrap"')).toBeLessThan(popupHtml.indexOf('id="bulkBar"'));
     expect(popupCss).not.toContain('position: fixed; top: 0; left: 0; right: 0; z-index: 998;');

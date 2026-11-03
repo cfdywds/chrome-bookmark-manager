@@ -42,10 +42,10 @@ describe('新标签页搜索引擎', () => {
   });
 
   it('为每个搜索引擎提供当前选中项的 logo 标识', () => {
-    expect(source).toContain("google: { label: 'Google', mark: 'G'");
-    expect(source).toContain("bing: { label: 'Bing', mark: 'B'");
-    expect(source).toContain("baidu: { label: '百度', mark: '百'");
-    expect(source).toContain("duckduckgo: { label: 'DuckDuckGo', mark: 'D'");
+    expect(source).toMatch(/google: \{\s*label: 'Google',\s*mark: 'G'/);
+    expect(source).toMatch(/bing: \{\s*label: 'Bing',\s*mark: 'B'/);
+    expect(source).toMatch(/baidu: \{\s*label: '百度',\s*mark: '百'/);
+    expect(source).toMatch(/duckduckgo: \{\s*label: 'DuckDuckGo',\s*mark: 'D'/);
     expect(source).toContain('updateEngineLogo(select)');
   });
 });

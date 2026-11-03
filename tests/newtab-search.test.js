@@ -37,7 +37,7 @@ describe('新标签页搜索', () => {
     expect(newtabSource).toContain('await window.BM.pullTagsFromCloud()');
     expect(newtabSource).toContain('const tagConfigurationTask = window.BM.initializeSyncedTagConfiguration()');
     expect(newtabSource).toContain('await waitForInitialTagSync(tagConfigurationTask);');
-    expect(newtabSource).toContain('tagConfigurationTask.then(async result =>');
+    expect(newtabSource).toMatch(/tagConfigurationTask\s*\.then\(async result =>/);
     expect(newtabSource).not.toContain('window.BM.watchTagConfiguration');
     expect(newtabSource).not.toContain('window.BM.watchTagSync');
   });
@@ -258,7 +258,7 @@ describe('新标签页搜索', () => {
     // 窄屏逐级收敛列，最后退成两行
     expect(newtabCss).toContain('@media (max-width: 1040px)');
     expect(newtabCss).toContain('@media (max-width: 900px)');
-    expect(newtabCss).toContain('.nt-row-meta {\n    display: flex;');
+    expect(newtabCss).toMatch(/\.nt-row-meta \{\s*display: flex;/);
     // 虚拟化占位高度必须跟着行高走，否则滚动条长度会跳
     expect(newtabCss).toContain('contain-intrinsic-size: auto 28px;');
     expect(newtabCss).toContain('contain-intrinsic-size: auto 57px;');
@@ -267,18 +267,18 @@ describe('新标签页搜索', () => {
   });
 
   it('隐藏和删除成功提示使用轻量模式，并先更新当前列表', () => {
-    expect(newtabSource).toContain("showToast('已隐藏', 'ok'");
-    expect(newtabSource).toContain("showToast('已移入回收站', 'ok'");
+    expect(newtabSource).toMatch(/showToast\(\s*'已隐藏',\s*'ok'/);
+    expect(newtabSource).toMatch(/showToast\(\s*'已移入回收站',\s*'ok'/);
     expect(newtabSource).toContain('removeDeletedItemFromData(liveItem);');
     expect(newtabSource).toContain('const toastOptions = compact ? { compact: true } : undefined;');
     expect(newtabCss).toContain('.toast.compact {');
   });
 
   it('窄屏保留仓库图标，并隐藏非关键的书签计数', () => {
-    expect(newtabCss).toContain('.nt-source-link span { display: none; }');
+    expect(newtabCss).toMatch(/\.nt-source-link span \{\s*display: none;/);
     expect(newtabCss).toContain('@media (max-width: 420px)');
-    expect(newtabCss).toContain('.nt-count { display: none; }');
-    expect(newtabCss).toContain('min-width: 32px; min-height: 32px;');
+    expect(newtabCss).toMatch(/\.nt-count \{\s*display: none;/);
+    expect(newtabCss).toMatch(/min-width: 32px;\s*min-height: 32px;/);
   });
 
   it('「清除筛选」与「清空搜索」互斥显示，不在搜索框右侧并排两个叉', () => {
