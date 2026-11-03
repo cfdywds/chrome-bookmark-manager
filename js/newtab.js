@@ -234,9 +234,17 @@
       .sort((a, b) => b[1] - a[1]);
     const chip = (t, n, active) =>
       `<button class="nt-tag${active ? ' active' : ''}" data-tag="${esc(t)}" aria-pressed="${active ? 'true' : 'false'}">${t ? '#' + esc(t) : '全部'} <span class="cnt">${n}</span></button>`;
+    // 「全部」与其它标签 chip 同口径（排除隐藏）：DATA.items 带着隐藏项，
+    // 直接取长度会出现「全部 1545、列表 1542 条」的对不上
+    const hiddenCount = (DATA.tagView && DATA.tagView.hiddenItemCount) || 0;
+    const visibleTotal = Math.max(0, DATA.items.length - hiddenCount);
     $('#ntTags').innerHTML =
-      chip('', DATA.items.length, !activeTag) +
-      entries.map(([t, n]) => chip(t, n, activeTag === t)).join('');
+      chip('', visibleTotal, !activeTag) +
+      entries.map(([t, n]) => chip(t, n, activeTag === t)).join('') +
+      // 隐藏书签在日常视图里看不到，这里留一个可点入口，否则用户只能去猜管理面板
+      (hiddenCount
+        ? `<button class="nt-hidden-jump" type="button" data-tip="管理已隐藏的书签">已隐藏 ${hiddenCount}</button>`
+        : '');
   }
 
   function cardHtml(it) {
@@ -251,19 +259,15 @@
     // 卡片高度自适应，标签全部展开（不折叠成「+N」）；列表视图列宽固定，仍保留 2 + 余数
     const chips = tagList.map(t => `<span class="nt-tag-chip">#${esc(t)}</span>`).join('');
     const hiddenBadge = it.hidden ? '<span class="nt-card-hidden">已隐藏</span>' : '';
-    const hiddenLabel = it.hidden ? '取消隐藏' : '隐藏';
-    const actions = `
-      <div class="nt-actions" data-id="${esc(it.id)}">
-        <button type="button" class="nt-action" data-nt-act="copy" data-tip="复制链接" aria-label="复制链接">${ICON('copy')}</button>
-        <button type="button" class="nt-action" data-nt-act="toggle-hidden" data-tip="${hiddenLabel}" aria-label="${hiddenLabel}">${ICON('eye')}</button>
-        <button type="button" class="nt-action" data-nt-act="edit" data-tip="编辑" aria-label="编辑">${ICON('edit')}</button>
-        <button type="button" class="nt-action danger" data-nt-act="delete" data-tip="删除（30 天内可恢复）" aria-label="删除">${ICON('trash')}</button>
-      </div>`;
+    // 按钮只留空容器，内容等指针/键盘真正碰到这张卡片时再注入（见 ensureActions）：
+    // 每张卡片 4 个按钮 = 12 个节点（含外链雪碧图的 <use>），200 张就是 2400 个常驻节点，
+    // 是滚动发涩的主要来源之一。容器是 absolute 定位，注入不会引起重排。
+    const actions = `<div class="nt-actions" data-id="${esc(it.id)}"></div>`;
     return `<div class="nt-card-wrap" id="nt-card-${esc(it.id)}" data-nt-id="${esc(it.id)}" role="option" aria-selected="false">
       <a class="nt-card"${href ? ` href="${esc(href)}" target="_blank" rel="noopener"` : ' aria-disabled="true"'} data-tip="${esc(it.title)}">
         <span class="nt-fav" aria-hidden="true" style="--fav-hue: ${hue}">
           <span class="nt-fav-fallback">${initial}</span>
-          ${favicon ? `<img class="nt-fav-img" src="${esc(favicon)}" alt="" loading="lazy" />` : ''}
+          ${favicon ? `<img class="nt-fav-img" src="${esc(favicon)}" alt="" loading="lazy" decoding="async" />` : ''}
         </span>
         <div class="nt-card-body">
           <div class="nt-card-title">${esc(it.title)}</div>
@@ -296,19 +300,15 @@
     // 卡片给不出这个信息，用来区分「同名不同夹」的重复书签。
     const rel = (it.path || []).slice(1);
     const folder = (rel.length ? rel : it.path || []).slice(-2).join(' / ');
-    const hiddenLabel = it.hidden ? '取消隐藏' : '隐藏';
-    const actions = `
-      <div class="nt-actions" data-id="${esc(it.id)}">
-        <button type="button" class="nt-action" data-nt-act="copy" data-tip="复制链接" aria-label="复制链接">${ICON('copy')}</button>
-        <button type="button" class="nt-action" data-nt-act="toggle-hidden" data-tip="${hiddenLabel}" aria-label="${hiddenLabel}">${ICON('eye')}</button>
-        <button type="button" class="nt-action" data-nt-act="edit" data-tip="编辑" aria-label="编辑">${ICON('edit')}</button>
-        <button type="button" class="nt-action danger" data-nt-act="delete" data-tip="删除（30 天内可恢复）" aria-label="删除">${ICON('trash')}</button>
-      </div>`;
+    // 按钮只留空容器，内容等指针/键盘真正碰到这张卡片时再注入（见 ensureActions）：
+    // 每张卡片 4 个按钮 = 12 个节点（含外链雪碧图的 <use>），200 张就是 2400 个常驻节点，
+    // 是滚动发涩的主要来源之一。容器是 absolute 定位，注入不会引起重排。
+    const actions = `<div class="nt-actions" data-id="${esc(it.id)}"></div>`;
     return `<div class="nt-card-wrap nt-row" id="nt-card-${esc(it.id)}" data-nt-id="${esc(it.id)}" role="option" aria-selected="false">
       <a class="nt-row-link"${href ? ` href="${esc(href)}" target="_blank" rel="noopener"` : ' aria-disabled="true"'} data-tip="${esc(it.title)}">
         <span class="nt-fav" aria-hidden="true" style="--fav-hue: ${hue}">
           <span class="nt-fav-fallback">${initial}</span>
-          ${favicon ? `<img class="nt-fav-img" src="${esc(favicon)}" alt="" loading="lazy" />` : ''}
+          ${favicon ? `<img class="nt-fav-img" src="${esc(favicon)}" alt="" loading="lazy" decoding="async" />` : ''}
         </span>
         <span class="nt-row-title">${esc(it.title)}</span>
         <span class="nt-row-meta">
@@ -320,10 +320,11 @@
     </div>`;
   }
 
-  // 图标统一引用外链雪碧图 icons/sprite.svg（不再内联 path）
+  // 图标统一引用外链雪碧图 icons/sprite.svg（单一来源，页面不内嵌 symbol）
   function ICON(name) {
     const ids = {
       eye: 'i-eye',
+      eyeOff: 'i-eye-off',
       copy: 'i-copy',
       edit: 'i-edit',
       trash: 'i-trash',
@@ -340,6 +341,29 @@
     const id = ids[name];
     if (!id) return '';
     return `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="icons/sprite.svg#${id}"/></svg>`;
+  }
+
+  // 卡片操作按钮的 HTML。按需注入，见 ensureActions。
+  function actionButtonsHtml(it) {
+    const hiddenLabel = it.hidden ? '取消隐藏' : '隐藏';
+    // 隐藏按网址生效：同址的其它书签会一起从日常视图消失，tip 里说清楚免得以为丢书签
+    const hiddenTip = it.hidden ? '取消隐藏' : '隐藏（同网址的书签会一起隐藏，可在管理面板找回）';
+    return `
+        <button type="button" class="nt-action" data-nt-act="copy" data-tip="复制链接" aria-label="复制链接">${ICON('copy')}</button>
+        <button type="button" class="nt-action" data-nt-act="toggle-hidden" data-tip="${hiddenTip}" aria-label="${hiddenLabel}">${it.hidden ? ICON('eyeOff') : ICON('eye')}</button>
+        <button type="button" class="nt-action" data-nt-act="edit" data-tip="编辑" aria-label="编辑">${ICON('edit')}</button>
+        <button type="button" class="nt-action danger" data-nt-act="delete" data-tip="删除（30 天内可恢复）" aria-label="删除">${ICON('trash')}</button>`;
+  }
+
+  // 首次触碰某张卡片时才把操作按钮写进 DOM；已注入过的直接返回。
+  function ensureActions(wrap) {
+    if (!wrap || wrap.dataset.actionsReady === '1') return;
+    const box = wrap.querySelector('.nt-actions');
+    if (!box) return;
+    const it = (DATA.items || []).find(x => String(x.id) === String(wrap.dataset.ntId));
+    if (!it) return;
+    box.innerHTML = actionButtonsHtml(it);
+    wrap.dataset.actionsReady = '1';
   }
 
   function render() {
@@ -573,6 +597,8 @@
       return;
     }
     const active = wraps[kbIndex];
+    // 键盘用户不会触发 pointerover，这里补一次注入
+    ensureActions(active);
     active.classList.add('kb-active');
     active.setAttribute('aria-selected', 'true');
     grid.setAttribute('aria-activedescendant', active.id);
@@ -666,8 +692,8 @@
 
   // 兜底入口：不经过 side panel，直接以标签页打开管理界面。
   // 侧边栏空白属于 Chromium 的平台行为，任何面板内部的兜底都救不了，这条路径保证进得去。
-  function openManagerTab() {
-    const url = chrome.runtime.getURL(PANEL_PATH);
+  function openManagerTab(hash) {
+    const url = chrome.runtime.getURL(PANEL_PATH) + (hash || '');
     const fallback = () => window.open(url, '_blank', 'noopener');
     try {
       const task = chrome.tabs.create({ url });
@@ -884,6 +910,11 @@
     if (e.key === 'Escape') kbClear();
   });
   $('#ntTags').addEventListener('click', e => {
+    // 「已隐藏 N」不是标签，点击去管理面板的隐藏页
+    if (e.target.closest('.nt-hidden-jump')) {
+      openManagerTab('#hidden');
+      return;
+    }
     const t = e.target.closest('.nt-tag');
     if (!t) return;
     activeTag = t.dataset.tag === activeTag ? '' : t.dataset.tag; // 再点取消
@@ -1034,6 +1065,17 @@
     true
   );
 
+  // 操作按钮按需注入：指针悬停或键盘聚焦到某张卡片时才生成，
+  // 避免大列表里常驻上千个按钮节点（详见 ensureActions）
+  $('#ntGrid').addEventListener('pointerover', e => {
+    const wrap = e.target.closest('.nt-card-wrap');
+    if (wrap) ensureActions(wrap);
+  });
+  $('#ntGrid').addEventListener('focusin', e => {
+    const wrap = e.target.closest('.nt-card-wrap');
+    if (wrap) ensureActions(wrap);
+  });
+
   // 卡片操作按钮（事件委托）：复制 / 隐藏 / 编辑 / 删除
   $('#ntGrid').addEventListener('click', async e => {
     const btn = e.target.closest('[data-nt-act]');
@@ -1056,7 +1098,7 @@
       const hiddenTask = setHiddenOptimistic(it, !wasHidden);
       if (!wasHidden) {
         showToast(
-          '已隐藏',
+          '已隐藏，管理面板可找回',
           'ok',
           {
             label: '撤销',

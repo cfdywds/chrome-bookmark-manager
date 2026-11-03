@@ -1028,3 +1028,142 @@ it('后台自动打标保留显式空标签池', async () => {
     restoreGlobal('chrome', previousChrome);
   }
 });
+
+describe('永久删除释放隐藏标记', () => {
+  it('书签树里已无同址书签时，ID 与 URL 键一并释放', async () => {
+    const previousChrome = globalThis.chrome;
+    const harness = createBackgroundHarness(
+      [{ id: 'gone', title: 'x', url: 'https://example.com/x', deletedAt: Date.now() - 1000 }],
+      { localData: { bmHiddenIds: ['gone'], bmHiddenUrls: ['example.com/x'] } }
+    );
+    globalThis.chrome = harness.chrome;
+
+    try {
+      new Function(backgroundCode)();
+      await harness.send({ type: 'bmTrashMutation', action: 'discard', id: 'gone' });
+
+      const hiddenWrites = harness.storageSet.mock.calls
+        .map(call => call[0])
+        .filter(value => value && (value.bmHiddenIds || value.bmHiddenUrls));
+      // 不清理的话，同一网址再被收藏会继承隐藏记录，表现为「新加的书签不显示」
+      expect(hiddenWrites).toHaveLength(1);
+      expect(hiddenWrites[0].bmHiddenIds).toEqual([]);
+      expect(hiddenWrites[0].bmHiddenUrls).toEqual([]);
+    } finally {
+      restoreGlobal('chrome', previousChrome);
+    }
+  });
+
+  it('同址还有其它书签时只释放 ID，保留 URL 键', async () => {
+    const previousChrome = globalThis.chrome;
+    const getTree = vi
+      .fn()
+      .mockResolvedValue([
+        { id: '0', children: [{ id: 'alive', url: 'https://example.com/x', title: '同址书签' }] }
+      ]);
+    const harness = createBackgroundHarness(
+      [{ id: 'gone', title: 'x', url: 'https://example.com/x', deletedAt: Date.now() - 1000 }],
+      { localData: { bmHiddenIds: ['gone'], bmHiddenUrls: ['example.com/x'] }, getTree }
+    );
+    globalThis.chrome = harness.chrome;
+
+    try {
+      new Function(backgroundCode)();
+      await harness.send({ type: 'bmTrashMutation', action: 'discard', id: 'gone' });
+
+      const hiddenWrites = harness.storageSet.mock.calls
+        .map(call => call[0])
+        .filter(value => value && (value.bmHiddenIds || value.bmHiddenUrls));
+      expect(hiddenWrites).toHaveLength(1);
+      expect(hiddenWrites[0].bmHiddenIds).toEqual([]);
+      // 同址还有活着的书签 → URL 键必须留着，否则那条书签会突然取消隐藏
+      expect(hiddenWrites[0].bmHiddenUrls).toEqual(['example.com/x']);
+    } finally {
+      restoreGlobal('chrome', previousChrome);
+    }
+  });
+
+  it('清空回收站会释放其中所有书签的隐藏标记', async () => {
+    const previousChrome = globalThis.chrome;
+    const harness = createBackgroundHarness(
+      [
+        { id: 'a', title: 'a', url: 'https://a.com/1', deletedAt: Date.now() - 1000 },
+        { id: 'b', title: 'b', url: 'https://b.com/2', deletedAt: Date.now() - 1000 }
+      ],
+      { localData: { bmHiddenIds: ['a', 'b'], bmHiddenUrls: ['a.com/1', 'b.com/2'] } }
+    );
+    globalThis.chrome = harness.chrome;
+
+    try {
+      new Function(backgroundCode)();
+      await harness.send({ type: 'bmTrashMutation', action: 'clear' });
+
+      const hiddenWrites = harness.storageSet.mock.calls
+        .map(call => call[0])
+        .filter(value => value && (value.bmHiddenIds || value.bmHiddenUrls));
+      expect(hiddenWrites).toHaveLength(1);
+      expect(hiddenWrites[0].bmHiddenIds).toEqual([]);
+      expect(hiddenWrites[0].bmHiddenUrls).toEqual([]);
+    } finally {
+      restoreGlobal('chrome', previousChrome);
+    }
+  });
+});
+
+describe('永久删除同步清理原生同步记录', () => {
+  it('开启原生同步时，record.hidden 一并落为 false', async () => {
+    const previousChrome = globalThis.chrome;
+    const harness = createBackgroundHarness(
+      [{ id: 'gone', title: 'x', url: 'https://example.com/x', deletedAt: Date.now() - 1000 }],
+      {
+        localData: {
+          bmHiddenIds: ['gone'],
+          bmHiddenUrls: ['example.com/x'],
+          bmNativeTagSyncEnabled: true,
+          bmNativeTagSyncState: { deviceId: 'dev-a', clock: 1, sequence: 0, seeded: true },
+          bmNativeTagSyncRecords: {
+            'example.com/x': { tags: [], hidden: true, revision: [1, 0, 'dev-a'] }
+          }
+        }
+      }
+    );
+    globalThis.chrome = harness.chrome;
+
+    try {
+      new Function(backgroundCode)();
+      await harness.send({ type: 'bmTrashMutation', action: 'discard', id: 'gone' });
+
+      // 水合按 URL 键读 record.hidden；只清 storage 不清记录的话，
+      // 同网址重新收藏会被水合又隐藏回来
+      const recordWrite = harness.storageSet.mock.calls
+        .map(call => call[0])
+        .find(value => value && value.bmNativeTagSyncRecords);
+      expect(recordWrite).toBeTruthy();
+      expect(recordWrite.bmNativeTagSyncRecords['example.com/x'].hidden).toBe(false);
+      expect(recordWrite.bmNativeTagSyncRecords['example.com/x'].tags).toEqual([]);
+    } finally {
+      restoreGlobal('chrome', previousChrome);
+    }
+  });
+
+  it('未开启原生同步时不去写同步记录', async () => {
+    const previousChrome = globalThis.chrome;
+    const harness = createBackgroundHarness(
+      [{ id: 'gone', title: 'x', url: 'https://example.com/x', deletedAt: Date.now() - 1000 }],
+      { localData: { bmHiddenIds: ['gone'], bmHiddenUrls: ['example.com/x'] } }
+    );
+    globalThis.chrome = harness.chrome;
+
+    try {
+      new Function(backgroundCode)();
+      await harness.send({ type: 'bmTrashMutation', action: 'discard', id: 'gone' });
+
+      const recordWrite = harness.storageSet.mock.calls
+        .map(call => call[0])
+        .find(value => value && value.bmNativeTagSyncRecords);
+      expect(recordWrite).toBeUndefined();
+    } finally {
+      restoreGlobal('chrome', previousChrome);
+    }
+  });
+});

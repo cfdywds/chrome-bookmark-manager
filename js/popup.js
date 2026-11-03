@@ -844,8 +844,37 @@ function renderHidden() {
   content().innerHTML = `
     <div class="section-toolbar">
       <span class="sec-title">${ICON_SM('eye-off')} 已隐藏 <b>${items.length}</b> 个书签</span>
+      <button class="btn small ghost" data-action="unhide-all" data-tip="把所有已隐藏的书签恢复为日常视图可见" aria-label="全部取消隐藏">${ICON_SM('eye')} 全部取消隐藏</button>
     </div>
     ${renderItemRows(items, 'hidden-items', FIRST_LIST_COUNT, FIRST_LIST_COUNT)}`;
+}
+
+// 全部取消隐藏：走一次批量写盘（setHiddenBulk），不逐条 toggle——逐条会被
+// lib 的串行队列串起来，几十上百条时要等很久。
+let unhideAllRunning = false;
+async function unhideAllHidden() {
+  if (unhideAllRunning) return;
+  const items = ((DATA && DATA.items) || []).filter(item => item.hidden);
+  if (!items.length) return;
+  unhideAllRunning = true;
+  const btn = document.querySelector('[data-action="unhide-all"]');
+  if (btn) btn.disabled = true;
+  try {
+    await BM.setHiddenBulk(
+      items.map(item => ({ id: item.id, key: item.key })),
+      false
+    );
+    items.forEach(item => {
+      item.hidden = false;
+    });
+    toast(`已取消隐藏 ${items.length} 个书签`, 'ok');
+    await refresh();
+  } catch (e) {
+    toast('取消隐藏失败：' + (e.message || e), 'danger');
+    if (btn) btn.disabled = false;
+  } finally {
+    unhideAllRunning = false;
+  }
 }
 
 // ---------- 文件夹页：浏览 Chrome 原生书签文件夹树 ----------
@@ -3279,6 +3308,8 @@ async function init() {
           .catch(error => {
             toast((error && error.message) || '隐藏状态保存失败', 'warn');
           });
+      } else if (action === 'unhide-all') {
+        unhideAllHidden();
       } else if (action === 'create-tag') {
         createTag();
       } else if (action === 'manage-tags') {
@@ -5113,8 +5144,27 @@ window.addEventListener('unhandledrejection', event => reportFatal(event.reason)
 
 // 侧边栏文档可能被复用（扩展重载 / bfcache）：DOMContentLoaded 已经过去时必须直接初始化，
 // 否则 init 永不执行，面板会永久停在 popup.html 写死的「正在扫描书签…」骨架上。
+// 新标签页的「已隐藏 N」入口会带 #hidden 打开本页：等首轮书签分析完成后再切页，
+// 否则隐藏列表拿到的是空数据，会闪一下「没有隐藏的书签」。
+function applyInitialRoute(attempt) {
+  if (location.hash !== '#hidden') return;
+  const tries = attempt || 0;
+  if (!DATA) {
+    if (tries < 50) setTimeout(() => applyInitialRoute(tries + 1), 100);
+    return;
+  }
+  switchTab('hidden');
+  // 切完把 hash 抹掉：刷新或侧边栏复用文档时不该又被带回隐藏页
+  try {
+    history.replaceState(null, '', location.pathname + location.search);
+  } catch (e) {
+    /* file:// 之外的极端环境可能禁用 history，忽略即可 */
+  }
+}
+
 function bootstrap() {
   Promise.resolve().then(init).catch(reportFatal);
+  applyInitialRoute(0);
 }
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', bootstrap, { once: true });

@@ -3395,6 +3395,41 @@
     });
   }
 
+  // 批量设置隐藏状态：一次读改写，供「全部取消隐藏」这类操作使用。
+  // 逐条调用 toggleHidden 会被串行队列串起来（每条一次 storage 读写 + 一次广播），
+  // 隐藏数量上百时明显卡顿。
+  async function setHiddenBulk(entries, desiredHidden) {
+    const list = Array.isArray(entries) ? entries.filter(Boolean) : [];
+    if (!list.length) return false;
+    const nowHidden = desiredHidden === true;
+    return queueHiddenMutation(async () => {
+      const stored = await chrome.storage.local.get([HIDDEN_KEY, HIDDEN_URLS_KEY]);
+      const ids = new Set(Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []);
+      const urls = new Set(
+        Array.isArray(stored[HIDDEN_URLS_KEY]) ? stored[HIDDEN_URLS_KEY].map(String) : []
+      );
+      list.forEach(entry => {
+        const id = entry && entry.id ? String(entry.id) : '';
+        const key = entry && entry.key ? String(entry.key).toLowerCase() : '';
+        if (nowHidden) {
+          if (id) ids.add(id);
+          if (key) urls.add(key);
+        } else {
+          if (id) ids.delete(id);
+          if (key) urls.delete(key);
+        }
+      });
+      await chrome.storage.local.set({ [HIDDEN_KEY]: [...ids], [HIDDEN_URLS_KEY]: [...urls] });
+      hiddenCache = ids;
+      hiddenUrlCache = urls;
+      hiddenStale = true;
+      hiddenStaleEpoch++;
+      // 与 toggleHidden 一致：显式触发一次防抖发布，让隐藏状态写进原生书签目录
+      scheduleSyncTags();
+      return nowHidden;
+    });
+  }
+
   // 同域名+同路由检测用的路由键：普通页面取路径第一段（/index.html 视为首页）。
   // hash 路由携带实际页面位置，保留完整路由及参数，避免将不同 SPA 页面误判为同一路由。
   function routeKeyFromParsedUrl(url) {
@@ -5556,6 +5591,7 @@
     invalidateHiddenIds,
     isHidden,
     toggleHidden,
+    setHiddenBulk,
     routeKeyOf,
     getBookmarkMetadata,
     setTags,

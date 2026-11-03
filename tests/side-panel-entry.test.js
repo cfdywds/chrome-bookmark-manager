@@ -36,7 +36,7 @@ function bodyOf(source, signature, indent = '  ') {
 
 const openPanelBody = bodyOf(newtabSource, 'async function openPanel()');
 const ensureBody = bodyOf(newtabSource, 'function ensurePanelRegistration()');
-const openTabBody = bodyOf(newtabSource, 'function openManagerTab()');
+const openTabBody = bodyOf(newtabSource, 'function openManagerTab(hash)');
 const registerBody = bodyOf(backgroundSource, 'function registerSidePanel()', '');
 
 describe('侧边栏路径注册（重载/更新后不再空白）', () => {

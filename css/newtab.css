@@ -28,16 +28,48 @@
   top: 0;
   z-index: var(--z-sticky, 30);
   padding-top: 14px;
-  transition:
-    background-color 0.2s,
-    box-shadow 0.2s;
+  /* 底部收口必须用父级 padding：`.nt-tags` 是最后一个子元素，它的 margin-bottom
+     会和 `.nt-head` 折叠、跑到头部外面去，吸顶时背景盖不到那一段，
+     标签胶囊就贴着下边界线（看起来像重叠）。padding 不参与折叠。 */
+  padding-bottom: 20px;
+  /* 底色常驻：页面背景是纯色，未吸顶时这块和页面同色、看不出来；
+     但吸顶那一刻就不需要从 transparent 切到实底——只要做过渡，中间帧就是半透明，
+     滚动内容会从头部「透出来」闪一下。常驻实底 + 不给 background 加过渡，
+     任何时刻都不会透。 */
+  background: var(--bg);
+  /* 不做过渡：吸顶是在滚动过程中触发的，头部此时再跑一段 padding/阴影动画，
+     会和滚动本身叠成两套运动，看着「不顺」。状态直接切换最干净。
+     提升为合成层，滚动时头部只需合成、不必每帧重绘那一大片背景与阴影。 */
+  will-change: transform;
 }
-/* 吸顶状态：毛玻璃 + 阴影，明确提示头部已固定（阴影走 --shadow-sticky token） */
+/* 吸顶状态：实底 + 两端渐隐的细线，不压实心边框。
+   头部底色与卡片本身就有明度差，边界交给那条细线和一层极淡的投影就够了；
+   再压 1px 实心线会变成双重边界，割裂感很强。 */
 .nt-head.is-stuck {
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  -webkit-backdrop-filter: blur(12px) saturate(1.25);
-  backdrop-filter: blur(12px) saturate(1.25);
-  box-shadow: var(--shadow-sticky, 0 8px 24px rgba(15, 23, 42, 0.14));
+  /* 吸顶后顶部留白收一半：头部贴住视口顶端，不会像悬在半空 */
+  padding-top: 8px;
+  /* 标签胶囊与下边界线之间的缓冲：这段必须在头部背景里面 */
+  padding-bottom: 18px;
+  box-shadow: var(--shadow-sticky, 0 14px 26px -22px rgba(15, 23, 42, 0.3));
+}
+/* 头部下沿只留一条两端渐隐的细线，不再加「渐隐带」。
+   之前那条 30px 渐变会把正下方卡片的顶边和圆角一起雾化掉，
+   卡片看起来像被削了一截——比它想解决的「硬切」更不自然。 */
+.nt-head.is-stuck::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0,
+    color-mix(in srgb, var(--line-2) 72%, transparent) 14%,
+    color-mix(in srgb, var(--line-2) 72%, transparent) 86%,
+    transparent 100%
+  );
+  pointer-events: none;
 }
 /* 头部高度由 newtab.js 写入 --nt-head-h：键盘导航滚动时避免卡片被吸顶头部挡住 */
 .nt-grid .nt-card-wrap {
@@ -152,13 +184,26 @@
     box-shadow 0.2s;
   margin-bottom: 16px;
 }
+/* 18px 大圆角上，1px 实描边在四个圆弧处会显得又薄又硬（像贴了一圈胶带）。
+   改成完全去线，靠白底 + 两层柔和投影立住边界。
+   投影必须走 --shadow / --shadow-sm token：--ink 在深色主题下是近白色，
+   拿它调透明度会变成「白色发光边」，比原来的边框更假。 */
+.nt-search.search-box {
+  border-color: transparent;
+  box-shadow: var(--shadow-sm), var(--shadow);
+}
 /* 吸顶哨兵：newtab.js 插入在 .nt-head 之前，用于切换 .nt-head.is-stuck */
 .nt-sticky-sentinel {
   height: 1px;
 }
-.nt-search:focus-within {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-soft);
+/* 聚焦：不用实线描边，改成一圈主色光环；鼠标点进来和键盘 Tab 都只看到柔光，
+   比原来「1px 蓝边 + 3px 淡蓝圈」的双层描边安静得多 */
+.nt-search.search-box:focus-within {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent),
+    var(--shadow-sm),
+    var(--shadow);
 }
 .nt-search-ico {
   width: 18px;
@@ -405,8 +450,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-bottom: 20px;
-  transition: margin-bottom 0.18s;
 }
 .nt-tag {
   display: inline-flex;
@@ -432,6 +475,36 @@
   opacity: 0.7;
   font-variant-numeric: tabular-nums;
 }
+/* 「已隐藏 N」入口：不是标签池里的项，用虚线描边 + 弱化文字把它和筛选 chip 分开，
+   同时仍保持 28px 的行高节奏 */
+.nt-hidden-jump {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 var(--space-3);
+  border: 1px dashed var(--line-2);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.nt-hidden-jump:hover {
+  border-color: var(--line);
+  background: var(--surface-sub);
+  color: var(--ink-2);
+}
+.nt-hidden-jump:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 .nt-tag:hover {
   background: var(--line);
   color: var(--ink);
@@ -450,14 +523,36 @@
   color: var(--on-solid);
 }
 
-/* 吸顶后收紧纵向占用；标签条保持换行，避免固定时丢失筛选项 */
-.nt-head.is-stuck .nt-top,
-.nt-head.is-stuck .nt-tags {
-  margin-bottom: 12px;
+/* 吸顶后的纵向节奏：顶栏与「搜索 + 标签」两组之间给 14px，
+   搜索框与标签同属一组只隔 8px，靠邻近性把层级拉开；
+   收太紧（三处都 10px）会让整块糊成一堆。标签条保持换行，避免固定时丢失筛选项 */
+.nt-head.is-stuck .nt-top {
+  margin-bottom: 14px;
+}
+.nt-head.is-stuck .nt-search {
+  margin-bottom: 8px;
 }
 .nt-head.is-stuck .nt-tags {
   flex-wrap: wrap;
   overflow: visible;
+}
+/* 吸顶时头部底下是滚动的卡片：chip 靠「面 + 柔影」浮起，
+   不再用边框——二十几个 chip 各带一圈描边，会在头部堆出一层线框噪音。
+   搜索框的浮起已经由 .nt-search.search-box 的两层 token 投影承担，此处无需覆写 */
+.nt-head.is-stuck .nt-tag:not(.active) {
+  background: var(--panel);
+  border-color: transparent;
+  box-shadow: var(--shadow-sm);
+}
+.nt-head.is-stuck .nt-tag:not(.active):hover {
+  background: var(--surface-sub-hover);
+  border-color: var(--line);
+  box-shadow: none;
+  color: var(--ink);
+}
+/* 已选中的标签吸顶时也该有实感：主色底 + 同色系的浅投影 */
+.nt-head.is-stuck .nt-tag.active {
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--primary) 28%, transparent);
 }
 
 /* ---- 书签卡片网格 ---- */
@@ -744,6 +839,23 @@
 .nt-action.danger:hover {
   background: var(--danger-soft);
   color: var(--danger);
+}
+/* 删除与「复制 / 隐藏 / 编辑」之间留一道细分割线：危险操作不跟常驻操作连排，减小误点 */
+.nt-action.danger {
+  position: relative;
+  margin-left: 6px;
+}
+.nt-action.danger::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  width: 1px;
+  height: 12px;
+  transform: translateY(-50%);
+  /* 分隔线是功能线：用 --muted 半透明，两套主题下都稳稳可见（--line-2 在行 hover 底色上太淡） */
+  background: color-mix(in srgb, var(--muted) 42%, transparent);
+  pointer-events: none;
 }
 .nt-action.is-copied {
   background: var(--ok-soft);
@@ -1354,7 +1466,9 @@
 /* ===== 虚拟化：结果 >200 条时跳过屏外卡片的布局/绘制（Chrome 原生）===== */
 .nt-grid.is-virt .nt-card-wrap {
   content-visibility: auto;
-  contain-intrinsic-size: 180px auto;
+  /* 估算值贴近卡片真实高度（112~140px）：180px 会让滚动条总长度先短后长，
+     首次滚动时能看到滚动条跳一下 */
+  contain-intrinsic-size: auto 128px;
 }
 .nt-grid.is-virt.is-list .nt-card-wrap {
   contain-intrinsic-size: auto 28px;
@@ -1409,6 +1523,7 @@
 }
 .nt-grid.is-list .nt-card-wrap.kb-active .nt-actions {
   opacity: 1;
+  transform: none;
   pointer-events: auto;
 }
 /* 行内编辑：单行布局换成整行编辑面板 */
@@ -1512,55 +1627,68 @@
   font-weight: 600;
 }
 
-/* 操作列常驻行尾（固定宽度保证列对齐），hover / focus / 键盘高亮才显出图标 */
+/* 操作列常驻行尾（固定宽度保证列对齐），hover / focus / 键盘高亮才显出图标。
+   列表不给浮条底色：28px 行高内再叠一层托盘，四行图标会碎成一片；
+   改用「间距 + 右侧呼吸 + 分割线」建立节奏，靠位移入场体现悬浮感。 */
 .nt-grid.is-list .nt-actions {
   position: static;
   inset: auto;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 2px;
-  flex: 0 0 104px;
-  width: 104px;
+  gap: 4px;
+  /* 4 个 24px 热区 + 3 个 4px 间隙 + 右内距 10px = 118px（含 2px 左余量） */
+  flex: 0 0 118px;
+  width: 118px;
   margin: 0;
-  padding: 0 6px 0 0;
+  /* 右侧留白对齐 .nt-row-link 的 12px 内距，图标不再贴行右缘 */
+  padding: 0 10px 0 2px;
   border: none;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
   opacity: 0;
   visibility: visible;
-  transform: none;
+  /* 从行尾滑入 4px，比单纯淡入更有指向性 */
+  transform: translateX(4px);
   pointer-events: none;
-  transition: opacity 0.1s;
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
 }
 .nt-grid.is-list .nt-card-wrap:hover .nt-actions,
 .nt-grid.is-list .nt-card-wrap:focus-within .nt-actions {
   opacity: 1;
+  transform: none;
   pointer-events: auto;
 }
 .nt-grid.is-list .nt-card-wrap.nt-card-opening .nt-actions {
   opacity: 0;
+  transform: translateX(4px);
 }
+/* 24px 热区里让出 1px 描边，图标才放得下完整的 16px */
 .nt-grid.is-list .nt-action {
+  position: relative;
   flex: 0 0 24px;
   width: 24px;
   height: 24px;
-  padding: 4px;
+  padding: 3px;
   border: 1px solid transparent;
-  border-radius: var(--radius-xs);
+  /* 24px 方块上 7px 圆角接近胶囊，收一档配线性图标 */
+  border-radius: 6px;
   background: transparent;
   color: var(--muted);
   box-shadow: none;
 }
 .nt-grid.is-list .nt-action svg {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
 }
 .nt-grid.is-list .nt-action:hover {
   background: var(--surface-sub-hover);
   border-color: var(--line);
   color: var(--ink-2);
+  box-shadow: var(--shadow-sm);
   transform: none;
 }
 .nt-grid.is-list .nt-action.danger:hover {
@@ -1568,17 +1696,26 @@
   border-color: color-mix(in srgb, var(--danger) 24%, transparent);
   color: var(--danger);
 }
-/* 触屏没有 hover：操作列常驻，且放大到可点尺寸 */
+/* 列表容器 overflow: hidden 会裁掉最右按钮的外描边环，改为内描边 */
+.nt-grid.is-list .nt-action:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+/* 触屏没有 hover：操作列常驻，且放大到可点尺寸（宽度按内容收缩，避免 28px 按钮溢出固定列宽） */
 @media (hover: none) {
   .nt-grid.is-list .nt-actions {
     opacity: 1;
+    transform: none;
     pointer-events: auto;
+    flex: 0 0 auto;
+    width: auto;
+    padding: 0 6px 0 2px;
   }
   .nt-grid.is-list .nt-action {
     flex: 0 0 28px;
     width: 28px;
     height: 28px;
-    padding: 6px;
+    padding: 5px;
   }
 }
 

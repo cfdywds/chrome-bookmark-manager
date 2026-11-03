@@ -3397,6 +3397,70 @@ async function restoreTrashItems(ids) {
   return { restored, fallback, failed, total: pending.length };
 }
 
+// 永久删除后释放隐藏记录。
+// 隐藏按「书签 ID + URL 键」双轨记忆，URL 键本是为了 Chrome 重新分配 ID 后仍能跟随网址；
+// 但书签被真正删掉后，同一个网址再被收藏就会继承这条记录、静默变成隐藏，
+// 用户看到的是「新加的书签不见了」。所以只在永久删除时释放，软删除（可恢复）保持原样。
+// URL 键仅当书签树里已无同址书签时才删，避免连带影响同址的另一条书签。
+async function releaseHiddenRecords(items) {
+  const targets = (items || []).filter(item => item && (item.id || item.url));
+  if (!targets.length) return;
+  try {
+    const stored = await chrome.storage.local.get([HIDDEN_KEY, HIDDEN_URLS_KEY]);
+    const ids = new Set(Array.isArray(stored[HIDDEN_KEY]) ? stored[HIDDEN_KEY].map(String) : []);
+    const urls = new Set(
+      Array.isArray(stored[HIDDEN_URLS_KEY]) ? stored[HIDDEN_URLS_KEY].map(String) : []
+    );
+    if (!ids.size && !urls.size) return;
+    const tree = await chrome.bookmarks.getTree();
+    const aliveKeys = new Set(collectNativeUserBookmarks(tree, []).map(b => syncUrlKey(b.url)));
+    let changed = false;
+    const removedKeys = new Set();
+    targets.forEach(item => {
+      if (item.id && ids.delete(String(item.id))) changed = true;
+      const key = item.url ? syncUrlKey(item.url) : '';
+      if (key && !aliveKeys.has(key) && urls.delete(key)) {
+        removedKeys.add(key);
+        changed = true;
+      }
+    });
+    if (!changed) return;
+    await chrome.storage.local.set({ [HIDDEN_KEY]: [...ids], [HIDDEN_URLS_KEY]: [...urls] });
+    await releaseNativeHiddenRecords(removedKeys);
+  } catch (e) {
+    // 清理失败不阻塞回收站操作：记录最多多留一轮，下次永久删除时还会再试
+  }
+}
+
+// 把「已经释放」的 URL 键同步到原生同步记录。
+// 水合是按 URL 键读 record.hidden 的：storage 清了、record 还挂着 hidden=true 的话，
+// 同一个网址重新收藏时会被水合重新隐藏回来，等于没释放。
+async function releaseNativeHiddenRecords(keys) {
+  const list = [...new Set(keys || [])].filter(Boolean);
+  if (!list.length) return;
+  try {
+    const state = await loadNativeSyncState(chrome);
+    // 没开原生同步就没有记录可清
+    if (!state.enabled) return;
+    const records = await loadNativeSyncRecords(chrome);
+    const buckets = new Set();
+    list.forEach(key => {
+      const record = records[key];
+      if (!record || record.hidden !== true) return;
+      records[key] = { ...record, hidden: false, revision: nativeNextRevision(state) };
+      buckets.add(nativeBucketForUrl(key));
+    });
+    if (!buckets.size) return;
+    await chrome.storage.local.set({
+      [NATIVE_SYNC_RECORDS_KEY]: records,
+      [NATIVE_SYNC_STATE_KEY]: nativeSyncStateValue(state)
+    });
+    await publishNativeSync(chrome, buckets, false);
+  } catch (e) {
+    // 发布失败（例如同步目录被删）不影响本地删除结果：下次隐藏/取消隐藏会再写一次
+  }
+}
+
 async function mutateTrash(action, payload) {
   if (action === 'heartbeatDelete') {
     touchActiveTrashDeletes(payload.ids);
@@ -3460,18 +3524,23 @@ async function mutateTrash(action, payload) {
     return { completed, discarded };
   }
   if (action === 'discard') {
+    const removed = list.filter(item => item.id === payload.id);
     const next = list.filter(item => item.id !== payload.id);
     if (next.length !== list.length) await chrome.storage.local.set({ [TRASH_KEY]: next });
+    await releaseHiddenRecords(removed);
     return { discarded: list.length - next.length };
   }
   if (action === 'clear') {
     if (list.length) await chrome.storage.local.set({ [TRASH_KEY]: [] });
+    await releaseHiddenRecords(list);
     return { cleared: list.length };
   }
   if (action === 'purge') {
     const cutoff = Date.now() - TRASH_TTL_DAYS * 86400000;
     const next = list.filter(item => item.deletedAt > cutoff);
+    const expired = list.filter(item => !(item.deletedAt > cutoff));
     if (next.length !== list.length) await chrome.storage.local.set({ [TRASH_KEY]: next });
+    await releaseHiddenRecords(expired);
     return { purged: list.length - next.length };
   }
   throw new Error('未知回收站操作');

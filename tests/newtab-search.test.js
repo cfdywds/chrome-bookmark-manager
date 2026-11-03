@@ -4,9 +4,18 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const newtabSource = readFileSync(join(__dirname, '..', 'js', 'newtab.js'), 'utf-8').replace(/\r\n/g, '\n');
-const newtabCss = readFileSync(join(__dirname, '..', 'css', 'newtab.css'), 'utf-8').replace(/\r\n/g, '\n');
-const newtabHtml = readFileSync(join(__dirname, '..', 'newtab.html'), 'utf-8').replace(/\r\n/g, '\n');
+const newtabSource = readFileSync(join(__dirname, '..', 'js', 'newtab.js'), 'utf-8').replace(
+  /\r\n/g,
+  '\n'
+);
+const newtabCss = readFileSync(join(__dirname, '..', 'css', 'newtab.css'), 'utf-8').replace(
+  /\r\n/g,
+  '\n'
+);
+const newtabHtml = readFileSync(join(__dirname, '..', 'newtab.html'), 'utf-8').replace(
+  /\r\n/g,
+  '\n'
+);
 const popupHtml = readFileSync(join(__dirname, '..', 'popup.html'), 'utf-8').replace(/\r\n/g, '\n');
 
 function getFunctionSource(name) {
@@ -30,12 +39,16 @@ describe('新标签页搜索', () => {
   });
 
   it('编辑 URL 后显式迁移标签同步记录', () => {
-    expect(newtabSource).toContain('await window.BM.migrateTagSyncUrl(it.id, it.url, normalizedUrl);');
+    expect(newtabSource).toContain(
+      'await window.BM.migrateTagSyncUrl(it.id, it.url, normalizedUrl);'
+    );
   });
 
   it('初始化时主动拉取已有的云端标签', () => {
     expect(newtabSource).toContain('await window.BM.pullTagsFromCloud()');
-    expect(newtabSource).toContain('const tagConfigurationTask = window.BM.initializeSyncedTagConfiguration()');
+    expect(newtabSource).toContain(
+      'const tagConfigurationTask = window.BM.initializeSyncedTagConfiguration()'
+    );
     expect(newtabSource).toContain('await waitForInitialTagSync(tagConfigurationTask);');
     expect(newtabSource).toMatch(/tagConfigurationTask\s*\.then\(async result =>/);
     expect(newtabSource).not.toContain('window.BM.watchTagConfiguration');
@@ -87,28 +100,46 @@ describe('新标签页搜索', () => {
 
   it('将隐藏搜索结果标记为已隐藏，并提供取消隐藏操作', () => {
     const esc = eval(`(${getFunctionSource('esc')})`);
-    const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
-    const faviconUrl = () => 'chrome-extension://test/_favicon/?pageUrl=https%3A%2F%2Fexample.com%2F&size=64';
+    const safeHttpUrl = url => (/^https?:/i.test(url) ? url : '');
+    const faviconUrl = () =>
+      'chrome-extension://test/_favicon/?pageUrl=https%3A%2F%2Fexample.com%2F&size=64';
     const ICON = () => '';
     const cardHtml = eval(`(${getFunctionSource('cardHtml')})`);
 
     const html = cardHtml({
-      id: 'hidden', title: '隐藏书签', url: 'https://example.com/', tags: [], hidden: true
+      id: 'hidden',
+      title: '隐藏书签',
+      url: 'https://example.com/',
+      tags: [],
+      hidden: true
     });
 
     expect(html).toContain('class="nt-card-hidden">已隐藏</span>');
-    expect(html).toContain('data-tip="取消隐藏"');
+    // 操作按钮改为按需注入（见 ensureActions）：cardHtml 只给空容器，
+    // 「取消隐藏」按钮在 actionButtonsHtml 里
+    const actionButtonsHtml = eval(`(${getFunctionSource('actionButtonsHtml')})`);
+    const buttons = actionButtonsHtml({
+      id: 'hidden',
+      title: '隐藏书签',
+      url: 'https://example.com/',
+      tags: [],
+      hidden: true
+    });
+    expect(buttons).toContain('data-tip="取消隐藏"');
   });
 
   it('对标题进行 HTML 转义，并禁用非 HTTP(S) 链接', () => {
     const esc = eval(`(${getFunctionSource('esc')})`);
-    const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
+    const safeHttpUrl = url => (/^https?:/i.test(url) ? url : '');
     const faviconUrl = () => '';
     const ICON = () => '';
     const cardHtml = eval(`(${getFunctionSource('cardHtml')})`);
 
     const html = cardHtml({
-      id: 'unsafe', title: '<img src=x onerror=alert(1)>', url: 'javascript:alert(1)', tags: []
+      id: 'unsafe',
+      title: '<img src=x onerror=alert(1)>',
+      url: 'javascript:alert(1)',
+      tags: []
     });
 
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
@@ -117,7 +148,7 @@ describe('新标签页搜索', () => {
   });
 
   it('仅为 HTTP(S) 网站生成扩展内 favicon 地址', () => {
-    const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
+    const safeHttpUrl = url => (/^https?:/i.test(url) ? url : '');
     const chrome = {
       runtime: {
         getURL: path => `chrome-extension://test${path}`
@@ -133,27 +164,45 @@ describe('新标签页搜索', () => {
 
   it('卡片包含网站图标回退内容和四个抽屉操作', () => {
     const esc = eval(`(${getFunctionSource('esc')})`);
-    const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
-    const faviconUrl = () => 'chrome-extension://test/_favicon/?pageUrl=https%3A%2F%2Fexample.com%2F&size=64';
+    const safeHttpUrl = url => (/^https?:/i.test(url) ? url : '');
+    const faviconUrl = () =>
+      'chrome-extension://test/_favicon/?pageUrl=https%3A%2F%2Fexample.com%2F&size=64';
     const ICON = () => '<svg></svg>';
     const cardHtml = eval(`(${getFunctionSource('cardHtml')})`);
 
+    const actionButtonsHtml = eval(`(${getFunctionSource('actionButtonsHtml')})`);
+
     const html = cardHtml({
-      id: 'example', title: 'Example', host: 'example.com', url: 'https://example.com/', tags: []
+      id: 'example',
+      title: 'Example',
+      host: 'example.com',
+      url: 'https://example.com/',
+      tags: []
     });
 
     expect(html).toContain('class="nt-fav-fallback">E</span>');
     expect(html).toContain('class="nt-fav-img"');
-    expect(html).toContain('aria-label="复制链接"');
-    expect(html).toContain('aria-label="隐藏"');
-    expect(html).toContain('aria-label="编辑"');
-    expect(html).toContain('aria-label="删除"');
-    expect((html.match(/data-nt-act=/g) || [])).toHaveLength(4);
+    // 按钮改为按需注入：卡片本体只留空的 .nt-actions 容器
+    expect(html).toContain('class="nt-actions"');
+    expect(html).not.toContain('data-nt-act=');
+
+    const buttons = actionButtonsHtml({
+      id: 'example',
+      title: 'Example',
+      host: 'example.com',
+      url: 'https://example.com/',
+      tags: []
+    });
+    expect(buttons).toContain('aria-label="复制链接"');
+    expect(buttons).toContain('aria-label="隐藏"');
+    expect(buttons).toContain('aria-label="编辑"');
+    expect(buttons).toContain('aria-label="删除"');
+    expect(buttons.match(/data-nt-act=/g) || []).toHaveLength(4);
   });
 
   it('卡片视图展开全部标签，不再折叠成 +N', () => {
     const esc = eval(`(${getFunctionSource('esc')})`);
-    const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
+    const safeHttpUrl = url => (/^https?:/i.test(url) ? url : '');
     const faviconUrl = () => '';
     const ICON = () => '<svg></svg>';
     const cardHtml = eval(`(${getFunctionSource('cardHtml')})`);
@@ -174,7 +223,7 @@ describe('新标签页搜索', () => {
 
   it('列表行单行承载标题/站点/目录/标签，并收敛标签与目录层级', () => {
     const esc = eval(`(${getFunctionSource('esc')})`);
-    const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
+    const safeHttpUrl = url => (/^https?:/i.test(url) ? url : '');
     const faviconUrl = () => '';
     const ICON = () => '<svg></svg>';
     const rowHtml = eval(`(${getFunctionSource('rowHtml')})`);
@@ -207,9 +256,15 @@ describe('新标签页搜索', () => {
   });
 
   it('复制动作保留书签的完整原始链接', async () => {
-    const safeHttpUrl = url => /^https?:/i.test(url) ? url : '';
+    const safeHttpUrl = url => (/^https?:/i.test(url) ? url : '');
     let copied = '';
-    const navigator = { clipboard: { writeText: async value => { copied = value; } } };
+    const navigator = {
+      clipboard: {
+        writeText: async value => {
+          copied = value;
+        }
+      }
+    };
     const copyBookmarkUrl = eval(`(${getFunctionSource('copyBookmarkUrl')})`);
     const url = 'https://example.com/docs?token=abc#section';
 
@@ -244,7 +299,9 @@ describe('新标签页搜索', () => {
     expect(newtabCss).toContain('.nt-grid.is-list .nt-actions {');
     expect(newtabCss).toContain('opacity: 0;');
     expect(newtabCss).toContain('.nt-grid.is-list .nt-card-wrap:hover .nt-actions');
-    expect(newtabCss).toContain('.nt-grid.is-list .nt-actions {\n    opacity: 1;\n    pointer-events: auto;\n  }');
+    expect(newtabCss).toContain(
+      '.nt-grid.is-list .nt-actions {\n    opacity: 1;\n    pointer-events: auto;\n  }'
+    );
   });
 
   it('列表视图靠单行密度与列对齐换取「找书签」效率', () => {
@@ -267,7 +324,7 @@ describe('新标签页搜索', () => {
   });
 
   it('隐藏和删除成功提示使用轻量模式，并先更新当前列表', () => {
-    expect(newtabSource).toMatch(/showToast\(\s*'已隐藏',\s*'ok'/);
+    expect(newtabSource).toMatch(/showToast\(\s*'已隐藏[^']*',\s*'ok'/);
     expect(newtabSource).toMatch(/showToast\(\s*'已移入回收站',\s*'ok'/);
     expect(newtabSource).toContain('removeDeletedItemFromData(liveItem);');
     expect(newtabSource).toContain('const toastOptions = compact ? { compact: true } : undefined;');
@@ -323,8 +380,10 @@ describe('新标签页搜索', () => {
     };
     const card = {
       hasAttribute: name => name === 'href',
-      blur: () => { blurred = true; },
-      closest: selector => selector === '.nt-card-wrap' ? wrap : null
+      blur: () => {
+        blurred = true;
+      },
+      closest: selector => (selector === '.nt-card-wrap' ? wrap : null)
     };
     const suppressHoverAfterOpen = eval(`(${getFunctionSource('suppressHoverAfterOpen')})`);
 
@@ -342,7 +401,9 @@ describe('新标签页搜索', () => {
 
     expect(folderGuideHtml([], false)).toBe('');
     expect(folderGuideHtml([true], false)).toBe('<i class="nt-folder-guide is-branch"></i>');
-    expect(folderGuideHtml([false], true)).toBe('<i class="nt-folder-guide is-branch is-last"></i>');
+    expect(folderGuideHtml([false], true)).toBe(
+      '<i class="nt-folder-guide is-branch is-last"></i>'
+    );
     expect(folderGuideHtml([true, true], false)).toBe(
       '<i class="nt-folder-guide has-line"></i><i class="nt-folder-guide is-branch"></i>'
     );

@@ -84,9 +84,11 @@
   --c-shadow-sm-d: 0 1px 2px rgba(0, 0, 0, 0.4);
   --c-shadow-d: 0 6px 20px rgba(0, 0, 0, 0.45);
   --c-shadow-lg-d: 0 16px 48px rgba(0, 0, 0, 0.55);
-  /* 吸顶搜索框的悬浮阴影（浅色带蓝调、深色纯黑，避免组件里写暗色补丁） */
-  --c-shadow-sticky-l: 0 8px 24px rgba(15, 23, 42, 0.14);
-  --c-shadow-sticky-d: 0 8px 24px rgba(0, 0, 0, 0.5);
+  /* 吸顶头部的投影（浅色带蓝调、深色纯黑，避免组件里写暗色补丁）
+     只做「贴近下沿的一点点下沉」，边界主要交给头部的渐隐带；
+     不再叠 1px 实影——那条实影会和渐隐一起变成双重边界 */
+  --c-shadow-sticky-l: 0 6px 16px -10px rgba(15, 23, 42, 0.18);
+  --c-shadow-sticky-d: 0 6px 16px -10px rgba(0, 0, 0, 0.55);
 
   /* 组件表面 · 浅色（暗色补丁变量化的落点） */
   --c-sub-l: #f3f5f8;
