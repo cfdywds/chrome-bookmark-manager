@@ -4,8 +4,11 @@
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-11-04
+
 ### Added
 
+- 新增测试覆盖率与质量度量管线：引入 `@vitest/coverage-v8` 建立自动化测试覆盖率基线，并产出全链路原生 ESM 架构演进调研报告。
 - 新增标准 Netscape HTML 书签无损导出与导入：严格遵循 `<!DOCTYPE NETSCAPE-Bookmark-file-1>` 工业标准，无损携带 `TAGS` 标签与层级时间戳，实现 Chrome、Edge、Firefox、Safari、Brave、Arc 等所有主流浏览器跨端无缝导入导出。
 - 新增书签健康体检医生 (Health Doctor) · 高置信防误杀体系：多并发限流探测书签可用性，仅确诊的 404/410 判定为失效并支持一键清理至回收站；网络超时、断网或需科学上网的海外站点（如 GitHub、Google 等）自动隔离受保护，杜绝误杀。
 - 新增轻量中文拼音极速搜索引擎：基于 Web 标准声母界限与常用词全拼提取，零外部依赖实现中文首字母简拼（如 `blbl` 匹配哔哩哔哩）与全拼快搜，全面赋能侧边栏与新标签页搜索。
@@ -30,6 +33,8 @@
 
 ### Changed
 
+- 核心架构深度重构：解耦单一真实源常量（`js/constants.js`）与超两千行分类规则词典（`js/rules-data.js`），彻底消除 Service Worker 与前端页面间的双写漂移。
+- 升级存储迁移管线至 v4：新增 `convergeHiddenKeys` 纯函数清洗去重，增加实时快照读取防覆盖，引入 Promise Single-Flight 单飞互斥保护，确立严格幂等性。
 - 新标签页列表视图重做为单行多列的紧凑表格：行高由 54px 降到 28px（卡片 112px），favicon / 标题 / 站点 / 目录 / 标签固定列宽对齐，整块只有一条外框线和行分隔线，不再逐行叠卡片；新增「目录」列区分同名不同夹的重复书签，标签列收敛为两项加余数，窄屏逐级收敛列而不是换行。
 - 备份、恢复和清空回收站统一迁移到 options 页底部的「危险操作」区；popup 只保留回收站查看、单项恢复和单项处理。
 - newtab 文件夹下拉改显示可见书签数量，文件夹结构缓存签名覆盖根节点与子目录顺序，并统一复用共享 toast。
@@ -137,6 +142,8 @@
 - LLM 域名采用用户按需授予的可选网络权限。
 - 标签原生同步不包含书签标题、API Key、LLM 配置或回收站，并且不依赖扩展 ID；隐藏状态随标签一起按规范化 URL 同步。
 
-[Unreleased]: https://github.com/cfdywds/chrome-bookmark-manager/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/cfdywds/chrome-bookmark-manager/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/cfdywds/chrome-bookmark-manager/compare/v1.0.2...v1.0.3
+[1.0.2]: https://github.com/cfdywds/chrome-bookmark-manager/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/cfdywds/chrome-bookmark-manager/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/cfdywds/chrome-bookmark-manager/releases/tag/v1.0.0
