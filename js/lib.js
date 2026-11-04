@@ -3462,32 +3462,90 @@
     }
   }
 
-  // ---- storage 版本迁移 ----
-  const STORAGE_VERSION = 3;
-  async function migrateStorage() {
-    try {
-      const r = await chrome.storage.local.get([
-        'bmStorageVersion',
-        FIXED_TAGS_KEY,
-        TAG_RULES_KEY,
-        'bmDomainGroups',
-        LEGACY_DOMAIN_GROUPS_MIGRATED_KEY
-      ]);
-      const version = Number(r.bmStorageVersion) || 0;
-      if (version >= STORAGE_VERSION && r[LEGACY_DOMAIN_GROUPS_MIGRATED_KEY]) return;
-      const updates = { bmStorageVersion: STORAGE_VERSION };
-      const upgradedTags = upgradeDefaultFixedTags(r[FIXED_TAGS_KEY]);
-      if (upgradedTags !== r[FIXED_TAGS_KEY]) updates[FIXED_TAGS_KEY] = upgradedTags;
-      if (version < 3 || !r[LEGACY_DOMAIN_GROUPS_MIGRATED_KEY]) {
-        updates[TAG_RULES_KEY] = normalizeTagRules(r[TAG_RULES_KEY], r.bmDomainGroups);
-        updates[LEGACY_DOMAIN_GROUPS_MIGRATED_KEY] = true;
+  // ---- 隐藏双键收敛清洗纯函数 ----
+  // 对 live 中的 HIDDEN_KEY 与 HIDDEN_URLS_KEY 进行去重、小写化与有效性校验
+  function convergeHiddenKeys(live) {
+    if (!live || typeof live !== 'object') return null;
+    const hasIds = Array.isArray(live[HIDDEN_KEY]) && live[HIDDEN_KEY].length > 0;
+    const hasUrls = Array.isArray(live[HIDDEN_URLS_KEY]);
+    if (!hasIds && !hasUrls) return null;
+
+    const rawUrls = hasUrls ? live[HIDDEN_URLS_KEY] : [];
+    const urlSet = new Set();
+    rawUrls.forEach(u => {
+      if (typeof u === 'string') {
+        const trimmed = u.trim().toLowerCase();
+        if (trimmed) urlSet.add(trimmed);
       }
-      await chrome.storage.local.set(updates);
-      if (updates[FIXED_TAGS_KEY]) invalidateFixedTags();
-      if (updates[TAG_RULES_KEY]) invalidateTagRules();
-    } catch (e) {
-      /* ignore */
-    }
+    });
+
+    const merged = [...urlSet];
+    // 若原数据已是一维合法数组且内容完全匹配，返回 null 表示无需更新，避免冗余 I/O
+    const isExactMatch =
+      hasUrls &&
+      live[HIDDEN_URLS_KEY].length === merged.length &&
+      live[HIDDEN_URLS_KEY].every(k => typeof k === 'string' && urlSet.has(k.toLowerCase()));
+
+    return isExactMatch ? null : merged;
+  }
+
+  // ---- storage 版本迁移流水线 (v4) ----
+  const STORAGE_VERSION = 4;
+  let migrationInFlight = null;
+
+  async function migrateStorage() {
+    if (migrationInFlight) return migrationInFlight;
+    migrationInFlight = (async () => {
+      try {
+        const verKey = C.STORAGE_KEYS?.STORAGE_VERSION || 'bmStorageVersion';
+        const r = await chrome.storage.local.get([
+          verKey,
+          FIXED_TAGS_KEY,
+          TAG_RULES_KEY,
+          'bmDomainGroups',
+          LEGACY_DOMAIN_GROUPS_MIGRATED_KEY
+        ]);
+        const version = Number(r[verKey]) || 0;
+        if (version >= STORAGE_VERSION && r[LEGACY_DOMAIN_GROUPS_MIGRATED_KEY]) {
+          return { version, migrated: false };
+        }
+
+        const updates = { [verKey]: STORAGE_VERSION };
+
+        // v < 3：升级默认固定池并迁入旧域名分组规则（原样保留且闭环）
+        if (version < 3 || !r[LEGACY_DOMAIN_GROUPS_MIGRATED_KEY]) {
+          const upgradedTags = upgradeDefaultFixedTags(r[FIXED_TAGS_KEY]);
+          if (upgradedTags !== r[FIXED_TAGS_KEY]) updates[FIXED_TAGS_KEY] = upgradedTags;
+          updates[TAG_RULES_KEY] = normalizeTagRules(r[TAG_RULES_KEY], r.bmDomainGroups);
+          updates[LEGACY_DOMAIN_GROUPS_MIGRATED_KEY] = true;
+        }
+
+        // v < 4：隐藏双键收敛清洗——必须重新读取最新 live 快照，杜绝覆盖并发写
+        if (version < 4) {
+          const live = await chrome.storage.local.get([HIDDEN_KEY, HIDDEN_URLS_KEY]);
+          const merged = convergeHiddenKeys(live);
+          if (merged !== null) {
+            updates[HIDDEN_URLS_KEY] = merged;
+          }
+        }
+
+        await chrome.storage.local.set(updates);
+        if (updates[FIXED_TAGS_KEY]) invalidateFixedTags();
+        if (updates[TAG_RULES_KEY]) invalidateTagRules();
+        if (updates[HIDDEN_URLS_KEY]) {
+          hiddenUrlCache = new Set(updates[HIDDEN_URLS_KEY]);
+          hiddenStale = true;
+          hiddenStaleEpoch++;
+        }
+        return { version: STORAGE_VERSION, migrated: true };
+      } catch (e) {
+        /* ignore */
+        return { version: 0, error: e };
+      } finally {
+        migrationInFlight = null;
+      }
+    })();
+    return migrationInFlight;
   }
 
   // 兼容浏览器/Popup 与 Service Worker 上下文：Chrome MV3 下没有 Node 的 `global`
@@ -3611,6 +3669,7 @@
     toPinyinKeywords,
     logError,
     migrateStorage,
+    convergeHiddenKeys,
     STORAGE_VERSION
   };
 })(typeof window !== 'undefined' ? window : globalThis);

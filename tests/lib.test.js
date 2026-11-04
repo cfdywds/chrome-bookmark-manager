@@ -745,7 +745,7 @@ describe('标签配置迁移', () => {
     try {
       await BM.migrateStorage();
       expect(set).toHaveBeenCalledWith({
-        bmStorageVersion: 3,
+        bmStorageVersion: 4,
         bmFixedTags: BM.DEFAULT_FIXED_TAGS,
         bmTagRules: { domain: {}, keyword: {} },
         bmDomainGroupsMigrated: true
@@ -780,7 +780,7 @@ describe('标签配置迁移', () => {
       await BM.migrateStorage();
       expect(localData.bmTagRules).toEqual({ domain: { 'corp.example': ['工作'] }, keyword: {} });
       expect(localData.bmDomainGroupsMigrated).toBe(true);
-      expect(set).toHaveBeenCalledWith(expect.objectContaining({ bmStorageVersion: 3 }));
+      expect(set).toHaveBeenCalledWith(expect.objectContaining({ bmStorageVersion: 4 }));
     } finally {
       BM.invalidateTagRules();
       if (previousChrome === undefined) delete globalThis.chrome;
@@ -1616,5 +1616,125 @@ describe('隐藏书签（ID + URL 双键）', () => {
       expect(store.bmHiddenIds).toEqual([]);
       expect(store.bmHiddenUrls).toEqual([]);
     });
+  });
+});
+
+describe('storage 版本迁移管线 (v4 与隐藏双键收敛)', () => {
+  it('convergeHiddenKeys: 正确清洗去重、小写化并过滤非字符串', () => {
+    const live = {
+      bmHiddenIds: ['1', '2'],
+      bmHiddenUrls: ['EXAMPLE.COM/A', 'example.com/a', '  github.com/foo  ', null, 123]
+    };
+    const res = BM.convergeHiddenKeys(live);
+    expect(res).toEqual(['example.com/a', 'github.com/foo']);
+  });
+
+  it('convergeHiddenKeys: 数据已严格规范时返回 null 避免冗余写入', () => {
+    const live = {
+      bmHiddenIds: ['1'],
+      bmHiddenUrls: ['example.com/a', 'github.com/foo']
+    };
+    expect(BM.convergeHiddenKeys(live)).toBeNull();
+  });
+
+  it('从 v3 升级到 v4: 仅收敛隐藏双键，不重复生成规则', async () => {
+    const previousChrome = globalThis.chrome;
+    const store = {
+      bmStorageVersion: 3,
+      bmDomainGroupsMigrated: true,
+      bmTagRules: { domain: { 'test.com': ['工具'] }, keyword: {} },
+      bmHiddenIds: ['h1'],
+      bmHiddenUrls: ['UPPER.COM/PAGE', 'upper.com/page']
+    };
+    const set = vi.fn(async values => Object.assign(store, values));
+    globalThis.chrome = {
+      storage: {
+        local: {
+          get: vi.fn(async keys => {
+            if (Array.isArray(keys)) {
+              return Object.fromEntries(keys.map(k => [k, store[k]]));
+            }
+            return { ...store };
+          }),
+          set
+        }
+      }
+    };
+
+    try {
+      const res = await BM.migrateStorage();
+      expect(res).toMatchObject({ version: 4, migrated: true });
+      expect(store.bmStorageVersion).toBe(4);
+      expect(store.bmHiddenUrls).toEqual(['upper.com/page']);
+      expect(store.bmTagRules).toEqual({ domain: { 'test.com': ['工具'] }, keyword: {} });
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('已经是 v4 时保持完全幂等，不执行任何写操作', async () => {
+    const previousChrome = globalThis.chrome;
+    const store = {
+      bmStorageVersion: 4,
+      bmDomainGroupsMigrated: true,
+      bmHiddenUrls: ['example.com/p']
+    };
+    const set = vi.fn();
+    globalThis.chrome = {
+      storage: {
+        local: {
+          get: vi.fn(async () => ({ ...store })),
+          set
+        }
+      }
+    };
+
+    try {
+      const res1 = await BM.migrateStorage();
+      const res2 = await BM.migrateStorage();
+      expect(res1).toMatchObject({ version: 4, migrated: false });
+      expect(res2).toMatchObject({ version: 4, migrated: false });
+      expect(set).not.toHaveBeenCalled();
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
+  });
+
+  it('并发多次触发 migrateStorage 时单飞互斥，共享同一次迁移任务', async () => {
+    const previousChrome = globalThis.chrome;
+    const store = {
+      bmStorageVersion: 3,
+      bmDomainGroupsMigrated: true,
+      bmHiddenIds: ['h1'],
+      bmHiddenUrls: ['A.COM', 'B.COM']
+    };
+    const set = vi.fn(async values => Object.assign(store, values));
+    globalThis.chrome = {
+      storage: {
+        local: {
+          get: vi.fn(async () => {
+            await new Promise(resolve => setTimeout(resolve, 20));
+            return { ...store };
+          }),
+          set
+        }
+      }
+    };
+
+    try {
+      const p1 = BM.migrateStorage();
+      const p2 = BM.migrateStorage();
+      const p3 = BM.migrateStorage();
+      const [r1, r2, r3] = await Promise.all([p1, p2, p3]);
+      expect(r1).toBe(r2);
+      expect(r2).toBe(r3);
+      expect(set).toHaveBeenCalledOnce();
+      expect(store.bmStorageVersion).toBe(4);
+    } finally {
+      if (previousChrome === undefined) delete globalThis.chrome;
+      else globalThis.chrome = previousChrome;
+    }
   });
 });
