@@ -10,6 +10,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 let BM;
 
 beforeAll(() => {
+  const load = (f) => eval(readFileSync(join(__dirname, '..', 'js', f), 'utf-8'));
+  if (!globalThis.BM_CONST) load('constants.js');
+  if (!globalThis.BM_RULES) load('rules-data.js');
   const code = readFileSync(join(__dirname, '..', 'js', 'lib.js'), 'utf-8');
   eval(code); // 挂载 globalThis.BM
   BM = globalThis.BM;

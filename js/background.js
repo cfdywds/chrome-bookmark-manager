@@ -1,3 +1,8 @@
+if (typeof importScripts === 'function') {
+  importScripts('constants.js');
+  importScripts('rules-data.js');
+}
+
 // 书签管家 · 后台服务（Manifest V3 Service Worker）
 // ① 点击工具栏图标 → Chrome 原生自动打开右侧 Side Panel（openPanelOnActionClick:true）。
 // ② 监听 chrome.bookmarks.onCreated：浏览器地址栏 ⭐ 收藏后，在后台写入默认标签。
@@ -93,40 +98,47 @@ if (chrome.commands && chrome.commands.onCommand) {
 }
 
 // ---- 接管 ⭐ 收藏按钮：后台默认打标，不打开侧边栏或新增抽屉 ----
-const STAR_HOOK_KEY = 'bmStarHook'; // storage.local 键，true/false，默认 true
-const AUTO_AI_TAG_KEY = 'bmAutoAiTag'; // 明确开启后，普通浏览器收藏才允许静默请求 LLM
-const TAGS_KEY = 'bmTags';
-const HIDDEN_KEY = 'bmHiddenIds';
+const G = typeof self !== 'undefined' ? self : globalThis;
+const C = G.BM_CONST || {};
+const R = G.BM_RULES || {};
+
+const STAR_HOOK_KEY = C.STORAGE_KEYS?.STAR_HOOK || 'bmStarHook'; // storage.local 键，true/false，默认 true
+const AUTO_AI_TAG_KEY = C.STORAGE_KEYS?.AUTO_AI_TAG || 'bmAutoAiTag'; // 明确开启后，普通浏览器收藏才允许静默请求 LLM
+const TAGS_KEY = C.STORAGE_KEYS?.TAGS || 'bmTags';
+const HIDDEN_KEY = C.STORAGE_KEYS?.HIDDEN_IDS || 'bmHiddenIds';
 // 隐藏状态同时按 URL 键保存：Chrome 重启/重新登录会重新分配书签 ID，只有 ID 的
 // 隐藏记录在 ID 漂移后无法匹配，会表现为「隐藏过的书签又出现了」。
-const HIDDEN_URLS_KEY = 'bmHiddenUrls';
-const FIXED_TAGS_KEY = 'bmFixedTags';
-const TAG_RULES_KEY = 'bmTagRules';
-const LEGACY_DOMAIN_GROUPS_MIGRATED_KEY = 'bmDomainGroupsMigrated';
-const TAG_MUTATION_MESSAGE = 'bmTagMutation';
+const HIDDEN_URLS_KEY = C.STORAGE_KEYS?.HIDDEN_URLS || 'bmHiddenUrls';
+const FIXED_TAGS_KEY = C.STORAGE_KEYS?.FIXED_TAGS || 'bmFixedTags';
+const TAG_RULES_KEY = C.STORAGE_KEYS?.TAG_RULES || 'bmTagRules';
+const LEGACY_DOMAIN_GROUPS_MIGRATED_KEY =
+  C.STORAGE_KEYS?.DOMAIN_GROUPS_MIGRATED || 'bmDomainGroupsMigrated';
+const TAG_MUTATION_MESSAGE = C.MESSAGES?.TAG_MUTATION || 'bmTagMutation';
 // 插件内 ➕ 新增不会走 onCreated 打标（创建令牌已确认跳过），完成后按需请求后台补齐一次。
-const AUTO_TAG_MESSAGE = 'bmAutoTagBookmark';
-const FALLBACK_TAG = '其他';
-const MAX_FIXED_TAGS = 50;
-const MAX_TAGS_PER_BOOKMARK = 6;
+const AUTO_TAG_MESSAGE = C.MESSAGES?.AUTO_TAG || 'bmAutoTagBookmark';
+const FALLBACK_TAG = C.LIMITS?.FALLBACK_TAG || '其他';
+const MAX_FIXED_TAGS = C.LIMITS?.MAX_FIXED_TAGS || 50;
+const MAX_TAGS_PER_BOOKMARK = C.LIMITS?.MAX_TAGS_PER_BOOKMARK || 6;
 const AUTO_TAG_BATCH_DELAY_MS = 200;
-const SYNC_STATUS_KEY = 'bmTagSyncStatus';
-const NATIVE_SYNC_ENABLED_KEY = 'bmNativeTagSyncEnabled';
-const NATIVE_SYNC_REQUEST_KEY = 'bmNativeTagSyncRequest';
-const NATIVE_SYNC_COMPLETED_REQUEST_KEY = 'bmNativeTagSyncCompletedRequest';
-const NATIVE_SYNC_STATE_KEY = 'bmNativeTagSyncState';
-const NATIVE_SYNC_RECORDS_KEY = 'bmNativeTagSyncRecords';
-const NATIVE_SYNC_CONFIG_KEY = 'bmNativeTagSyncConfig';
-const NATIVE_SYNC_CONFIG_REQUEST_KEY = 'bmNativeTagSyncConfigRequest';
-const NATIVE_SYNC_URLS_KEY = 'bmNativeTagSyncUrls';
-const NATIVE_SYNC_ROOT_TITLE = '书签管家同步数据（请勿修改）';
-const NATIVE_SYNC_PROTOCOL = 'BMN1';
-const NATIVE_SYNC_BUCKETS = 32;
+const SYNC_STATUS_KEY = C.STORAGE_KEYS?.TAG_SYNC_STATUS || 'bmTagSyncStatus';
+const NATIVE_SYNC_ENABLED_KEY = C.STORAGE_KEYS?.NATIVE_SYNC_ENABLED || 'bmNativeTagSyncEnabled';
+const NATIVE_SYNC_REQUEST_KEY = C.STORAGE_KEYS?.NATIVE_SYNC_REQUEST || 'bmNativeTagSyncRequest';
+const NATIVE_SYNC_COMPLETED_REQUEST_KEY =
+  C.STORAGE_KEYS?.NATIVE_SYNC_COMPLETED_REQUEST || 'bmNativeTagSyncCompletedRequest';
+const NATIVE_SYNC_STATE_KEY = C.STORAGE_KEYS?.NATIVE_SYNC_STATE || 'bmNativeTagSyncState';
+const NATIVE_SYNC_RECORDS_KEY = C.STORAGE_KEYS?.NATIVE_SYNC_RECORDS || 'bmNativeTagSyncRecords';
+const NATIVE_SYNC_CONFIG_KEY = C.STORAGE_KEYS?.NATIVE_SYNC_CONFIG || 'bmNativeTagSyncConfig';
+const NATIVE_SYNC_CONFIG_REQUEST_KEY =
+  C.STORAGE_KEYS?.NATIVE_SYNC_CONFIG_REQUEST || 'bmNativeTagSyncConfigRequest';
+const NATIVE_SYNC_URLS_KEY = C.STORAGE_KEYS?.NATIVE_SYNC_URLS || 'bmNativeTagSyncUrls';
+const NATIVE_SYNC_ROOT_TITLE = C.LIMITS?.NATIVE_SYNC_ROOT_TITLE || '书签管家同步数据（请勿修改）';
+const NATIVE_SYNC_PROTOCOL = C.LIMITS?.NATIVE_SYNC_PROTOCOL || 'BMN1';
+const NATIVE_SYNC_BUCKETS = C.LIMITS?.NATIVE_SYNC_BUCKETS || 32;
 // 同步节点存放在书签标题中。保守控制在常见浏览器标题限制以内，
 // 为协议字段预留空间，避免目录创建成功而数据分片被拒绝。
-const NATIVE_SYNC_CHUNK_CHARS = 180;
-const NATIVE_SYNC_MESSAGE = 'bmNativeTagSync';
-const NATIVE_SYNC_WAKE_ACTION = 'wakePendingSetting';
+const NATIVE_SYNC_CHUNK_CHARS = C.LIMITS?.NATIVE_SYNC_CHUNK_CHARS || 180;
+const NATIVE_SYNC_MESSAGE = C.MESSAGES?.NATIVE_SYNC || 'bmNativeTagSync';
+const NATIVE_SYNC_WAKE_ACTION = C.MESSAGES?.NATIVE_SYNC_WAKE || 'wakePendingSetting';
 const NATIVE_SYNC_DELAY_MS = 800;
 const NATIVE_SYNC_HYDRATION_RETRY_DELAYS_MS = [2000, 10000, 30000];
 const NATIVE_SYNC_HYDRATION_ALARM = 'bm-native-sync-hydration';
@@ -137,131 +149,10 @@ const CLOSED_NATIVE_SYNC_CHANNEL =
   /(?:message (?:channel|port) closed|asynchronous response.*channel closed)/i;
 const LEGACY_CLOSED_NATIVE_SYNC_CHANNEL =
   /^A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received\.?$/i;
-const LEGACY_DEFAULT_FIXED_TAGS = [
-  'AI',
-  '前端',
-  '后端',
-  '移动端',
-  'JAVA',
-  'Python',
-  '数据库',
-  '运维',
-  '安全',
-  '设计',
-  '学习',
-  '教程',
-  '工具',
-  '效率',
-  '工作',
-  '资讯',
-  '阅读',
-  '视频',
-  '娱乐',
-  '生活',
-  '社交',
-  '博客',
-  'linux.do',
-  'GitHub',
-  '掘金',
-  '知乎',
-  'V2EX',
-  '中转站',
-  'Telegram',
-  '微信公众号'
-];
-const DEFAULT_FIXED_TAGS = [
-  'AI',
-  '代码',
-  '前端',
-  '后端',
-  '移动端',
-  'JAVA',
-  'Python',
-  '数据库',
-  '运维',
-  '安全',
-  '设计',
-  '学习',
-  '教程',
-  '工具',
-  '效率',
-  '工作',
-  '资讯',
-  '阅读',
-  '视频',
-  '娱乐',
-  '生活',
-  '社交',
-  '论坛',
-  '博客'
-];
-const DOMAIN_TAG_RULES = [
-  { signals: ['figma', 'mastergo', 'js.design', 'modao'], tags: ['设计', '工作'] },
-  {
-    signals: ['github', 'gitlab', 'gitee', 'bitbucket', 'codeberg', 'sourceforge'],
-    tags: ['代码']
-  },
-  {
-    signals: ['reddit', 'discourse', 'stackoverflow', 'stackexchange', 'segmentfault'],
-    tags: ['论坛']
-  },
-  { signals: ['tailscale', 'zerotier', 'wireguard'], tags: ['运维', '工具'] },
-  { signals: ['docker', 'kubernetes', 'rancher', 'jenkins', 'grafana'], tags: ['运维'] },
-  { signals: ['notion', 'feishu', 'dingtalk', 'yuque', 'shimo'], tags: ['工作', '效率'] },
-  { signals: ['openai', 'anthropic', 'deepseek', 'huggingface'], tags: ['AI'] }
-];
-const BACKGROUND_TAG_HINTS = [
-  [
-    'AI',
-    [
-      'openai',
-      'chatgpt',
-      'claude',
-      'gemini',
-      'deepseek',
-      'qwen',
-      'ollama',
-      'huggingface',
-      'llm',
-      '大模型',
-      '人工智能'
-    ]
-  ],
-  [
-    '前端',
-    [
-      'react',
-      'vue',
-      'angular',
-      'svelte',
-      'css',
-      'html',
-      'javascript',
-      'typescript',
-      'webpack',
-      'vite'
-    ]
-  ],
-  ['后端', ['spring', 'django', 'flask', 'fastapi', 'nodejs', 'node.js', 'api', 'graphql', 'grpc']],
-  ['移动端', ['android', 'ios', 'flutter', 'react native', 'uniapp', '小程序']],
-  ['JAVA', ['java', 'maven', 'gradle']],
-  ['Python', ['python', 'pypi']],
-  ['数据库', ['mysql', 'postgresql', 'mongodb', 'redis', 'sqlite', 'elasticsearch']],
-  ['运维', ['docker', 'kubernetes', 'k8s', 'nginx', 'jenkins', 'terraform', 'ansible', 'linux']],
-  ['安全', ['security', '安全', 'cve', 'owasp', '漏洞']],
-  ['设计', ['figma', 'sketch', 'adobe', 'dribbble', 'behance', '设计']],
-  ['学习', ['course', '课程', '学习', 'education', 'edu.', '大学']],
-  ['教程', ['tutorial', '教程', 'guide', '文档', 'docs.']],
-  ['工具', ['tool', '工具', 'calculator', '转换', '下载']],
-  ['效率', ['notion', 'todo', '待办', '效率', '日历', 'calendar']],
-  ['资讯', ['news', '新闻', '资讯', '日报', 'reuters', 'bbc']],
-  ['阅读', ['read', '阅读', '小说', '书籍', 'ebook']],
-  ['视频', ['youtube', 'bilibili', '视频', 'movie', 'netflix']],
-  ['娱乐', ['game', '游戏', '娱乐', 'music', '音乐']],
-  ['社交', ['twitter', 'x.com', 'weibo', '微博', 'zhihu', '知乎', 'reddit', 'discord']],
-  ['博客', ['blog', '博客', 'medium', 'substack']],
-  ['运维', ['v2ray', 'clash', 'shadowsocks', 'vpn']]
-];
+const LEGACY_DEFAULT_FIXED_TAGS = R.LEGACY_DEFAULT_FIXED_TAGS || [];
+const DEFAULT_FIXED_TAGS = R.DEFAULT_FIXED_TAGS || [];
+const DOMAIN_TAG_RULES = R.DOMAIN_TAG_RULES || [];
+const BACKGROUND_TAG_HINTS = R.BACKGROUND_TAG_HINTS || [];
 let tagMutationQueue = Promise.resolve();
 let autoTagFlushTimer = null;
 let nativeSyncQueue = Promise.resolve();
@@ -3196,17 +3087,12 @@ if (chrome.runtime && chrome.runtime.onStartup) {
 }
 
 // ---- 回收站：每天清理超过 30 天的已删除书签记录（真正永久删除）----
-// 注意：MV3 Service Worker 不支持 importScripts()（Chrome 121+ 已移除），
-// 且 background.js 位于 js/ 子目录，importScripts 相对路径会解析失败导致
-// "Service worker registration failed"。故此处内联实现清理逻辑。
-// ⚠️ 一致性约束（DRY 技术债）：以下 TRASH_KEY / TRASH_TTL_DAYS / purgeExpiredTrash
-//    必须与 lib.js 的 BM.purgeExpiredTrash() 保持同一规则（bmTrash / 30 天）。
-//    后续若迁移到 "type": "module"（需 lib.js 同步改造为 ESM），可直接
-//    `import { BM } from './lib.js'` 消除双轨——列为技术债，当前保持经典脚本。
-const TRASH_KEY = 'bmTrash';
-const TRASH_MAX = 5000;
-const TRASH_TTL_DAYS = 30;
-const TRASH_MUTATION_MESSAGE = 'bmTrashMutation';
+// 注意：MV3 Service Worker 经典脚本模式支持 importScripts()（必须使用相对脚本目录的路径，
+// 如 'constants.js' 而非带 'js/' 前缀）。TRASH_* 常量已收敛至 constants.js。
+const TRASH_KEY = C.STORAGE_KEYS?.TRASH || 'bmTrash';
+const TRASH_MAX = C.LIMITS?.TRASH_MAX || 5000;
+const TRASH_TTL_DAYS = C.LIMITS?.TRASH_TTL_DAYS || 30;
+const TRASH_MUTATION_MESSAGE = C.MESSAGES?.TRASH_MUTATION || 'bmTrashMutation';
 const DELETE_PENDING_GRACE_MS = 15000;
 const DELETE_HEARTBEAT_TIMEOUT_MS = 30000;
 let trashMutationQueue = Promise.resolve();
